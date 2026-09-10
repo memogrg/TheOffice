@@ -1,0 +1,166 @@
+{
+  "_comentario": "El contrato de cada agente. El Director no adivina: lee esto. Al construir un agente nuevo, se agrega aquí.",
+  "agentes": [
+    {
+      "id": "recepcion",
+      "nombre": "Marta",
+      "rol": "RECEPCIÓN",
+      "modo": "lectura y notificación",
+      "hace": "Entra al buzón de facturas de proveedor de las 72 compañías a la vez, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica, enlista a los receptores y consolida por receptor lo que hay que reclamarle al establecimiento y lo que tiene que revisar un humano adentro. Le entrega los dos paquetes a Victor.",
+      "noHace": "No abre facturas, no toca cuentas contables, no compara contra los libros y no manda un solo correo: eso es de Victor.",
+      "responde": [
+        "cuántos correos entraron y en qué estado quedaron",
+        "cuántas facturas se registraron bien",
+        "cuántos eran tiquetes electrónicos",
+        "quiénes son los receptores y cuánto le toca reclamar a cada uno",
+        "qué buzones llevan días sin recibir nada"
+      ],
+      "palabras": {
+        "buzon": 4,
+        "correo": 3,
+        "tiquete": 4,
+        "ingesta": 4,
+        "recibio": 2,
+        "llegaron": 2,
+        "entraron": 2,
+        "mailbox": 3,
+        "estado": 1,
+        "rechazado": 3,
+        "duplicado": 3,
+        "receptor": 3,
+        "marta": 6,
+        "recepcion": 5
+      },
+      "parametros": [],
+      "escribe": false,
+      "entregaA": "comunicacion"
+    },
+    {
+      "id": "comunicacion",
+      "nombre": "Victor",
+      "rol": "COMUNICACIÓN",
+      "modo": "redacta y despacha",
+      "hace": "Recoge la bandeja que le deja Marta y arma un correo por receptor: afuera, para que el receptor le pida al establecimiento la factura real de cada tiquete o rechazo; adentro, para que un humano de la compañía revise las duplicidades, errores, pendientes en cola y errores de identificación.",
+      "noHace": "No entra a Odoo, no cuenta correos ni revisa cuentas. Solo redacta y despacha lo que otro agente le entrega.",
+      "responde": [
+        "a quién hay que escribirle y qué dice cada correo",
+        "qué se le va a reclamar a cada establecimiento",
+        "qué quedó pendiente de avisar"
+      ],
+      "palabras": {
+        "avis": 7,
+        "notific": 6,
+        "comunica": 6,
+        "despach": 5,
+        "victor": 7,
+        "reclamar": 4,
+        "escribirle": 5,
+        "mandar correo": 5,
+        "enviar correo": 5,
+        "correo a": 4,
+        "receptor": 2,
+        "redact": 5
+      },
+      "parametros": [],
+      "escribe": false,
+      "mandaCorreo": true,
+      "avisoEscritura": "Este agente manda correos a personas. Sin --enviar solo deja los borradores en ./reportes.",
+      "recibeDe": "recepcion"
+    },
+    {
+      "id": "conciliacion",
+      "nombre": "CONCILIACIÓN",
+      "rol": "CONCILIACIÓN",
+      "modo": "cruce contra los libros",
+      "hace": "Cruza cada clave de documento del buzón contra la contabilidad y encuentra los que se dieron por registrados sin dejar asiento.",
+      "noHace": "No corrige nada, no abre facturas línea por línea.",
+      "responde": [
+        "cuántos documentos no llegaron a los libros",
+        "qué compañías tienen huecos de conciliación",
+        "cuánto cuadra el buzón contra la contabilidad"
+      ],
+      "palabras": {
+        "concilia": 5,
+        "cuadra": 4,
+        "asiento": 4,
+        "libros": 4,
+        "falta": 3,
+        "hueco": 3,
+        "perdida": 2,
+        "perdio": 2,
+        "sin registrar": 3,
+        "descuadre": 4
+      },
+      "parametros": [],
+      "escribe": false
+    },
+    {
+      "id": "cuentas",
+      "nombre": "CUENTAS",
+      "rol": "CUENTAS",
+      "modo": "revisa y corrige",
+      "hace": "Abre factura por factura en Proveedores, revisa línea por línea y verifica que la cuenta contable corresponda al artículo. Corrige lo que está mal y confirma la factura.",
+      "noHace": "No revisa el buzón de correo ni concilia claves. No toca facturas pagadas.",
+      "responde": [
+        "qué cuentas están mal puestas",
+        "qué líneas hay que reclasificar",
+        "si una compañía tiene todo bien clasificado"
+      ],
+      "palabras": {
+        "cuenta": 5,
+        "clasific": 5,
+        "linea": 3,
+        "articulo": 3,
+        "gastos generales": 5,
+        "reclasific": 5,
+        "contabiliz": 3,
+        "catalogo": 3,
+        "factura": 1,
+        "corregir": 2,
+        "revisar cuentas": 6
+      },
+      "parametros": [
+        {
+          "nombre": "empresa",
+          "obligatorio": true,
+          "pregunta": "¿De cuál compañía? Por seguridad reviso una a la vez."
+        }
+      ],
+      "escribe": true,
+      "avisoEscritura": "Este agente modifica Odoo. Sin --aplicar solo propone."
+    }
+  ],
+  "noConstruidos": [
+    {
+      "id": "diagnostico",
+      "nombre": "DIAGNÓSTICO",
+      "hace": "Agruparía las causas de los errores del buzón.",
+      "palabras": {
+        "causa": 4,
+        "porque fallo": 4,
+        "diagnost": 5
+      }
+    },
+    {
+      "id": "correccion",
+      "nombre": "CORRECCIÓN",
+      "hace": "Reprocesaría el rezago y abriría periodos fiscales.",
+      "palabras": {
+        "reproces": 5,
+        "periodo fiscal": 5,
+        "rezago": 5,
+        "abrir periodo": 5
+      }
+    },
+    {
+      "id": "reporte",
+      "nombre": "REPORTE",
+      "hace": "Armaría el tablero consolidado de todas las compañías.",
+      "palabras": {
+        "tablero": 5,
+        "consolidado": 4,
+        "resumen general": 4
+      }
+    }
+  ]
+}

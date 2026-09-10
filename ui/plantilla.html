@@ -1,0 +1,660 @@
+<title>Oficina virtual IASIMA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --chrome:#F4EFE2; --chrome2:#EAE3D1; --edge:#C9BFA4; --edge2:#B0A484;
+  --ink:#2E2A22; --ink2:#5C5443; --ink3:#8A806A;
+  --seal:#0B4A3F;
+  --ok:#1B7F5E; --wait:#B07908; --hold:#A8362A; --idle:#7D8A85;
+  --f:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --m:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --chrome:#1C1E1B; --chrome2:#242723; --edge:#3A3E38; --edge2:#4C514A;
+  --ink:#EDE7D8; --ink2:#BDB6A4; --ink3:#8B8574; --seal:#6FD3AE;
+  --ok:#3FA87E; --wait:#C08F2E; --hold:#D96A50; --idle:#8CA1AC;}}
+:root[data-theme="dark"]{
+  --chrome:#1C1E1B; --chrome2:#242723; --edge:#3A3E38; --edge2:#4C514A;
+  --ink:#EDE7D8; --ink2:#BDB6A4; --ink3:#8B8574; --seal:#6FD3AE;
+  --ok:#3FA87E; --wait:#C08F2E; --hold:#D96A50; --idle:#8CA1AC;}
+*{box-sizing:border-box}
+body{margin:0; background:var(--chrome2); color:var(--ink);
+  font-family:var(--f); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased}
+.app{max-width:1400px; margin:0 auto; padding:16px 16px 40px}
+
+.titlebar{background:var(--chrome); border:2px solid var(--edge); border-radius:4px;
+  padding:9px 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px}
+.dots{display:flex; gap:6px; flex:none}
+.dots i{width:11px; height:11px; border-radius:50%; display:block}
+.appname{font-family:var(--m); font-weight:700; font-size:13px}
+.ver{font-family:var(--m); font-size:11.5px; color:var(--ink3)}
+.tbspace{flex:1}
+.tbchip{font-family:var(--m); font-size:11px; color:var(--ink2); display:inline-flex; align-items:center;
+  gap:7px; background:var(--chrome2); border:1px solid var(--edge); border-radius:3px; padding:4px 9px; white-space:nowrap}
+.tbchip i{width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none}
+.tbchip.amber i{background:var(--wait)} .tbchip.grey i{background:var(--idle)}
+
+.main{display:grid; grid-template-columns:1fr 372px; gap:12px; align-items:start}
+@media(max-width:1080px){.main{grid-template-columns:1fr}}
+
+.stagewrap{background:var(--chrome); border:2px solid var(--edge); border-radius:4px; padding:10px}
+.stage{position:relative; width:100%; aspect-ratio:12/7; background:#8FB0A4;
+  border:3px solid #6E8C81; border-radius:2px; overflow:hidden}
+.stage svg{position:absolute; inset:0; width:100%; height:100%; display:block; shape-rendering:crispEdges}
+#actores g.act{cursor:pointer}
+#actores g.act:focus{outline:none}
+#actores g.act:focus-visible rect.hit{stroke:#FFE27A; stroke-width:3; fill:rgba(255,226,122,.18)}
+.ov{position:absolute; inset:0; pointer-events:none}
+.nmtag{position:absolute; transform:translate(-50%,0); font-family:var(--m); font-size:10px;
+  font-weight:700; color:#20302B; background:rgba(244,240,226,.93); border:1px solid rgba(32,48,43,.35);
+  border-radius:2px; padding:1px 5px; white-space:nowrap}
+.nmtag.on{background:#FFE27A; border-color:#8A6A12}
+.bub{position:absolute; transform:translate(-50%,-100%); background:#F7F4E9; border:2px solid #2E3A35;
+  border-radius:3px; padding:3px 7px; font-family:var(--m); font-size:10.5px; color:#22302B;
+  white-space:nowrap; max-width:250px; overflow:hidden; text-overflow:ellipsis}
+.bub::after{content:""; position:absolute; left:calc(50% - 3px); bottom:-6px; width:6px; height:6px;
+  background:#F7F4E9; border-right:2px solid #2E3A35; border-bottom:2px solid #2E3A35}
+.zone{position:absolute; transform:translate(-50%,-50%); font-family:var(--m); font-size:9px;
+  font-weight:700; letter-spacing:.1em; color:rgba(30,45,40,.42)}
+.stagefoot{display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:9px; padding:0 2px;
+  font-family:var(--m); font-size:11px; color:var(--ink2); align-items:center}
+.stagefoot i{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block;margin-right:5px}
+.stagefoot button{font:inherit; font-family:var(--m); font-size:10.5px; padding:3px 9px; border-radius:3px;
+  border:1px solid var(--edge2); background:var(--chrome2); color:var(--ink2); cursor:pointer}
+
+.side{background:var(--chrome); border:2px solid var(--edge); border-radius:4px; overflow:hidden;
+  display:flex; flex-direction:column; min-height:520px}
+.tabs{display:flex; border-bottom:2px solid var(--edge); background:var(--chrome2)}
+.tab{flex:1; font:inherit; font-family:var(--m); font-size:11.5px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; padding:10px 8px; background:none; border:0; border-right:1px solid var(--edge);
+  color:var(--ink3); cursor:pointer}
+.tab:last-child{border-right:0}
+.tab[aria-selected=true]{background:var(--chrome); color:var(--ink); box-shadow:inset 0 -3px 0 var(--seal)}
+.sbody{overflow:auto; flex:1}
+.ahead{padding:14px 15px; border-bottom:1px solid var(--edge); display:flex; gap:12px; align-items:center}
+.ahead .pic{width:56px; height:56px; flex:none; background:var(--chrome2); border:2px solid var(--edge);
+  border-radius:3px; display:flex; align-items:center; justify-content:center}
+.ahead .pic svg{display:block; shape-rendering:crispEdges}
+.ahead .id{flex:1; min-width:0}
+.ahead h2{margin:0; font-family:var(--m); font-size:15px; font-weight:700}
+.ahead .rl{font-size:12px; color:var(--ink3); margin-top:1px}
+.boss{font-family:var(--m); font-size:9.5px; font-weight:700; background:#FFE27A; color:#5A4408;
+  border:1px solid #A98718; border-radius:2px; padding:1px 5px; margin-left:6px; vertical-align:2px}
+.live{font-family:var(--m); font-size:9px; font-weight:700; background:var(--ok); color:var(--chrome);
+  border-radius:2px; padding:1px 5px; margin-left:5px; vertical-align:2px}
+.pill{font-family:var(--m); font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+  padding:3px 7px; border-radius:2px; border:1px solid; white-space:nowrap}
+.pill.work{color:var(--ok); border-color:var(--ok)} .pill.hold{color:var(--hold); border-color:var(--hold)}
+.pill.done,.pill.idle{color:var(--ink3); border-color:var(--edge2)}
+.blk{padding:13px 15px; border-bottom:1px solid var(--edge)}
+.blk:last-child{border-bottom:none}
+.k{font-family:var(--m); font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink3); margin-bottom:7px}
+.doing{font-size:13.5px; margin:0}
+.rrow{display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:5px 0;
+  border-bottom:1px dashed var(--edge)}
+.rrow:last-child{border-bottom:none}
+.rrow .l{font-size:12.5px; color:var(--ink2)}
+.rrow .v{font-family:var(--m); font-size:14px; font-weight:700; font-variant-numeric:tabular-nums}
+.lg{display:grid; grid-template-columns:48px 1fr; gap:10px; padding:5px 0; font-size:12px;
+  color:var(--ink2); border-bottom:1px dashed var(--edge)}
+.lg:last-child{border-bottom:none}
+.lg time{font-family:var(--m); font-size:10.5px; color:var(--ink3)}
+.al{border-left:4px solid var(--idle); background:var(--chrome2); padding:9px 11px; margin-bottom:7px; border-radius:0 3px 3px 0}
+.al.critico{border-left-color:var(--hold)} .al.alto{border-left-color:var(--wait)} .al.ok{border-left-color:var(--ok)}
+.al .t{font-weight:600; font-size:13px}
+.al .d{font-size:11.5px; color:var(--ink3); margin-top:4px; font-family:var(--m); line-height:1.6}
+.chat{display:flex; flex-direction:column; gap:8px; padding:13px 15px; max-height:260px; overflow:auto}
+.msg{max-width:88%; padding:8px 11px; border-radius:4px; font-size:13px; line-height:1.45}
+.msg.me{align-self:flex-end; background:var(--seal); color:var(--chrome)}
+.msg.ceo{align-self:flex-start; background:var(--chrome2); border:1px solid var(--edge)}
+.msg .w{display:block; font-family:var(--m); font-size:9.5px; text-transform:uppercase; opacity:.7; margin-bottom:3px}
+form.row{display:flex; gap:7px; padding:12px 15px; border-top:1px solid var(--edge)}
+input[type=text],input[type=email],select{flex:1; min-width:0; font:inherit; font-size:13px; padding:8px 10px;
+  border:1px solid var(--edge2); border-radius:3px; background:var(--chrome2); color:var(--ink)}
+input:focus,select:focus{outline:2px solid var(--seal); outline-offset:-1px}
+button.b{font:inherit; font-size:12.5px; font-weight:600; padding:8px 13px; border-radius:3px;
+  border:1px solid var(--seal); background:var(--seal); color:var(--chrome); cursor:pointer; white-space:nowrap}
+button.b.gh{background:none; color:var(--ink2); border-color:var(--edge2)}
+button.b.dg{background:none; color:var(--hold); border-color:var(--hold)}
+.hint{font-size:11.5px; color:var(--ink3); margin:8px 0 0; line-height:1.45}
+
+.roster{margin-top:12px; background:var(--chrome); border:2px solid var(--edge); border-radius:4px; padding:10px}
+.rhead{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:9px; padding:0 2px}
+.rhead .t{font-family:var(--m); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3)}
+.cards{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px}
+.card{flex:0 0 222px; background:var(--chrome2); border:2px solid var(--edge); border-radius:3px;
+  padding:9px 10px; cursor:pointer; text-align:left; font:inherit; color:inherit; display:flex; gap:9px}
+.card.on{border-color:var(--seal)}
+.card .pic{width:36px; height:36px; flex:none; background:var(--chrome); border:1px solid var(--edge);
+  border-radius:2px; display:flex; align-items:center; justify-content:center}
+.card .cb{flex:1; min-width:0; display:block}
+.card .l1{display:flex; align-items:center; justify-content:space-between; gap:6px}
+.card .cn{font-family:var(--m); font-size:11.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.card .cp{font-family:var(--m); font-size:9px; font-weight:600; text-transform:uppercase; padding:2px 5px;
+  border-radius:2px; border:1px solid; white-space:nowrap; flex:none}
+.card .cs{display:block; font-family:var(--m); font-size:9.5px; color:var(--ink3); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.bar{display:block; height:5px; background:var(--chrome); border:1px solid var(--edge); border-radius:2px; margin-top:6px; overflow:hidden}
+.bar i{display:block; height:100%}
+.addcard{flex:0 0 150px; background:none; border:2px dashed var(--edge2); border-radius:3px; color:var(--ink2);
+  font:inherit; font-size:12.5px; font-weight:600; cursor:pointer}
+.hireform[hidden]{display:none}
+.hireform{margin-top:10px; padding:12px; background:var(--chrome2); border:1px solid var(--edge); border-radius:3px;
+  display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end}
+@media(max-width:700px){.hireform{grid-template-columns:1fr}}
+.hireform label{font-family:var(--m); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink3); display:block; margin-bottom:4px}
+footer{margin-top:14px; font-size:11.5px; color:var(--ink3); line-height:1.6; padding:0 4px}
+footer b{color:var(--ink2)} footer code{font-family:var(--m); font-size:10.5px}
+</style>
+
+<div class="app">
+  <div class="titlebar">
+    <span class="dots"><i style="background:#E0685C"></i><i style="background:#E8B33C"></i><i style="background:#5FBF63"></i></span>
+    <span class="appname">Oficina IASIMA</span>
+    <span class="ver" id="ver">v0.3</span>
+    <span class="tbspace"></span>
+    <span class="tbchip" id="chipDatos"><i></i>—</span>
+    <span class="tbchip amber"><i></i>base de pruebas</span>
+  </div>
+
+  <div class="main">
+    <div class="stagewrap">
+      <div class="stage" id="stage">
+        <svg id="scene" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
+          <g id="fondo"></g><g id="actores"></g>
+        </svg>
+        <div class="ov" id="ov"></div>
+      </div>
+      <div class="stagefoot">
+        <span><i style="background:var(--ok)"></i>Trabajando</span>
+        <span><i style="background:var(--hold)"></i>Espera aprobación</span>
+        <span><i style="background:var(--idle)"></i>Libre</span>
+        <span class="tbspace" style="flex:1"></span>
+        <button id="pausa" type="button">Pausar movimiento</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-a" aria-selected="true">Agente</button>
+        <button class="tab" role="tab" id="tab-r" aria-selected="false">Reportes</button>
+      </div>
+      <div class="sbody" id="sbody" role="tabpanel"></div>
+    </div>
+  </div>
+
+  <div class="roster">
+    <div class="rhead"><span class="t">Planilla · <span id="hc">8</span> agentes</span><span class="t" id="payroll"></span></div>
+    <div class="cards" id="cards"></div>
+    <div class="hireform" id="hf" hidden>
+      <div><label for="hn">Nombre del agente</label><input type="text" id="hn" placeholder="Ej.: Cobranza" style="width:100%"></div>
+      <div><label for="hr">Puesto</label><select id="hr" style="width:100%"></select></div>
+      <div style="display:flex;gap:7px"><button class="b" id="hok" type="button">Contratar</button><button class="b gh" id="hno" type="button">Cancelar</button></div>
+    </div>
+  </div>
+
+  <footer id="pie"></footer>
+</div>
+
+<script>
+window.__DATOS__ = /*DATOS*/ null /*FIN*/;
+</script>
+<script>
+(function(){
+"use strict";
+var D = window.__DATOS__;
+
+/* ================= sprites ================= */
+var CUERPO = [
+"....HHHHHH....","..HHHHHHHHHH..","..HHHHHHHHHH..","..HHssssssHH..",
+"..HssssssssH..","..HssEssEssH..","..HssssssssH..","..HsssMMsssH..",
+"...ssssssss...","....ssssss....","..BBBBBBBBBB..",".ABBBBBBBBBBA.",
+".ABBBBBBBBBBA.",".ABBBBBBBBBBA.",".kBBBBBBBBBBk.","..BBBBBBBBBB.."];
+var PIES = {
+  quieto: ["..PPPP..PPPP..","..PPPP..PPPP..","..DDDD..DDDD..","..DDDD..DDDD.."],
+  paso1:  [".PPPP...PPPP..",".PPPP...PPPP..",".DDDD....DDDD.",".DDDD....DDDD."],
+  paso2:  ["..PPPP...PPPP.","..PPPP...PPPP.","..DDDD....DDDD","..DDDD....DDDD"]
+};
+var ESCRITORIO = [
+"........MMMMMMMM........","........MggggggM........","........MggggggM........",
+"........MggggggM........","........MMMMMMMM........","..........MMMM..........",
+".........MMMMMM.........","WWWWWWWWWWWWWWWWWWWWWWWW","WWWWWWWWWWWWWWWWWWWWWWWW",
+"WWWWkkkkkkkkkkWWWooWWWWW","WWWWkkkkkkkkkkWWWooWWWWW","WWWWWWWWWWWWWWWWWWWWWWWW",
+"EEEEEEEEEEEEEEEEEEEEEEEE","..E..................E..","..E..................E..","........................"];
+var MATA = ["....gg....","..g.gg.g..",".gggggggg.",".gggggggg.","..gggggg..",
+"...gggg...","...tttt...","..tttttt..","..tttttt..","..tttttt..","..tttttt..","...tttt..."];
+var BANCO = ["..cccccc..",".cccccccc.",".cccccccc.","..cccccc..","...c..c...","...c..c...","..c....c..","..c....c.."];
+
+function pinta(mapa, leg, x, y, s){
+  var o="", r,c,run,ch;
+  for(r=0;r<mapa.length;r++){ c=0;
+    while(c<mapa[r].length){ ch=mapa[r][c];
+      if(!leg[ch]){c++;continue;}
+      run=1; while(c+run<mapa[r].length && mapa[r][c+run]===ch) run++;
+      o+='<rect x="'+(x+c*s)+'" y="'+(y+r*s)+'" width="'+(run*s)+'" height="'+s+'" fill="'+leg[ch]+'"/>';
+      c+=run; } }
+  return o;
+}
+var PIEL=["#E8B98F","#D9A87C","#C58F63","#F0CBA6"], PELO=["#3B2A1E","#6B4423","#8C6239","#2A2A2E","#A8642A"];
+function leg(a){ return {H:PELO[a.h%PELO.length], s:PIEL[a.sk%PIEL.length], E:"#2A2A32", M:"#8B5B4A",
+  B:a.col, A:a.col2, k:PIEL[a.sk%PIEL.length], P:"#3A4048", D:"#26292E"}; }
+function persona(a, pose){ return pinta(CUERPO.concat(PIES[pose||"quieto"]), leg(a), 0, 0, 3); }
+var LEGD={M:"#2E2E3C",g:"#4A4A66",W:"#C9A063",k:"#E8E6DF",o:"#E8E6DF",E:"#A87F42"};
+var LEGP={g:"#4E9B4E",t:"#B5714A"}, LEGB={c:"#C9A063"};
+
+/* ================= plano ================= */
+var ESCRITORIOS=[[110,120],[110,380],[300,380],[490,380],[680,380],[870,380],[110,545],[300,545],[490,545],[680,545]];
+function silla(i){ var p=ESCRITORIOS[i]; return {x:p[0]+21, y:p[1]+58}; }
+var LUGARES={
+  cafe:{x:1040,y:200,etq:"CAFÉ"}, agua:{x:1140,y:130,etq:""},
+  bano:{x:1105,y:610,etq:"BAÑO"}, puertaBano:{x:1020,y:585},
+  reunion:{x:590,y:215,etq:"REUNIÓN"}
+};
+
+function fondo(){
+  var s='<rect width="1200" height="700" fill="#8FB0A4"/>';
+  s+='<defs><pattern id="tile" width="80" height="80" patternUnits="userSpaceOnUse">'+
+     '<rect width="80" height="80" fill="#8FB0A4"/><rect width="80" height="2" fill="#83A699"/>'+
+     '<rect width="2" height="80" fill="#83A699"/><rect x="36" y="36" width="8" height="8" fill="#9DBCB0"/>'+
+     '<rect x="32" y="40" width="16" height="2" fill="#9DBCB0"/><rect x="40" y="32" width="2" height="16" fill="#9DBCB0"/></pattern></defs>';
+  s+='<rect y="60" width="1200" height="640" fill="url(#tile)"/>';
+  s+='<rect width="1200" height="60" fill="#F2F0EA"/><rect y="56" width="1200" height="4" fill="#D2CFC4"/>';
+  /* pared corta de la oficina del jefe */
+  s+='<rect x="334" y="60" width="14" height="196" fill="#F2F0EA"/>';s+='<rect x="334" y="244" width="14" height="12" fill="#D2CFC4"/>';
+  /* baño: cuarto abajo a la derecha con puerta */
+  s+='<rect x="1004" y="466" width="196" height="10" fill="#F2F0EA"/>';
+  s+='<rect x="1004" y="466" width="10" height="88" fill="#F2F0EA"/>';
+  s+='<rect x="1004" y="616" width="10" height="84" fill="#F2F0EA"/>';
+  s+='<rect x="1006" y="554" width="6" height="62" fill="#C9A063"/>';
+  s+='<rect x="1040" y="500" width="46" height="34" fill="#E4E9E7" stroke="#B9C4C0" stroke-width="4"/>';
+  s+='<rect x="1120" y="500" width="46" height="34" fill="#E4E9E7" stroke="#B9C4C0" stroke-width="4"/>';
+  s+='<rect x="1120" y="620" width="40" height="52" fill="#E4E9E7" stroke="#B9C4C0" stroke-width="4"/>';
+  /* reloj, ventanas, calendario */
+  s+='<circle cx="46" cy="28" r="14" fill="#F7F4E9" stroke="#C24A3E" stroke-width="4"/>';
+  s+='<rect x="45" y="19" width="3" height="11" fill="#3A3A44"/><rect x="45" y="27" width="9" height="3" fill="#3A3A44"/>';
+  [95,300,520,730].forEach(function(x){
+    s+='<rect x="'+x+'" y="10" width="58" height="38" fill="#BFD6E8" stroke="#8FA9BC" stroke-width="4"/>';
+    s+='<rect x="'+(x+27)+'" y="10" width="4" height="38" fill="#8FA9BC"/>'; });
+  s+='<rect x="182" y="10" width="40" height="40" fill="#F7F4E9" stroke="#3A3A44" stroke-width="3"/>';
+  s+='<rect x="182" y="10" width="40" height="11" fill="#C24A3E"/>';
+  for(var r=0;r<3;r++) for(var c=0;c<3;c++)
+    s+='<rect x="'+(190+c*11)+'" y="'+(27+r*7)+'" width="6" height="4" fill="#B9B5A8"/>';
+  /* sala de reuniones */
+  s+='<rect x="430" y="120" width="300" height="74" fill="#D9A461" stroke="#A87F42" stroke-width="5"/>';
+  s+=pinta(MATA,LEGP,560,130,4);
+  [0,1,2,3].forEach(function(i){
+    s+='<rect x="'+(455+i*72)+'" y="88" width="44" height="26" fill="#8E3B55"/>';
+    s+='<rect x="'+(455+i*72)+'" y="200" width="44" height="26" fill="#8E3B55"/>'; });
+  /* cafetería */
+  s+='<rect x="1010" y="96" width="84" height="118" fill="#9BD96A" stroke="#6FA347" stroke-width="5"/>';
+  s+='<rect x="1024" y="110" width="34" height="64" fill="#D9F0C4"/>';
+  [0,1,2].forEach(function(i){ s+='<rect x="'+1066+'" y="'+(112+i*16)+'" width="16" height="10" fill="#4E6B3B"/>'; });
+  s+='<rect x="1110" y="150" width="80" height="30" fill="#D8D5CC" stroke="#A9A498" stroke-width="4"/>';
+  s+='<rect x="1128" y="104" width="24" height="42" fill="#D8D5CC" stroke="#A9A498" stroke-width="3"/>';
+  s+='<rect x="1132" y="96" width="16" height="12" fill="#9FD3E8"/>';
+  /* plantas, basurero */
+  s+=pinta(MATA,LEGP,24,300,5)+pinta(MATA,LEGP,930,660,5)+pinta(MATA,LEGP,368,74,4);
+  s+='<rect x="612" y="656" width="22" height="28" fill="#B9B5A8" stroke="#8F8B80" stroke-width="3"/>';
+  /* escritorios */
+  ESCRITORIOS.forEach(function(p){ s+=pinta(ESCRITORIO,LEGD,p[0],p[1],3)+pinta(BANCO,LEGB,p[0]+21,p[1]+58,3); });
+  return s;
+}
+
+/* ================= agentes ================= */
+var PUESTOS={
+  "Lee el buzón":"Entra a Contabilidad › Proveedores › Correo de facturas y cuenta el estado de cada correo, compañía por compañía.",
+  "Recepción — lee el buzón":"Entra al buzón de facturas de las 72 compañías, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica y consolida por receptor lo que hay que reclamar. Le entrega los paquetes a Victor; ella no manda correos.",
+  "Comunicación — avisa afuera y adentro":"Toma la bandeja de Marta y redacta un correo por receptor: afuera para que le pidan al establecimiento la factura real, adentro para que una persona de la compañía revise duplicidades y errores. Sin permiso explícito solo deja los borradores.",
+  "Cruza con la contabilidad":"Toma cada clave de documento y verifica que exista la factura correspondiente en los libros.",
+  "Explica los errores":"Agrupa las causas de los errores y separa lo que se arregla con configuración de lo que necesita al proveedor.",
+  "Arregla — con permiso":"Es el único que escribe en Odoo. No mueve nada sin que una persona lo autorice.",
+  "Revisa las cuentas de cada línea":"Abre factura por factura en Proveedores, revisa línea por línea y verifica que la cuenta corresponda al artículo según el catálogo. Corrige lo que está mal; lo que no reconoce lo manda a revisión humana.",
+  "Entrega afuera":"Arma el resultado y lo despacha por correo, sin que nadie tenga que entrar a Odoo.",
+  "Cobranza":"Revisa la cartera vencida y prepara los recordatorios de cobro.",
+  "Calidad de datos":"Busca contactos duplicados, sin cédula o sin correo.",
+  "Conciliación bancaria":"Cuadra los movimientos del banco contra los asientos.",
+  "Auditor de impuestos":"Revisa que el IVA declarado calce con los documentos recibidos."
+};
+var BASE=[
+  {id:"ceo",nm:"DIRECTOR",rl:"Dirige a los demás",jefe:true,col:"#0B4A3F",col2:"#083A31",h:3,sk:1,st:"work",prog:.72,
+   doing:"Recibe sus instrucciones, decide qué agente las ejecuta y le sube lo que necesita aprobación."},
+  {id:"recepcion",nm:"MARTA",rl:"Recepción — lee el buzón",col:"#1B7F5E",col2:"#14654A",h:1,sk:0,st:"work",prog:.64},
+  {id:"comunicacion",nm:"VICTOR",rl:"Comunicación — avisa afuera y adentro",col:"#0F7B8A",col2:"#0B5E6A",h:3,sk:2,st:"idle",prog:0},
+  {id:"conciliacion",nm:"CONCILIACIÓN",rl:"Cruza con la contabilidad",col:"#3F56B5",col2:"#31438F",h:0,sk:3,st:"idle",prog:0},
+  {id:"diagnostico",nm:"DIAGNÓSTICO",rl:"Explica los errores",col:"#B07908",col2:"#8A5F06",h:2,sk:2,st:"idle",prog:0},
+  {id:"correccion",nm:"CORRECCIÓN",rl:"Arregla — con permiso",col:"#A8362A",col2:"#832820",h:4,sk:1,st:"hold",prog:0},
+  {id:"cuentas",nm:"CUENTAS",rl:"Revisa las cuentas de cada línea",col:"#7A4DA8",col2:"#5E3B82",h:2,sk:3,st:"idle",prog:0},
+  {id:"reporte",nm:"REPORTE",rl:"Entrega afuera",col:"#566B77",col2:"#41525C",h:0,sk:0,st:"idle",prog:0}
+];
+
+var AG=[], sel="recepcion", tab="a", CHAT=[], movimiento=true;
+
+function cargar(){
+  try{ var raw=localStorage.getItem("iasima_oficina_v3");
+       if(raw){ var d=JSON.parse(raw); if(d&&d.AG&&d.AG.length){ AG=d.AG; return; } } }catch(e){}
+  AG=BASE.map(function(a){ return JSON.parse(JSON.stringify(a)); });
+}
+function guardar(){ try{ localStorage.setItem("iasima_oficina_v3", JSON.stringify({AG:AG})); }catch(e){} }
+cargar();
+
+/* fusionar la corrida real del agente */
+var corrida=null;
+if(D && D.agentes){
+  corrida=D;
+  D.agentes.forEach(function(x){
+    var a=AG.filter(function(y){return y.id===x.id;})[0];
+    if(!a) return;
+    a.vivo=true; a.res=x.resultado||[]; a.log=x.bitacora||[]; a.alertas=x.alertas||[];
+    a.st=x.estado||"done"; a.prog=1;
+  });
+}
+BASE.forEach(function(b){
+  var a=AG.filter(function(y){return y.id===b.id;})[0];
+  if(a && !a.vivo && !a.res) a.res=[];
+});
+
+function porId(id){ for(var i=0;i<AG.length;i++) if(AG[i].id===id) return AG[i]; }
+function nombreEstado(s){ return s==="work"?"Trabajando":s==="hold"?"Espera aprobación":s==="done"?"Listo":"Libre"; }
+function colorEstado(s){ return s==="work"?"var(--ok)":s==="hold"?"var(--hold)":"var(--idle)"; }
+function esc(s){ return String(s==null?"":s).replace(/[<>&"]/g,function(c){return {"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c];}); }
+function hhmm(){ var d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+
+/* ================= vida de oficina ================= */
+var FRASES_TRABAJO=["van 9.518 registradas","otra vez el periodo fiscal cerrado","esto es tiquete, no factura",
+  "clave tipo 04, lo aparto","512 sin asiento, no cuadra","el buzón de Puuk lleva meses quieto",
+  "72 de 72 buzones caídos","IVA al 11 %, sin mapear","reenviaron el mismo XML 14 veces","512 sin asiento en 30 compañías","otra vez Gastos generales","esto es Agua, no gasto general","esta ya está publicada, no la toco"];
+var FRASES_CAFE=["¿alguien más quiere?","necesitaba esto","este café sabe a agua","cinco minutos y sigo"];
+var CHARLAS=[
+  ["¿viste lo de Colina Hermanos?","mandaron el mismo XML 14 veces"],
+  ["¿abrimos los periodos fiscales?","no sin que él lo apruebe"],
+  ["¿cuántos tiquetes van?","180, todos bien apartados"],
+  ["¿y el buzón caído?","72 de 72, desde marzo"],
+  ["International Animal Rescue está feo","573 sin registrar, sí"],
+  ["¿el reporte ya salió?","falta el correo del cliente"]
+];
+var elegir=function(a){ return a[Math.floor(Math.random()*a.length)]; };
+
+var actores=[];
+function sembrar(){
+  actores=[];
+  AG.forEach(function(a,i){
+    var s=silla(i);
+    if(!s) return;
+    actores.push({ ag:a, casa:{x:s.x,y:s.y}, x:s.x, y:s.y, ruta:[], estado:"sentado",
+      t:2+Math.random()*10, frase:"", fraseT:0, paso:0, pose:"quieto", nodo:null, pareja:null });
+  });
+}
+function ruta(ac, destino){
+  if(destino==="bano") return [LUGARES.puertaBano,{x:LUGARES.bano.x,y:LUGARES.bano.y}];
+  if(destino==="casa" && ac.x>1010 && ac.y>470) return [LUGARES.puertaBano, ac.casa];
+  if(destino==="casa") return [ac.casa];
+  return [LUGARES[destino]];
+}
+function nuevaActividad(ac){
+  var r=Math.random();
+  if(r<.30){ ac.estado="sentado"; ac.t=8+Math.random()*14;
+             if(Math.random()<.5) decir(ac, elegir(FRASES_TRABAJO), 4); return; }
+  if(r<.48){ ac.ruta=ruta(ac,"cafe"); ac.estado="yendo"; ac.tras="cafe"; return; }
+  if(r<.62){ ac.ruta=ruta(ac,"bano"); ac.estado="yendo"; ac.tras="bano"; return; }
+  if(r<.72){ ac.ruta=ruta(ac,"agua"); ac.estado="yendo"; ac.tras="agua"; return; }
+  if(r<.80){ ac.ruta=ruta(ac,"reunion"); ac.estado="yendo"; ac.tras="reunion"; return; }
+  // charla con un compañero sentado
+  var libres=actores.filter(function(o){ return o!==ac && o.estado==="sentado" && !o.pareja; });
+  if(libres.length){
+    var otro=elegir(libres), d=elegir(CHARLAS);
+    ac.pareja=otro; otro.pareja=ac;
+    ac.ruta=[{x:(otro.casa.x+ac.casa.x)/2, y:Math.max(ac.casa.y,otro.casa.y)+34}];
+    otro.ruta=[{x:ac.ruta[0].x+38, y:ac.ruta[0].y}];
+    ac.estado="yendo"; ac.tras="charla"; ac.linea=d[0];
+    otro.estado="yendo"; otro.tras="charla"; otro.linea=d[1];
+    return;
+  }
+  ac.estado="sentado"; ac.t=6+Math.random()*8;
+}
+function decir(ac, texto, seg){ ac.frase=texto; ac.fraseT=seg||4; }
+
+var ultimo=performance.now();
+function latido(ahora){
+  var dt=Math.min(.06,(ahora-ultimo)/1000); ultimo=ahora;
+  if(movimiento){
+    actores.forEach(function(ac){
+      if(ac.fraseT>0){ ac.fraseT-=dt; if(ac.fraseT<=0) ac.frase=""; }
+      if(ac.estado==="yendo"){
+        var d=ac.ruta[0];
+        if(!d){ ac.estado="sentado"; ac.t=5; return; }
+        var dx=d.x-ac.x, dy=d.y-ac.y, dist=Math.hypot(dx,dy), v=62*dt;
+        if(dist<=v){ ac.x=d.x; ac.y=d.y; ac.ruta.shift();
+          if(!ac.ruta.length){
+            if(ac.tras==="charla"){ ac.estado="charlando"; ac.t=5+Math.random()*4; decir(ac,ac.linea,ac.t); }
+            else if(ac.tras==="casa"){ ac.estado="sentado"; ac.t=8+Math.random()*12; }
+            else { ac.estado="haciendo"; ac.t=3+Math.random()*5;
+                   if(ac.tras==="cafe") decir(ac, elegir(FRASES_CAFE), 4); }
+          }
+        } else { ac.x+=dx/dist*v; ac.y+=dy/dist*v; }
+        ac.paso+=dt; ac.pose = (Math.floor(ac.paso*6)%2) ? "paso1" : "paso2";
+      } else {
+        ac.pose="quieto";
+        ac.t-=dt;
+        if(ac.t<=0){
+          if(ac.estado==="sentado"){ nuevaActividad(ac); }
+          else if(ac.estado==="charlando"){ ac.pareja=null; ac.ruta=ruta(ac,"casa"); ac.estado="yendo"; ac.tras="casa"; }
+          else { ac.ruta=ruta(ac,"casa"); ac.estado="yendo"; ac.tras="casa"; }
+        }
+      }
+    });
+  }
+  dibujarActores();
+  requestAnimationFrame(latido);
+}
+
+var cacheSprite={};
+function spriteDe(a,pose){
+  var k=a.id+"|"+pose;
+  if(!cacheSprite[k]) cacheSprite[k]=persona(a,pose);
+  return cacheSprite[k];
+}
+function dibujarActores(){
+  var g=document.getElementById("actores"), ov=document.getElementById("ov"), s="", o="";
+  actores.slice().sort(function(A,B){return A.y-B.y;}).forEach(function(ac){
+    var a=ac.ag, x=Math.round(ac.x), y=Math.round(ac.y);
+    s+='<g class="act" data-ag="'+a.id+'" tabindex="0" role="button" transform="translate('+x+','+y+')" '+
+       'aria-label="'+esc(a.nm)+', '+esc(a.rl)+'">'+
+       '<rect class="hit" x="-6" y="-6" width="54" height="72" fill="transparent"/>'+
+       '<ellipse cx="21" cy="62" rx="15" ry="4" fill="rgba(0,0,0,.10)"/>'+
+       spriteDe(a,ac.pose)+
+       '<circle cx="40" cy="2" r="5" fill="'+colorEstado(a.st)+'" stroke="#F2F0EA" stroke-width="2"/></g>';
+    o+='<div class="nmtag'+(a.id===sel?" on":"")+'" style="left:'+((x+21)/12)+'%;top:'+((y+64)/7)+'%">'+esc(a.nm)+"</div>";
+    if(ac.frase) o+='<div class="bub" style="left:'+((x+21)/12)+'%;top:'+((y-6)/7)+'%">'+esc(ac.frase)+"</div>";
+  });
+  g.innerHTML=s;
+  Object.keys(LUGARES).forEach(function(k){
+    var L=LUGARES[k]; if(!L.etq) return;
+    o+='<div class="zone" style="left:'+(L.x/12)+'%;top:'+((L.y+28)/7)+'%">'+L.etq+"</div>";
+  });
+  ov.innerHTML=o;
+  Array.prototype.forEach.call(g.querySelectorAll(".act"), function(n){
+    n.addEventListener("click", function(){ sel=n.getAttribute("data-ag"); tab="a"; pintar(); });
+    n.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault();
+      sel=n.getAttribute("data-ag"); tab="a"; pintar(); } });
+  });
+}
+
+/* ================= panel ================= */
+function panelAgente(){
+  var a=porId(sel)||AG[0];
+  if(!a) return '<div class="blk"><p class="doing">No queda ningún agente.</p></div>';
+  sel=a.id;
+  var h='<div class="ahead"><span class="pic"><svg viewBox="0 0 42 30" width="52" height="37">'+
+    pinta(CUERPO.slice(0,10),leg(a),0,0,3)+'</svg></span><span class="id"><h2>'+esc(a.nm)+
+    (a.jefe?'<span class="boss">JEFE</span>':"")+(a.vivo?'<span class="live">REAL</span>':"")+
+    '</h2><div class="rl">'+esc(a.rl)+'</div></span><span class="pill '+a.st+'">'+nombreEstado(a.st)+"</span></div>";
+
+  if(a.jefe){
+    h+='<div class="blk"><div class="k">Hable con el jefe</div><p class="doing" style="font-size:12.5px;color:var(--ink2)">Dele la instrucción a él. Él decide qué agente la ejecuta.</p></div>'+
+      '<div class="chat" id="chat">'+(CHAT.length?CHAT:[{w:"ceo",t:"Buenos días. Recepción ya corrió"+(corrida?" a las "+new Date(corrida.actualizado).toLocaleTimeString("es-CR",{hour:"2-digit",minute:"2-digit"}):"")+". ¿Qué necesita?"}])
+      .map(function(m){return '<div class="msg '+m.w+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+esc(m.t)+"</div>";}).join("")+"</div>"+
+      '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: revisá el buzón de International Animal Rescue" aria-label="Instrucción"><button class="b" type="submit">Enviar</button></form>';
+  }
+  h+='<div class="blk"><div class="k">Qué está haciendo</div><p class="doing">'+
+     esc(a.doing||PUESTOS[a.rl]||("Trabaja en: "+a.rl+"."))+"</p></div>";
+
+  if(a.vivo && a.res && a.res.length){
+    h+='<div class="blk"><div class="k">Resultado de su última corrida</div>'+
+      a.res.map(function(r){return '<div class="rrow"><span class="l">'+esc(r[0])+'</span><span class="v" style="color:'+a.col+'">'+esc(r[1])+"</span></div>";}).join("")+"</div>";
+    if(a.alertas&&a.alertas.length) h+='<div class="blk"><div class="k">Alertas que levantó</div>'+
+      a.alertas.map(function(al){return '<div class="al '+esc(al.nivel)+'"><div class="t">'+esc(al.texto)+"</div>"+
+        (al.detalle&&al.detalle.length?'<div class="d">'+al.detalle.slice(0,6).map(esc).join("<br>")+"</div>":"")+"</div>";}).join("")+"</div>";
+    if(a.log&&a.log.length) h+='<div class="blk"><div class="k">Bitácora de la corrida</div>'+
+      a.log.map(function(l){return '<div class="lg"><time>'+esc(l[0])+"</time><span>"+esc(l[1])+"</span></div>";}).join("")+"</div>";
+  } else if(!a.jefe){
+    h+='<div class="blk"><div class="k">Estado</div><p class="doing" style="color:var(--ink2)">Este agente todavía no está construido. Aparece en la oficina porque el puesto existe, pero aún no corre contra Odoo.</p></div>';
+  }
+  if(!a.jefe){
+    h+='<div class="blk">'+(a.fire
+      ? '<div class="k">¿Despedir a '+esc(a.nm)+'?</div><p class="hint" style="margin:0 0 9px">Se va y su escritorio queda libre.</p><div style="display:flex;gap:7px"><button class="b dg" id="fy">Sí, despedir</button><button class="b gh" id="fn">Cancelar</button></div>'
+      : '<button class="b gh" id="fx">Despedir a '+esc(a.nm)+"</button>")+"</div>";
+  }
+  return h;
+}
+function panelReportes(){
+  if(!corrida) return '<div class="blk"><div class="k">Sin corrida</div>'+
+    '<p class="doing">Esta pantalla todavía no ha visto correr a ningún agente.</p>'+
+    '<p class="hint">Corra <code style="font-family:var(--m)">npm run recepcion</code> en la carpeta del proyecto. Al terminar, el agente reescribe este archivo con sus cifras y basta con recargar.</p></div>';
+  var rec=(corrida.agentes||[]).filter(function(x){return x.id==="recepcion";})[0];
+  var h='<div class="blk"><div class="k">Última corrida</div>'+
+    '<p class="doing">'+new Date(corrida.actualizado).toLocaleString("es-CR",{dateStyle:"long",timeStyle:"short"})+"</p></div>";
+  if(rec){
+    h+='<div class="blk"><div class="k">Lo que encontró la oficina</div>'+
+      rec.resultado.map(function(r){return '<div class="rrow"><span class="l">'+esc(r[0])+'</span><span class="v">'+esc(r[1])+"</span></div>";}).join("")+"</div>";
+    if(rec.alertas) h+='<div class="blk"><div class="k">Alertas</div>'+
+      rec.alertas.map(function(al){return '<div class="al '+esc(al.nivel)+'"><div class="t">'+esc(al.texto)+"</div>"+
+        (al.detalle&&al.detalle.length?'<div class="d">'+al.detalle.slice(0,8).map(esc).join("<br>")+"</div>":"")+"</div>";}).join("")+"</div>";
+  }
+  h+='<div class="blk"><div class="k">Reporte por correo</div><p class="doing" style="font-size:13px">'+
+     (corrida.correo? "Se envía a <b>"+esc(corrida.correo)+"</b>." : "Todavía sin SMTP configurado: el reporte se guarda en la carpeta <code style=\"font-family:var(--m)\">reportes/</code> pero no sale por correo.")+"</p></div>";
+  return h;
+}
+
+/* ================= planilla ================= */
+function planilla(){
+  var c="";
+  AG.forEach(function(a){
+    c+='<button class="card'+(a.id===sel?" on":"")+'" data-ag="'+a.id+'">'+
+      '<span class="pic"><svg viewBox="0 0 28 20" width="34" height="24">'+pinta(CUERPO.slice(0,10),leg(a),0,0,2)+"</svg></span>"+
+      '<span class="cb"><span class="l1"><span class="cn">'+esc(a.nm)+(a.jefe?' <span class="boss">JEFE</span>':"")+(a.vivo?' <span class="live">REAL</span>':"")+"</span>"+
+      '<span class="cp" style="color:'+colorEstado(a.st)+";border-color:"+colorEstado(a.st)+'">'+
+      (a.st==="work"?"activo":a.st==="hold"?"en espera":a.st==="done"?"listo":"libre")+"</span></span>"+
+      '<span class="cs">'+esc(a.rl)+"</span>"+
+      '<span class="bar"><i style="width:'+Math.round((a.prog||0)*100)+"%;background:"+a.col+'"></i></span></span></button>';
+  });
+  if(AG.length<ESCRITORIOS.length) c+='<button class="addcard" id="add">+ Contratar agente</button>';
+  document.getElementById("cards").innerHTML=c;
+  document.getElementById("hc").textContent=AG.length;
+  document.getElementById("payroll").textContent=(ESCRITORIOS.length-AG.length)+" escritorios libres";
+  Array.prototype.forEach.call(document.querySelectorAll("#cards .card"),function(b){
+    b.addEventListener("click",function(){ sel=b.getAttribute("data-ag"); tab="a"; pintar(); }); });
+  var ab=document.getElementById("add"); if(ab) ab.addEventListener("click",abrirContratar);
+}
+function abrirContratar(){
+  if(AG.length>=ESCRITORIOS.length) return;
+  document.getElementById("hr").innerHTML=Object.keys(PUESTOS).map(function(r){return '<option>'+esc(r)+"</option>";}).join("");
+  document.getElementById("hf").hidden=false; document.getElementById("hn").focus();
+}
+function cerrarContratar(){ document.getElementById("hf").hidden=true; document.getElementById("hn").value=""; }
+function contratar(){
+  var nm=document.getElementById("hn").value.trim(), rl=document.getElementById("hr").value;
+  if(!nm){ document.getElementById("hn").focus(); return; }
+  var pal=["#1B7F5E","#3F56B5","#B07908","#A8362A","#566B77","#7A4DA8","#0E6E7A","#8A5A2B"];
+  var col=pal[AG.length%pal.length];
+  var n=parseInt(col.slice(1),16), col2="#"+((1<<24)+((n>>16&255)*.78<<16)+((n>>8&255)*.78<<8)+((n&255)*.78|0)).toString(16).slice(1);
+  AG.push({id:"n"+Date.now(),nm:nm.toUpperCase().slice(0,16),rl:rl,col:col,col2:col2,
+    h:AG.length%5,sk:AG.length%4,st:"idle",prog:0,res:[],log:[[hhmm(),"Contratado."]]});
+  sel=AG[AG.length-1].id; tab="a"; cerrarContratar(); guardar(); sembrar(); pintar();
+}
+
+/* ============ EL DIRECTOR: decide con el roster, no con adivinanzas ============ */
+function nrm(x){ return String(x==null?"":x).normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+  .toUpperCase().replace(/[^A-Z0-9]+/g," ").trim(); }
+function puntuar(txt, pal){ var t=nrm(txt), p=0, peg=[];
+  for(var k in (pal||{})) if(t.indexOf(nrm(k))>=0){ p+=pal[k]; peg.push(k); }
+  return {p:p, peg:peg}; }
+function hallarCia(txt){ var t=nrm(txt), mejor=null;
+  (D&&D.companias||[]).forEach(function(c){ var n=nrm(c.name);
+    if(n.length<4) return;
+    if(t.indexOf(n)>=0 && (!mejor || n.length>nrm(mejor.name).length)) mejor=c; });
+  return mejor; }
+function quien(a){ return (a.rol && a.rol!==a.nombre) ? a.nombre+" ("+a.rol.toLowerCase()+")" : a.nombre; }
+function decidir(v){
+  var R = D && D.roster;
+  if(!R) return {mensaje:"Todavía no tengo el contrato de los agentes. Corra un agente para generarlo."};
+  var m = R.agentes.map(function(a){ var q=puntuar(v,a.palabras); return {a:a,p:q.p}; })
+           .sort(function(x,y){return y.p-x.p;});
+  var pend = (R.noConstruidos||[]).map(function(a){ var q=puntuar(v,a.palabras); return {a:a,p:q.p}; })
+           .sort(function(x,y){return y.p-x.p;});
+  var g=m[0], s2=m[1];
+  if(pend[0] && pend[0].p>=3 && (!g || pend[0].p>g.p))
+    return {mensaje:"Eso sería trabajo de "+quien(pend[0].a)+", que todavía no está construido. "+pend[0].a.hace};
+  if(!g || g.p<3)
+    return {mensaje:"No sé a quién pasarle eso. Hoy puedo pedirle a: "+
+      R.agentes.map(function(a){return quien(a)+" — "+a.hace.slice(0,52)+"…";}).join(" · ")};
+  if(s2 && s2.p>0 && g.p < s2.p*1.5)
+    return {mensaje:"Puede ser para "+quien(g.a)+" o para "+quien(s2.a)+". ¿Cuál de los dos?"};
+  var falta=null, cia=null;
+  (g.a.parametros||[]).forEach(function(par){
+    if(par.nombre==="empresa"){ cia=hallarCia(v); if(!cia) falta=par; }});
+  if(falta) return {mensaje:quien(g.a)+" puede hacerlo, pero "+falta.pregunta};
+  return {mensaje:"Se lo paso a "+quien(g.a)+(cia?" para "+cia.name:"")+"."+
+    (g.a.escribe?" Escribe en Odoo, así que primero le va a proponer los cambios.":"")+
+    (g.a.vivo===false?" Ese todavía no corre de verdad.":"")};
+}
+
+/* ================= pintar ================= */
+function pintar(){
+  document.getElementById("tab-a").setAttribute("aria-selected", tab==="a"?"true":"false");
+  document.getElementById("tab-r").setAttribute("aria-selected", tab==="r"?"true":"false");
+  document.getElementById("sbody").innerHTML = tab==="a" ? panelAgente() : panelReportes();
+  planilla(); cablear();
+}
+function cablear(){
+  var cf=document.getElementById("cf");
+  if(cf) cf.addEventListener("submit",function(e){ e.preventDefault();
+    var i=document.getElementById("ci"), v=i.value.trim(); if(!v) return;
+    if(!CHAT.length) CHAT.push({w:"ceo",t:"Buenos días. ¿Qué necesita?"});
+    CHAT.push({w:"me",t:v});
+    var r = decidir(v);
+    CHAT.push({w:"ceo", t:r.mensaje});
+    pintar(); var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight;
+    var ni=document.getElementById("ci"); if(ni) ni.focus();
+  });
+  var fx=document.getElementById("fx"); if(fx) fx.addEventListener("click",function(){ porId(sel).fire=true; pintar(); });
+  var fn=document.getElementById("fn"); if(fn) fn.addEventListener("click",function(){ porId(sel).fire=false; pintar(); });
+  var fy=document.getElementById("fy"); if(fy) fy.addEventListener("click",function(){
+    AG=AG.filter(function(a){return a.id!==sel;}); sel=AG.length?AG[0].id:""; guardar(); sembrar(); pintar(); });
+}
+
+/* ================= arranque ================= */
+document.getElementById("fondo").innerHTML=fondo();
+document.getElementById("tab-a").addEventListener("click",function(){tab="a";pintar();});
+document.getElementById("tab-r").addEventListener("click",function(){tab="r";pintar();});
+document.getElementById("hok").addEventListener("click",contratar);
+document.getElementById("hno").addEventListener("click",cerrarContratar);
+document.getElementById("hn").addEventListener("keydown",function(e){ if(e.key==="Enter") contratar(); });
+document.getElementById("pausa").addEventListener("click",function(){
+  movimiento=!movimiento; this.textContent=movimiento?"Pausar movimiento":"Reanudar movimiento"; });
+
+var chip=document.getElementById("chipDatos");
+if(corrida){ chip.innerHTML='<i></i>corrida real · '+new Date(corrida.actualizado).toLocaleDateString("es-CR"); }
+else { chip.className="tbchip grey"; chip.innerHTML='<i></i>sin corrida — cifras de ejemplo'; }
+document.getElementById("pie").innerHTML = corrida
+  ? '<b>Las cifras de MARTA (recepción) son reales</b>, escritas por el agente al terminar su corrida del '+
+    new Date(corrida.actualizado).toLocaleString("es-CR")+'. Los demás puestos existen en la oficina pero todavía no corren contra Odoo. El movimiento de los agentes es ambientación.'
+  : '<b>Sin corrida todavía.</b> Corra <code>npm run recepcion</code> y este archivo se reescribe con las cifras reales.';
+
+if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) movimiento=false;
+sembrar(); pintar(); requestAnimationFrame(latido);
+})();
+</script>

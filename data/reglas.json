@@ -1,0 +1,14 @@
+{
+  "_comentario": "Decisiones humanas. Mandan sobre el catálogo histórico, que registra lo que se hizo, no lo que es correcto.",
+  "reglas": [
+    {
+      "articulo": "TRB-TRIBUTO BOMBEROS",
+      "codigo": "5.04.002.002",
+      "cuenta": "Electricidad",
+      "alcance": "todas",
+      "decidio": "Memo",
+      "fecha": "2026-09-09",
+      "motivo": "El histórico se contradecía: Puuk lo registró 9 veces en Costo de ventas y el consolidado 218 veces en Electricidad. Memo define Electricidad."
+    }
+  ]
+}

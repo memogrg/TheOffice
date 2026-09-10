@@ -1,0 +1,21 @@
+# Secretos — nunca al repositorio
+.env
+.env.*
+!.env.example
+
+# Dependencias
+node_modules/
+
+# Datos de Odoo y salidas de los agentes (se generan localmente)
+data/*
+!data/roster.json
+!data/reglas.json
+reportes/
+# Oficina generada con cifras y correos reales de la ultima corrida (se regenera con 'Correr agente.command')
+Oficina IASIMA.html
+
+# Sistema
+.DS_Store
+
+# Carpeta temporal de limpieza
+_to_delete/
