@@ -17,7 +17,8 @@ export const TIPO_DOC = {
 export const LARGO_CLAVE = 50;
 
 // La clave puede venir en el nombre del archivo o, si no, en el asunto del correo.
-// Se admite cualquier separador entre dígitos ("clave: 506…" o "506-…").
+// Tienen que ser 50 dígitos seguidos: un separador en medio ("506…-…") la invalida a
+// propósito, para no pegar dos números que no iban juntos.
 export function clave(...textos) {
   for (const t of textos) {
     const m = String(t || "").replace(/[^0-9]/g, " ").match(/\d{50}/);

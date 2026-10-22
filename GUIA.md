@@ -1,12 +1,12 @@
 # Guía rápida — Oficina IASIMA
 
-## Los tres botones (doble clic)
+## Los botones (doble clic)
 
-| Archivo | Qué hace |
-|---|---|
-| **Abrir Oficina.command** | Abre la oficina con las cifras de la última corrida |
-| **Correr agente.command** | El agente lee Odoo y luego abre la oficina actualizada |
-| **Configurar correo.command** | Conecta el correo desde el que salen los reportes |
+| Mac | Windows | Qué hace |
+|---|---|---|
+| **Abrir Oficina.command** | **Abrir Oficina.cmd** | Abre la oficina con las cifras de la última corrida |
+| **Correr agente.command** | **Correr agente.cmd** | El agente lee Odoo y luego abre la oficina actualizada |
+| **Configurar correo.command** | — (edite `.env` a mano) | Conecta el correo desde el que salen los reportes |
 
 `Oficina IASIMA.html` también se abre solo, con doble clic. No necesita nada instalado.
 
@@ -14,6 +14,8 @@
 clic derecho → **Abrir** → en el aviso, **Abrir**. Solo pasa una vez.
 
 **Si dice que falta Node.js**: instálelo desde nodejs.org (versión LTS) y repita.
+
+**Si dice que ya hay una corrida en curso** y no es cierto: borre `data/corriendo.lock`.
 Abrir la oficina NO lo necesita; solo correr el agente.
 
 ## Conectar el correo

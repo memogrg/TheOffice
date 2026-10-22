@@ -1,15 +1,23 @@
 {
   "name": "iasima-oficina",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Oficina de agentes que operan el buzon de factura electronica de Odoo desde fuera de la plataforma.",
   "scripts": {
     "recepcion": "node src/run.js recepcion",
-    "oficina": "node src/servir-ui.js"
+    "conciliacion": "node src/run.js conciliacion",
+    "comunicacion": "node src/run.js comunicacion",
+    "cuentas": "node src/run.js cuentas",
+    "director": "node src/run.js director",
+    "catalogo": "node scripts/construir-catalogo.js",
+    "test": "node --test test/*.test.js",
+    "simulado": "node test/simulado/generar.js"
   },
   "dependencies": {
     "nodemailer": "^6.9.14"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }
