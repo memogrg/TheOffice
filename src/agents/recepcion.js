@@ -274,6 +274,21 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
     }))
     .sort((a, b) => b.total - a.total);
 
+  // Un caso por documento y receptor, con su frente. Es lo que el servicio guarda y sigue.
+  const casosReceptor = [];
+  for (const b of Object.values(porReceptor)) {
+    for (const c of unificarDocumentos([...b.externos, ...b.internos])) {
+      casosReceptor.push({
+        llave: `${b.receptor}|${c.clave || `${c.estado}|${c.archivo}|${c.asunto}`}`,
+        receptor: b.receptor, frente: RECLAMO_EXTERNO.includes(c.estado) ? "afuera" : "adentro",
+        companiaId: c.companiaId, compania: c.compania, estadoBuzon: c.estado,
+        clave: c.clave, tipo: c.tipo, consecutivo: c.consecutivo, fechaDocumento: c.fechaDocumento || c.fecha,
+        cedulaEmisor: c.cedulaEmisor, establecimiento: c.establecimiento, identificadoPor: c.identificadoPor,
+        asunto: c.asunto, remitente: c.remitente, error: c.error, veces: c.veces, correoIds: c.correoIds
+      });
+    }
+  }
+
   // La bandeja que Victor recoge. Marta la deja escrita; no manda nada.
   const bandeja = {
     de: meta.nombre, para: "Victor", corrida: ahora.toISOString(),
@@ -387,6 +402,7 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
       archivo: "data/bandeja-victor.json"
     },
     sinReceptor: sinReceptor.slice(0, 50),
+    casosReceptor,
     companias: lista,
     alertas,
     tiposDocumento: TIPO_DOC

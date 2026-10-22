@@ -12,7 +12,8 @@
     "director": "node src/run.js director",
     "catalogo": "node scripts/construir-catalogo.js",
     "test": "node --test test/*.test.js",
-    "simulado": "node test/simulado/generar.js"
+    "simulado": "node test/simulado/generar.js",
+    "servicio": "node src/servicio/index.js"
   },
   "dependencies": {
     "nodemailer": "^6.9.14"

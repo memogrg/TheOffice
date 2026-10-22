@@ -225,6 +225,7 @@ export async function ejecutar({ cfg, log, raiz, args = [] }) {
       correosAdentro: piezas.filter(p => p.frente === "adentro").length,
       casosAfuera, casosAdentro, enviados
     },
+    carpeta: `reportes/borradores-victor-${fecha}`,
     correos: piezas.map(({ html, ...resto }) => resto),
     alertas
   };

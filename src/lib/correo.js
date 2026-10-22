@@ -35,8 +35,8 @@ export function unificarDocumentos(items) {
   for (const c of items) {
     const llave = c.clave || `${c.estado}|${c.archivo}|${c.asunto}`;
     const y = g.get(llave);
-    if (y) { y.veces++; if ((c.fecha || "") > (y.fecha || "")) y.fecha = c.fecha; continue; }
-    g.set(llave, { ...c, veces: 1 });
+    if (y) { y.veces++; if (c.id != null) y.correoIds.push(c.id); if ((c.fecha || "") > (y.fecha || "")) y.fecha = c.fecha; continue; }
+    g.set(llave, { ...c, veces: 1, correoIds: c.id != null ? [c.id] : [] });
   }
   return [...g.values()];
 }

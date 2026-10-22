@@ -123,8 +123,9 @@ test("Cuentas: propone sin tocar; aplica solo con --aplicar y PERMITIR_ESCRITURA
   assert.equal(r.compania, "Puuk");
   assert.equal(r.modo, "solo lectura (propuesta)");
   assert.equal(odoo.escrituras, 0);
-  assert.equal(r.totales.aCorregir, 3);     // bomberos (regla humana), 2× eléctrico en cajón de sastre
-  assert.equal(r.totales.sinCatalogo, 1);   // tornillos
+  assert.equal(r.totales.aCorregir, 2);     // bomberos (regla humana), eléctrico en cajón de sastre (publicada)
+  assert.equal(r.totales.sinCatalogo, 2);   // tornillos (sin catálogo) y eléctrico de la factura pagada (no se toca)
+  assert.ok(r.revisionHumana.some(x => /estado de pago "paid"/.test(x.motivo)));
   assert.equal(r.totales.aplicadas, 0);
   const bomberos = r.propuestas.find(p => /BOMBEROS/.test(p.articulo));
   assert.equal(bomberos.fuente, "regla-humana");
@@ -143,8 +144,7 @@ test("Cuentas: propone sin tocar; aplica solo con --aplicar y PERMITIR_ESCRITURA
   r = await cuentas.ejecutar({ odoo, cfg: { PERMITIR_ESCRITURA: "si" }, log: silencio, raiz, args: ["--empresa=144", "--aplicar"] });
   assert.equal(r.modo, "escritura");
   assert.equal(r.totales.aplicadas, 2, "la borrador y la publicada en cajón de sastre");
-  assert.equal(r.fallos.length, 1);
-  assert.match(r.fallos[0].motivo, /no se toca: estado de pago "paid"/);
+  assert.equal(r.fallos.length, 0, "la pagada ni se propone, así que no falla");
   const metodos = odoo.cambios.map(c => c.metodo);
   assert.deepEqual(metodos.filter(m => m === "button_draft").length, 1, "solo la publicada se restablece a borrador");
   assert.deepEqual(metodos.filter(m => m === "action_post").length, 2);
@@ -154,7 +154,7 @@ test("Cuentas: propone sin tocar; aplica solo con --aplicar y PERMITIR_ESCRITURA
   // memoria: no repite en la siguiente corrida
   const mem = JSON.parse(readFileSync(join(raiz, "data", "revisadas.json"), "utf8"));
   assert.equal(mem["900"].estado, "corregida");
-  assert.equal(mem["902"].estado, "saltada-pagada");
+  assert.equal(mem["902"].estado, "con-dudas");
   const r2 = await cuentas.ejecutar({ odoo, cfg: { PERMITIR_ESCRITURA: "si" }, log: silencio, raiz, args: ["--empresa=144", "--aplicar"] });
   assert.equal(r2.totales.aplicadas, 0);
 });

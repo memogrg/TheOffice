@@ -67,6 +67,11 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   const rutaMem = join(raiz, "data", "revisadas.json");
   const mem = existsSync(rutaMem) ? JSON.parse(readFileSync(rutaMem, "utf8")) : {};
   const rehacer = args.includes("--revisar-todo");
+  // --solo-lineas=12,34: al aplicar, solo esas líneas (las que un humano aprobó). Las demás
+  // se siguen proponiendo pero no se tocan.
+  const soloArg = (args.find(a => a.startsWith("--solo-lineas=")) || "").split("=")[1];
+  const soloLineas = soloArg ? new Set(soloArg.split(",").map(Number).filter(Boolean)) : null;
+  if (soloLineas) log(`Aplicación restringida a ${soloLineas.size} líneas aprobadas`);
 
   // --- facturas de proveedor
   const facturas = await odoo.leerTodo("account.move",
@@ -140,6 +145,13 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
                      cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
         continue;
       }
+      // Una factura pagada no se toca nunca: no vale la pena proponerla, va a revisión humana.
+      if (f.payment_state && f.payment_state !== "not_paid"){
+        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
+                     motivo: `factura con estado de pago "${f.payment_state}": no se toca; el catalogo sugiere ${d.cuenta}`,
+                     cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
+        continue;
+      }
       arreglos.push({ lineaId: l.id, cargoId: l.other_charge_id ? l.other_charge_id[0] : null,
                       articulo: String(texto).slice(0, 70),
                       cuentaActualId: actual, cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)",
@@ -150,6 +162,12 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
     const etiqueta = `${f.name || "(sin numero)"} · ${f.partner_id ? f.partner_id[1] : ""}`;
     for (const a of arreglos) propuestas.push({ facturaId: f.id, factura: etiqueta, estado: f.state, ...a });
     for (const x of dudas) revisionHumana.push({ facturaId: f.id, factura: etiqueta, estado: f.state, ...x });
+
+    if (soloLineas && aplicar){
+      const aprobados = arreglos.filter(a => soloLineas.has(a.lineaId));
+      if (!aprobados.length) continue;            // nada aprobado en esta factura: ni se toca ni se memoriza
+      arreglos.length = 0; arreglos.push(...aprobados);
+    }
 
     if (!arreglos.length){
       mem[memk] = { fecha: new Date().toISOString(), estado: dudas.length ? "con-dudas" : "ok",

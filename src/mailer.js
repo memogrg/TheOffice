@@ -20,3 +20,13 @@ export async function enviar({ cfg, asunto, html, texto, log }) {
   log("Correo enviado a " + cfg.REPORTE_PARA + " (" + info.messageId + ")");
   return { enviado: true, id: info.messageId };
 }
+
+// Un correo cualquiera (los avisos de Victor aprobados). Falla con error si no hay SMTP.
+export async function enviarCorreo({ cfg, para, asunto, html, texto }) {
+  if (!cfg.SMTP_HOST || !cfg.SMTP_USER || !cfg.SMTP_PASS) throw new Error("SMTP sin configurar");
+  const nodemailer = (await import("nodemailer")).default;
+  const port = Number(cfg.SMTP_PORT || 465);
+  const tr = nodemailer.createTransport({ host: cfg.SMTP_HOST, port, secure: port === 465, auth: { user: cfg.SMTP_USER, pass: cfg.SMTP_PASS } });
+  const info = await tr.sendMail({ from: cfg.REPORTE_DE || cfg.SMTP_USER, to: para, subject: asunto, html, text: texto });
+  return { id: info.messageId };
+}
