@@ -204,6 +204,9 @@ footer b{color:var(--ink2)} footer code{font-family:var(--m); font-size:10.5px}
 window.__DATOS__ = /*DATOS*/ null /*FIN*/;
 </script>
 <script>
+/*DIRECTOR*/ /*FINDIRECTOR*/
+</script>
+<script>
 (function(){
 "use strict";
 var D = window.__DATOS__;
@@ -307,7 +310,7 @@ function fondo(){
 /* ================= agentes ================= */
 var PUESTOS={
   "Lee el buzón":"Entra a Contabilidad › Proveedores › Correo de facturas y cuenta el estado de cada correo, compañía por compañía.",
-  "Recepción — lee el buzón":"Entra al buzón de facturas de las 72 compañías, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica y consolida por receptor lo que hay que reclamar. Le entrega los paquetes a Victor; ella no manda correos.",
+  "Recepción — lee el buzón":"Entra al buzón de facturas de todas las compañías, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica y consolida por receptor lo que hay que reclamar. Le entrega los paquetes a Victor; ella no manda correos.",
   "Comunicación — avisa afuera y adentro":"Toma la bandeja de Marta y redacta un correo por receptor: afuera para que le pidan al establecimiento la factura real, adentro para que una persona de la compañía revise duplicidades y errores. Sin permiso explícito solo deja los borradores.",
   "Cruza con la contabilidad":"Toma cada clave de documento y verifica que exista la factura correspondiente en los libros.",
   "Explica los errores":"Agrupa las causas de los errores y separa lo que se arregla con configuración de lo que necesita al proveedor.",
@@ -366,13 +369,13 @@ function hhmm(){ var d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+
 /* ================= vida de oficina ================= */
 var FRASES_TRABAJO=["van 9.518 registradas","otra vez el periodo fiscal cerrado","esto es tiquete, no factura",
   "clave tipo 04, lo aparto","512 sin asiento, no cuadra","el buzón de Puuk lleva meses quieto",
-  "72 de 72 buzones caídos","IVA al 11 %, sin mapear","reenviaron el mismo XML 14 veces","512 sin asiento en 30 compañías","otra vez Gastos generales","esto es Agua, no gasto general","esta ya está publicada, no la toco"];
+  "todos los buzones caídos","IVA al 11 %, sin mapear","reenviaron el mismo XML 14 veces","512 sin asiento en 30 compañías","otra vez Gastos generales","esto es Agua, no gasto general","esta ya está publicada, no la toco"];
 var FRASES_CAFE=["¿alguien más quiere?","necesitaba esto","este café sabe a agua","cinco minutos y sigo"];
 var CHARLAS=[
   ["¿viste lo de Colina Hermanos?","mandaron el mismo XML 14 veces"],
   ["¿abrimos los periodos fiscales?","no sin que él lo apruebe"],
   ["¿cuántos tiquetes van?","180, todos bien apartados"],
-  ["¿y el buzón caído?","72 de 72, desde marzo"],
+  ["¿y el buzón caído?","todos, desde marzo"],
   ["International Animal Rescue está feo","573 sin registrar, sí"],
   ["¿el reporte ya salió?","falta el correo del cliente"]
 ];
@@ -576,40 +579,10 @@ function contratar(){
   sel=AG[AG.length-1].id; tab="a"; cerrarContratar(); guardar(); sembrar(); pintar();
 }
 
-/* ============ EL DIRECTOR: decide con el roster, no con adivinanzas ============ */
-function nrm(x){ return String(x==null?"":x).normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
-  .toUpperCase().replace(/[^A-Z0-9]+/g," ").trim(); }
-function puntuar(txt, pal){ var t=nrm(txt), p=0, peg=[];
-  for(var k in (pal||{})) if(t.indexOf(nrm(k))>=0){ p+=pal[k]; peg.push(k); }
-  return {p:p, peg:peg}; }
-function hallarCia(txt){ var t=nrm(txt), mejor=null;
-  (D&&D.companias||[]).forEach(function(c){ var n=nrm(c.name);
-    if(n.length<4) return;
-    if(t.indexOf(n)>=0 && (!mejor || n.length>nrm(mejor.name).length)) mejor=c; });
-  return mejor; }
-function quien(a){ return (a.rol && a.rol!==a.nombre) ? a.nombre+" ("+a.rol.toLowerCase()+")" : a.nombre; }
+/* ============ EL DIRECTOR: el mismo código que la terminal (src/director-core.cjs) ============ */
 function decidir(v){
-  var R = D && D.roster;
-  if(!R) return {mensaje:"Todavía no tengo el contrato de los agentes. Corra un agente para generarlo."};
-  var m = R.agentes.map(function(a){ var q=puntuar(v,a.palabras); return {a:a,p:q.p}; })
-           .sort(function(x,y){return y.p-x.p;});
-  var pend = (R.noConstruidos||[]).map(function(a){ var q=puntuar(v,a.palabras); return {a:a,p:q.p}; })
-           .sort(function(x,y){return y.p-x.p;});
-  var g=m[0], s2=m[1];
-  if(pend[0] && pend[0].p>=3 && (!g || pend[0].p>g.p))
-    return {mensaje:"Eso sería trabajo de "+quien(pend[0].a)+", que todavía no está construido. "+pend[0].a.hace};
-  if(!g || g.p<3)
-    return {mensaje:"No sé a quién pasarle eso. Hoy puedo pedirle a: "+
-      R.agentes.map(function(a){return quien(a)+" — "+a.hace.slice(0,52)+"…";}).join(" · ")};
-  if(s2 && s2.p>0 && g.p < s2.p*1.5)
-    return {mensaje:"Puede ser para "+quien(g.a)+" o para "+quien(s2.a)+". ¿Cuál de los dos?"};
-  var falta=null, cia=null;
-  (g.a.parametros||[]).forEach(function(par){
-    if(par.nombre==="empresa"){ cia=hallarCia(v); if(!cia) falta=par; }});
-  if(falta) return {mensaje:quien(g.a)+" puede hacerlo, pero "+falta.pregunta};
-  return {mensaje:"Se lo paso a "+quien(g.a)+(cia?" para "+cia.name:"")+"."+
-    (g.a.escribe?" Escribe en Odoo, así que primero le va a proponer los cambios.":"")+
-    (g.a.vivo===false?" Ese todavía no corre de verdad.":"")};
+  if(!window.DirectorCore) return {mensaje:"El Director no está cargado en esta copia de la oficina. Corra un agente para regenerarla."};
+  return window.DirectorCore.decidir(v, D && D.roster, D && D.companias);
 }
 
 /* ================= pintar ================= */

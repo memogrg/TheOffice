@@ -6,7 +6,7 @@
       "nombre": "Marta",
       "rol": "RECEPCIÓN",
       "modo": "lectura y notificación",
-      "hace": "Entra al buzón de facturas de proveedor de las 72 compañías a la vez, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica, enlista a los receptores y consolida por receptor lo que hay que reclamarle al establecimiento y lo que tiene que revisar un humano adentro. Le entrega los dos paquetes a Victor.",
+      "hace": "Entra al buzón de facturas de proveedor de todas las compañías a la vez, cuenta el desenlace de cada correo, verifica los tiquetes contra la clave numérica, enlista a los receptores y consolida por receptor lo que hay que reclamarle al establecimiento y lo que tiene que revisar un humano adentro. Le entrega los dos paquetes a Victor.",
       "noHace": "No abre facturas, no toca cuentas contables, no compara contra los libros y no manda un solo correo: eso es de Victor.",
       "responde": [
         "cuántos correos entraron y en qué estado quedaron",

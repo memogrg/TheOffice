@@ -1,0 +1,543 @@
+{
+  "res.company": [
+    {
+      "id": 144,
+      "name": "Puuk"
+    },
+    {
+      "id": 126,
+      "name": "International Animal Rescue"
+    },
+    {
+      "id": 82,
+      "name": "Aurora"
+    }
+  ],
+  "res.partner": [
+    {
+      "id": 1,
+      "name": "Colina Hermanos S.A.",
+      "vat": "3101123456"
+    },
+    {
+      "id": 2,
+      "name": "Ferretería El Mar",
+      "vat": "3101222222"
+    },
+    {
+      "id": 3,
+      "name": "Distribuidora Vega",
+      "vat": "3101333333"
+    },
+    {
+      "id": 4,
+      "name": "Puuk",
+      "vat": "3101444444"
+    }
+  ],
+  "bdt.invoice.email": [
+    {
+      "id": 1,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "done",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000001",
+      "e_invoice_name": "50611032600310112345600100001010000000001112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 2,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "done",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000002",
+      "e_invoice_name": "50611032600310112345600100001010000000002112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 3,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "done",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000003",
+      "e_invoice_name": "50611032600310122222200100001010000000003112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 4,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "done",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001040000000004",
+      "e_invoice_name": "50611032600310112345600100001040000000004112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 5,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "isticket",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001040000000005",
+      "e_invoice_name": "50611032600310112345600100001040000000005112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 6,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "isticket",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001040000000005",
+      "e_invoice_name": "50611032600310112345600100001040000000005112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 7,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "isticket",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000006",
+      "e_invoice_name": "50611032600310112345600100001010000000006112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 8,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "rejected",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000007",
+      "e_invoice_name": "50611032600310122222200100001010000000007112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 9,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "error",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000008",
+      "e_invoice_name": "50611032600310112345600100001010000000008112345678.xml",
+      "error": "No se puede registrar: el periodo fiscal 2026-02-01 está cerrado"
+    },
+    {
+      "id": 10,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "error",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000009",
+      "e_invoice_name": "50611032600310112345600100001010000000009112345678.xml",
+      "error": "No se puede registrar: el periodo fiscal 2026-03-01 está cerrado"
+    },
+    {
+      "id": 11,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "duplicate",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000001",
+      "e_invoice_name": "50611032600310112345600100001010000000001112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 12,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "vatiderror",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Distribuidora Vega\" <ventas@vega.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Documento sin clave legible",
+      "e_invoice_name": "adjunto.xml",
+      "error": ""
+    },
+    {
+      "id": 13,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "process",
+      "to_mail": "contabilidad@puuk.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 15:00:00",
+      "name": "Factura 00100001010000000010",
+      "e_invoice_name": "50611032600310112345600100001010000000010112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 14,
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "state": "rejected",
+      "to_mail": "contabilidad@puuk.cr, gerencia@puuk.cr",
+      "from_mail": "noreply@hacienda.go.cr",
+      "date": "2026-03-11 14:00:00",
+      "name": "Documento sin clave legible",
+      "e_invoice_name": "adjunto.xml",
+      "error": ""
+    },
+    {
+      "id": 15,
+      "company_id": [
+        126,
+        "International Animal Rescue"
+      ],
+      "state": "done",
+      "to_mail": "admin@iar.org",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000020",
+      "e_invoice_name": "50611032600310133333300100001010000000020112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 16,
+      "company_id": [
+        126,
+        "International Animal Rescue"
+      ],
+      "state": "done",
+      "to_mail": "admin@iar.org",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001010000000021",
+      "e_invoice_name": "50611032600310133333300100001010000000021112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 17,
+      "company_id": [
+        126,
+        "International Animal Rescue"
+      ],
+      "state": "isticket",
+      "to_mail": "admin@iar.org; finanzas@iar.org",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-03-11 14:00:00",
+      "name": "Factura 00100001040000000022",
+      "e_invoice_name": "50611032600310133333300100001040000000022112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 18,
+      "company_id": [
+        82,
+        "Aurora"
+      ],
+      "state": "done",
+      "to_mail": "aurora@aurora.cr",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-02-05 09:00:00",
+      "name": "Factura 00100001010000000030",
+      "e_invoice_name": "50611032600310112345600100001010000000030112345678.xml",
+      "error": ""
+    },
+    {
+      "id": 19,
+      "company_id": [
+        82,
+        "Aurora"
+      ],
+      "state": "error",
+      "to_mail": "",
+      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "date": "2026-02-05 09:30:00",
+      "name": "Factura 00100001010000000031",
+      "e_invoice_name": "50611032600310112345600100001010000000031112345678.xml",
+      "error": "Proveedor no existe"
+    }
+  ],
+  "account.move": [
+    {
+      "id": 100,
+      "e_key": "50611032600310112345600100001010000000001112345678",
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "move_type": "in_invoice",
+      "state": "posted"
+    },
+    {
+      "id": 101,
+      "e_key": "50611032600310112345600100001010000000002112345678",
+      "company_id": [
+        144,
+        "Puuk"
+      ],
+      "move_type": "in_invoice",
+      "state": "posted"
+    },
+    {
+      "id": 102,
+      "e_key": "50611032600310133333300100001010000000020112345678",
+      "company_id": [
+        126,
+        "International Animal Rescue"
+      ],
+      "move_type": "in_invoice",
+      "state": "posted"
+    },
+    {
+      "id": 900,
+      "name": "FAC/2026/001",
+      "state": "draft",
+      "payment_state": "not_paid",
+      "partner_id": [
+        1,
+        "Colina Hermanos S.A."
+      ],
+      "invoice_date": "2026-03-01",
+      "amount_total": 50000,
+      "ref": "",
+      "move_type": "in_invoice",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
+    },
+    {
+      "id": 901,
+      "name": "FAC/2026/002",
+      "state": "posted",
+      "payment_state": "not_paid",
+      "partner_id": [
+        2,
+        "Ferretería El Mar"
+      ],
+      "invoice_date": "2026-03-02",
+      "amount_total": 80000,
+      "ref": "",
+      "move_type": "in_invoice",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
+    },
+    {
+      "id": 902,
+      "name": "FAC/2026/003",
+      "state": "posted",
+      "payment_state": "paid",
+      "partner_id": [
+        2,
+        "Ferretería El Mar"
+      ],
+      "invoice_date": "2026-03-03",
+      "amount_total": 10000,
+      "ref": "",
+      "move_type": "in_invoice",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
+    }
+  ],
+  "account.account": [
+    {
+      "id": 500,
+      "code": "5.04.002.002",
+      "name": "Electricidad",
+      "account_type": "expense",
+      "deprecated": false,
+      "company_ids": [
+        144
+      ]
+    },
+    {
+      "id": 501,
+      "code": "5.04.002.001",
+      "name": "Agua",
+      "account_type": "expense",
+      "deprecated": false,
+      "company_ids": [
+        144
+      ]
+    },
+    {
+      "id": 502,
+      "code": "5.04.999",
+      "name": "Gastos generales",
+      "account_type": "expense",
+      "deprecated": false,
+      "company_ids": [
+        144
+      ]
+    },
+    {
+      "id": 503,
+      "code": "5.01.001",
+      "name": "Costo de ventas",
+      "account_type": "expense",
+      "deprecated": false,
+      "company_ids": [
+        144
+      ]
+    },
+    {
+      "id": 504,
+      "code": "2.01.001",
+      "name": "Proveedores",
+      "account_type": "liability_payable",
+      "deprecated": false,
+      "company_ids": [
+        144
+      ]
+    }
+  ],
+  "account.move.line": [
+    {
+      "id": 1,
+      "move_id": [
+        900,
+        "FAC/2026/001"
+      ],
+      "name": "TRB-TRIBUTO BOMBEROS",
+      "account_id": [
+        503,
+        "5.01.001 Costo de ventas"
+      ],
+      "product_id": false,
+      "display_type": "product",
+      "balance": 1200,
+      "other_charge_id": false
+    },
+    {
+      "id": 2,
+      "move_id": [
+        900,
+        "FAC/2026/001"
+      ],
+      "name": "SERVICIO DE AGUA",
+      "account_id": [
+        501,
+        "5.04.002.001 Agua"
+      ],
+      "product_id": false,
+      "display_type": "product",
+      "balance": 8000,
+      "other_charge_id": false
+    },
+    {
+      "id": 3,
+      "move_id": [
+        900,
+        "FAC/2026/001"
+      ],
+      "name": "Proveedores",
+      "account_id": [
+        504,
+        "2.01.001 Proveedores"
+      ],
+      "product_id": false,
+      "display_type": "payment_term",
+      "balance": -9200,
+      "other_charge_id": false
+    },
+    {
+      "id": 4,
+      "move_id": [
+        901,
+        "FAC/2026/002"
+      ],
+      "name": "SERVICIO ELECTRICO",
+      "account_id": [
+        502,
+        "5.04.999 Gastos generales"
+      ],
+      "product_id": false,
+      "display_type": "product",
+      "balance": 30000,
+      "other_charge_id": false
+    },
+    {
+      "id": 5,
+      "move_id": [
+        901,
+        "FAC/2026/002"
+      ],
+      "name": "TORNILLOS GALVANIZADOS 3/8",
+      "account_id": [
+        502,
+        "5.04.999 Gastos generales"
+      ],
+      "product_id": false,
+      "display_type": "product",
+      "balance": 5000,
+      "other_charge_id": false
+    },
+    {
+      "id": 6,
+      "move_id": [
+        902,
+        "FAC/2026/003"
+      ],
+      "name": "SERVICIO ELECTRICO",
+      "account_id": [
+        502,
+        "5.04.999 Gastos generales"
+      ],
+      "product_id": false,
+      "display_type": "product",
+      "balance": 10000,
+      "other_charge_id": false
+    }
+  ],
+  "bdt.other.charge.line": []
+}

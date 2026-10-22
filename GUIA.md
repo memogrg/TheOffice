@@ -31,7 +31,7 @@ Al final debe decir `Correo enviado a ...`.
 
 ```
 Correr agente.command
-  ├─ lee el buzón de las 72 compañías en Odoo
+  ├─ lee el buzón de todas las compañías en Odoo
   ├─ reportes/recepcion-<fecha>.html   ← el correo
   ├─ data/estado.json                  ← las cifras
   └─ Oficina IASIMA.html               ← lo que usted abre

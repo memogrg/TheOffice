@@ -30,7 +30,7 @@ npm run oficina      # abre la oficina 2D en http://localhost:4173
 Solo lectura. En una corrida (~2 segundos, 6 consultas):
 
 1. **Entra al buzon** `bdt.invoice.email` — la pantalla Contabilidad > Proveedores > Correo de facturas.
-2. **Barre las 72 companias a la vez.** Odoo solo muestra la compania activa; el agente las ve todas.
+2. **Barre todas las companias a la vez** (hoy 79; el numero sale de Odoo, no del codigo). Odoo solo muestra la compania activa; el agente las ve todas.
 3. **Cuenta el desenlace de cada correo**: registrada, tiquete electronico, error, rechazada, cedula invalida, duplicada, en cola.
 4. **Verifica los tiquetes contra la clave numerica.** El tipo de documento vive en las posiciones 30-31 de la clave de 50 digitos; `04` es tiquete electronico. Comprueba dos cosas: que lo marcado como tiquete de verdad sea `04`, y que ningun `04` se haya colado como factura registrada.
 5. **Detecta buzones caidos** — compania sin un correo nuevo en mas de `ALERTA_HORAS_SIN_INGESTA` horas.

@@ -36,12 +36,14 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
 
   await odoo.conectar();
 
-  const cat = new Catalogo(join(raiz, "data", "catalogo-cuentas.json"), join(raiz, "data", "reglas.json"));
+  const rutaCatalogo = cfg.CATALOGO_CUENTAS ? join(raiz, cfg.CATALOGO_CUENTAS) : join(raiz, "data", "catalogo-cuentas.json");
+  if (!existsSync(rutaCatalogo)) throw new Error(`No existe ${rutaCatalogo}. Constrúyalo con: node scripts/construir-catalogo.js`);
+  const cat = new Catalogo(rutaCatalogo, join(raiz, "data", "reglas.json"));
   log(`Catalogo: ${cat.articulosCliente} articulos por cliente, ${cat.articulosGlobal} globales, ${cat.nReglas} reglas humanas`);
 
   // --- compania a revisar
   const arg = (args.find(a => a.startsWith("--empresa=")) || "").split("=")[1];
-  if (!arg) throw new Error("Indique la compania: --empresa=<id o nombre>. Por seguridad no se revisan las 72 de una vez.");
+  if (!arg) throw new Error("Indique la compania: --empresa=<id o nombre>. Por seguridad no se revisan todas de una vez.");
   const dom = /^\d+$/.test(arg) ? [["id", "=", Number(arg)]] : [["name", "ilike", arg]];
   const cias = await odoo.leer("res.company", "search_read", [dom, ["name"]]);
   if (!cias.length) throw new Error(`No encontre la compania "${arg}".`);

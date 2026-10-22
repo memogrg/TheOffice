@@ -1,8 +1,16 @@
-// Punto de entrada. Uso:  npm run recepcion
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+// Punto de entrada.
+//   node src/run.js recepcion
+//   node src/run.js cuentas --empresa=144 [--aplicar]
+//   node src/run.js comunicacion [--enviar] [--a-los-receptores]
+//   node src/run.js director "revisá las cuentas de Puuk"
+//
+// Con ODOO_SIMULADO=<archivo.json> no se toca la red: el cliente responde con los datos
+// de ese archivo (ver test/simulado/). Sirve para probar la cadena completa sin credenciales.
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Odoo, cargarEnv } from "./odoo.js";
+import { OdooSimulado } from "./odoo-simulado.js";
 import * as recepcion from "./agents/recepcion.js";
 import * as conciliacion from "./agents/conciliacion.js";
 import * as cuentas from "./agents/cuentas.js";
@@ -18,6 +26,60 @@ const hhmmss = () => new Date().toLocaleTimeString("es-CR", { hour12: false });
 const bitacora = [];
 function log(m) { const l = `${hhmmss()}  ${m}`; bitacora.push(l); console.log("  " + l); }
 
+function leerJSON(ruta, siNoExiste) {
+  return existsSync(ruta) ? JSON.parse(readFileSync(ruta, "utf8")) : siNoExiste;
+}
+
+// Dos corridas a la vez se pisan los archivos de data/. Un candado simple lo evita;
+// si quedó de una corrida muerta (más de 2 h), se ignora.
+function tomarCandado(quien) {
+  const ruta = join(RAIZ, "data", "corriendo.lock");
+  mkdirSync(join(RAIZ, "data"), { recursive: true });
+  if (existsSync(ruta)) {
+    const previo = leerJSON(ruta, {});
+    const edad = Date.now() - new Date(previo.desde || 0).getTime();
+    if (edad < 2 * 3600e3) {
+      throw new Error(`Ya hay una corrida en curso (${previo.agente}, desde ${previo.desde}). Si no es así, borre data/corriendo.lock.`);
+    }
+  }
+  writeFileSync(ruta, JSON.stringify({ agente: quien, desde: new Date().toISOString(), pid: process.pid }));
+  return () => { try { unlinkSync(ruta); } catch { /* ya no está */ } };
+}
+
+// La oficina 2D se reescribe con las cifras reales incrustadas y con el mismo Director
+// que usa la terminal, para que se abra con doble clic sin servidor ni node.
+function escribirOficina(cfg, estado) {
+  const datos = { ...estado };
+  datos.correo = (cfg.SMTP_HOST && cfg.SMTP_USER) ? cfg.REPORTE_PARA : "";
+  datos.roster = leerJSON(join(RAIZ, "data", "roster.json"), { agentes: [], noConstruidos: [] });
+  datos.companias = leerJSON(join(RAIZ, "data", "companias.json"), []).map(c => ({ id: c.id, name: c.name }));
+  const plantilla = readFileSync(join(RAIZ, "ui", "plantilla.html"), "utf8");
+  const director = readFileSync(join(RAIZ, "src", "director-core.cjs"), "utf8");
+  const oficina = plantilla
+    .replace(/\/\*DATOS\*\/[\s\S]*?\/\*FIN\*\//, () =>
+      "/*DATOS*/ " + JSON.stringify(datos)
+        // Hay lineas de Odoo con el caracter de reemplazo donde iba una vocal acentuada.
+        // Se escapa para no dejarlo literal en el archivo; el dato se conserva tal cual.
+        .replace(/�/g, "\\uFFFD")
+        .replace(/<\//g, "<\\/") + " /*FIN*/")
+    .replace(/\/\*DIRECTOR\*\/[\s\S]*?\/\*FINDIRECTOR\*\//, () => "/*DIRECTOR*/\n" + director + "\n/*FINDIRECTOR*/");
+  writeFileSync(join(RAIZ, "Oficina IASIMA.html"), oficina);
+}
+
+export function crearCliente(cfg, agente) {
+  if (cfg.ODOO_SIMULADO) {
+    return new OdooSimulado(leerJSON(join(RAIZ, cfg.ODOO_SIMULADO), null), { permitirEscritura: agente.meta.escribe === true });
+  }
+  for (const k of ["ODOO_URL", "ODOO_DB", "ODOO_USER", "ODOO_PASSWORD"]) {
+    if (!cfg[k]) throw new Error(`Falta ${k} en .env (copie .env.example a .env y complételo).`);
+  }
+  return new Odoo({
+    url: cfg.ODOO_URL, db: cfg.ODOO_DB, user: cfg.ODOO_USER, password: cfg.ODOO_PASSWORD,
+    permitirEscritura: agente.meta.escribe === true,
+    timeoutMs: Number(cfg.ODOO_TIMEOUT_SEGUNDOS || 60) * 1000
+  });
+}
+
 async function main() {
   const quien = (process.argv[2] || "recepcion").toLowerCase();
 
@@ -29,8 +91,8 @@ async function main() {
     const d = dir.decidir(instruccion);
     console.log(`\n  Usted: ${instruccion}`);
     console.log(`  Director: ${d.mensaje}\n`);
-    if (d.accion !== "ejecutar") { 
-      console.log("  marcador: " + d.marcador.map(m => m.nombre + " " + m.puntaje).join(" · ") + "\n");
+    if (d.accion !== "ejecutar") {
+      if (d.marcador?.length) console.log("  marcador: " + d.marcador.map(m => m.nombre + " " + m.puntaje).join(" · ") + "\n");
       process.exit(0);
     }
     console.log(`  → ${d.comando}\n`);
@@ -41,64 +103,68 @@ async function main() {
   const agente = AGENTES[quien];
   if (!agente) { console.error(`No existe el agente "${quien}". Disponibles: ${Object.keys(AGENTES).join(", ")}`); process.exit(1); }
 
-  const cfg = cargarEnv(readFileSync(join(RAIZ, ".env"), "utf8"));
+  const rutaEnv = join(RAIZ, ".env");
+  const cfg = { ...cargarEnv(existsSync(rutaEnv) ? readFileSync(rutaEnv, "utf8") : ""), ...soloOdooDelEntorno() };
   console.log(`\n=== ${agente.meta.nombre}${agente.meta.rol ? " · " + agente.meta.rol : ""} — ${agente.meta.puesto} ===`);
-  console.log(`    ${cfg.ODOO_URL} · base ${cfg.ODOO_DB} · modo ${agente.meta.escribe ? "ESCRITURA" : "solo lectura"}\n`);
+  console.log(`    ${cfg.ODOO_SIMULADO ? "SIMULADO " + cfg.ODOO_SIMULADO : cfg.ODOO_URL + " · base " + cfg.ODOO_DB} · modo ${agente.meta.escribe ? "ESCRITURA" : "solo lectura"}\n`);
 
-  const odoo = new Odoo({
-    url: cfg.ODOO_URL, db: cfg.ODOO_DB, user: cfg.ODOO_USER, password: cfg.ODOO_PASSWORD,
-    permitirEscritura: agente.meta.escribe === true
-  });
-
+  let soltar = () => {};
   let r;
-  try { r = await agente.ejecutar({ odoo, cfg, log, raiz: RAIZ, args: process.argv.slice(3) }); }
-  catch (e) { console.error("\n  FALLO: " + e.message + "\n"); process.exit(1); }
+  try {
+    soltar = tomarCandado(quien);
+    const odoo = crearCliente(cfg, agente);
+    r = await agente.ejecutar({ odoo, cfg, log, raiz: RAIZ, args: process.argv.slice(3) });
+  } catch (e) {
+    soltar();
+    console.error("\n  FALLO: " + e.message + "\n");
+    process.exit(1);
+  }
 
-  r.bitacora = bitacora;
-  const fecha = new Date().toISOString().slice(0, 10);
-  const base = join(RAIZ, "reportes", `${quien}-${fecha}`);
-  mkdirSync(join(RAIZ, "reportes"), { recursive: true });
-  mkdirSync(join(RAIZ, "data"), { recursive: true });
-  const html = reporteHTML(r);
-  writeFileSync(base + ".json", JSON.stringify(r, null, 2));
-  writeFileSync(base + ".html", html);
-  // estado que leera la interfaz de la oficina
-  const previo = existsSync(join(RAIZ, "data", "estado.json"))
-    ? JSON.parse(readFileSync(join(RAIZ, "data", "estado.json"), "utf8")) : { agentes: [] };
-  const ficha = {
-    id: agente.meta.id, nombre: agente.meta.nombre, rol: agente.meta.rol || agente.meta.nombre, puesto: agente.meta.puesto,
-    estado: "done",
-    resultado: Object.entries(r.totales || {}).slice(0, 6).map(([k, v]) => [ETIQUETA[k] || k, typeof v === "number" ? v.toLocaleString("de-DE") : String(v)]),
-    bitacora: bitacora.slice(-6).map(l => [l.slice(0, 5), l.slice(7)]),
-    alertas: r.alertas || []
-  };
-  const agentes = (previo.agentes || []).filter(a => a.id !== ficha.id).concat([ficha]);
-  writeFileSync(join(RAIZ, "data", "estado.json"), JSON.stringify({ actualizado: r.corrida, agentes }, null, 2));
+  try {
+    r.bitacora = bitacora;
+    const fecha = new Date().toISOString().slice(0, 10);
+    const base = join(RAIZ, "reportes", `${quien}-${fecha}`);
+    mkdirSync(join(RAIZ, "reportes"), { recursive: true });
+    mkdirSync(join(RAIZ, "data"), { recursive: true });
+    const html = reporteHTML(r);
+    writeFileSync(base + ".json", JSON.stringify(r, null, 2));
+    writeFileSync(base + ".html", html);
 
-  // La oficina 2D: se reescribe con las cifras reales incrustadas, para que se
-  // abra con doble clic sin necesitar servidor ni node.
-  const datos = JSON.parse(readFileSync(join(RAIZ, "data", "estado.json"), "utf8"));
-  datos.correo = (cfg.SMTP_HOST && cfg.SMTP_USER) ? cfg.REPORTE_PARA : "";
-  // El Director de la oficina lee el mismo contrato que el de la terminal.
-  datos.roster = JSON.parse(readFileSync(join(RAIZ, "data", "roster.json"), "utf8"));
-  datos.companias = JSON.parse(readFileSync(join(RAIZ, "data", "companias.json"), "utf8"))
-    .map(c => ({ id: c.id, name: c.name }));
-  const plantilla = readFileSync(join(RAIZ, "ui", "plantilla.html"), "utf8");
-  const oficina = plantilla.replace(
-    /\/\*DATOS\*\/[\s\S]*?\/\*FIN\*\//,
-    "/*DATOS*/ " + JSON.stringify(datos)
-      // 1.129 lineas de Odoo traen el caracter de reemplazo donde iba una vocal acentuada.
-      // Se escapa para no dejarlo literal en el archivo; el dato se conserva tal cual.
-      .replace(/\uFFFD/g, "\\uFFFD") + " /*FIN*/");
-  writeFileSync(join(RAIZ, "Oficina IASIMA.html"), oficina);
-  log("Oficina actualizada: Oficina IASIMA.html");
+    // estado que leera la interfaz de la oficina
+    const previo = leerJSON(join(RAIZ, "data", "estado.json"), { agentes: [] });
+    const ficha = {
+      id: agente.meta.id, nombre: agente.meta.nombre, rol: agente.meta.rol || agente.meta.nombre, puesto: agente.meta.puesto,
+      estado: "done",
+      resultado: Object.entries(r.totales || {}).slice(0, 6).map(([k, v]) => [ETIQUETA[k] || k, typeof v === "number" ? v.toLocaleString("de-DE") : String(v)]),
+      bitacora: bitacora.slice(-6).map(l => [l.slice(0, 5), l.slice(7)]),
+      alertas: r.alertas || []
+    };
+    const agentes = (previo.agentes || []).filter(a => a.id !== ficha.id).concat([ficha]);
+    const estado = { actualizado: r.corrida, agentes };
+    writeFileSync(join(RAIZ, "data", "estado.json"), JSON.stringify(estado, null, 2));
+    escribirOficina(cfg, estado);
+    log("Oficina actualizada: Oficina IASIMA.html");
 
-  const cab = (r.alertas || []).filter(a => a.nivel !== "ok").map(a => a.texto).slice(0, 2).join(" · ");
-  const asunto = `IASIMA · ${agente.meta.nombre} — ${cab || "sin novedades"}`;
-  await enviar({ cfg, asunto, html, texto: resumenTexto(r), log });
+    const cab = (r.alertas || []).filter(a => a.nivel !== "ok").map(a => a.texto).slice(0, 2).join(" · ");
+    const asunto = `IASIMA · ${agente.meta.nombre} — ${cab || "sin novedades"}`;
+    await enviar({ cfg, asunto, html, texto: resumenTexto(r), log });
 
-  console.log("\n" + resumenTexto(r) + "\n");
-  console.log(`  Reporte: ${base}.html`);
-  console.log(`  Datos:   ${base}.json\n`);
+    console.log("\n" + resumenTexto(r) + "\n");
+    console.log(`  Reporte: ${base}.html`);
+    console.log(`  Datos:   ${base}.json\n`);
+  } finally {
+    soltar();
+  }
 }
+
+// Variables ODOO_* / ALERTA_* / SMTP_* / REPORTE_* del entorno pisan al .env, para poder
+// correr en CI o en un contenedor sin escribir el archivo.
+function soloOdooDelEntorno() {
+  const out = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (/^(ODOO_|ALERTA_|SMTP_|REPORTE_|PERMITIR_ESCRITURA|COMUNICACION_|CATALOGO_)/.test(k)) out[k] = v;
+  }
+  return out;
+}
+
 main();
