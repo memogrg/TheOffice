@@ -456,7 +456,12 @@
       "product_id": false,
       "display_type": "product",
       "balance": 1200,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "draft",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     },
     {
       "id": 2,
@@ -472,7 +477,12 @@
       "product_id": false,
       "display_type": "product",
       "balance": 8000,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "draft",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     },
     {
       "id": 3,
@@ -488,7 +498,12 @@
       "product_id": false,
       "display_type": "payment_term",
       "balance": -9200,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "draft",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     },
     {
       "id": 4,
@@ -504,7 +519,12 @@
       "product_id": false,
       "display_type": "product",
       "balance": 30000,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "posted",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     },
     {
       "id": 5,
@@ -520,7 +540,12 @@
       "product_id": false,
       "display_type": "product",
       "balance": 5000,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "posted",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     },
     {
       "id": 6,
@@ -536,7 +561,12 @@
       "product_id": false,
       "display_type": "product",
       "balance": 10000,
-      "other_charge_id": false
+      "other_charge_id": false,
+      "parent_state": "posted",
+      "company_id": [
+        144,
+        "Puuk"
+      ]
     }
   ],
   "bdt.other.charge.line": []

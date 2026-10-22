@@ -12,6 +12,7 @@ export class OdooSimulado {
   constructor(datos, { permitirEscritura = false } = {}) {
     if (!datos || typeof datos !== "object") throw new Error("ODOO_SIMULADO: el archivo no existe o no es un JSON de { modelo: [registros] }.");
     this.datos = datos;
+    TABLAS = datos;
     this.permitirEscritura = permitirEscritura;
     this.uid = 1;
     this.llamadas = 0;
@@ -124,8 +125,18 @@ export function cumple(r, dominio) {
   return pila.every(Boolean);
 }
 
+let TABLAS = null; // se fija por instancia para resolver "move_id.move_type"
+const MODELO_DE_CAMPO = { move_id: "account.move", account_id: "account.account", partner_id: "res.partner", company_id: "res.company" };
+
 function termino(r, [campo, op, valor]) {
-  const crudo = campo.includes(".") ? campo.split(".").reduce((o, k) => (o == null ? o : o[k]), r) : r[campo];
+  let crudo;
+  if (campo.includes(".")) {
+    const [rel, ...resto] = campo.split(".");
+    const id = idDe(r[rel]);
+    const tabla = TABLAS && TABLAS[MODELO_DE_CAMPO[rel]];
+    const reg = tabla ? tabla.find(x => x.id === id) : null;
+    crudo = reg ? resto.reduce((o, k) => (o == null ? o : o[k]), reg) : undefined;
+  } else crudo = r[campo];
   const v = idDe(crudo);
   const vacio = v === undefined || v === null || v === false || v === "";
   switch (op) {

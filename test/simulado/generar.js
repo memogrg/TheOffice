@@ -95,6 +95,11 @@ const lineas = [
   { id: 6, move_id: [902, "FAC/2026/003"], name: "SERVICIO ELECTRICO", account_id: [502, "5.04.999 Gastos generales"], product_id: false, display_type: "product", balance: 10000, other_charge_id: false }
 ];
 
+for (const l of lineas) {
+  const f = facturas.find(x => x.id === l.move_id[0]);
+  l.parent_state = f.state; l.company_id = f.company_id;
+}
+
 const instancia = {
   "res.company": companias,
   "res.partner": partners,
