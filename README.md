@@ -20,6 +20,30 @@ ODOO_SIMULADO=test/simulado/instancia.json npm run recepcion
 
 En Mac: doble clic en `Correr agente.command`. En Windows: `Correr agente.cmd`. Ver `GUIA.md`.
 
+## El servicio (la app)
+
+```bash
+npm run servicio     # http://localhost:4180
+```
+
+Un solo proceso: base de datos (SQLite incorporado en Node, `data/oficina.db`), los agentes,
+el calendario y la app web. Todo lo que un agente encuentra queda en la base, y todo lo que
+escribe en Odoo o manda por correo pasa antes por una persona:
+
+| Pantalla | Qué se hace ahí |
+|---|---|
+| **Tablero** | Cifras de la última corrida, alertas, compañías y receptores con casos abiertos. Botones para correr cada agente (solo leen y proponen). |
+| **Casos** | Un caso por documento y receptor. Filtro por receptor, compañía, frente (afuera/adentro). «Resuelto» lo marca una persona; la corrida siguiente no lo pisa, y lo que deja de aparecer en Odoo se cierra solo. |
+| **Aprobaciones** | Las propuestas de Cuentas, línea por línea. Aprobar / rechazar; «Aplicar en Odoo» corre el agente en escritura **solo sobre lo aprobado** de esa compañía. |
+| **Correos** | Los borradores de Victor con vista previa. Aprobar / rechazar; enviar en prueba (todo a su correo) o de verdad. |
+| **Corridas** y **Auditoría** | Qué corrió, cuánto tardó, qué encontró; y quién aprobó, rechazó, aplicó o envió qué, y cuándo. |
+
+API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, toda acción exige `Authorization: Bearer <token>`;
+la cabecera `X-Quien` identifica a quien decide y queda en la auditoría. Calendario: `CORRIDA_DIARIA=07:00`
+corre Recepción y Comunicación (borradores) todos los días; `CONCILIACION_SEMANAL=1` corre Conciliación los lunes.
+
+La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.html` con doble clic).
+
 ## Qué hay aquí
 
 | Archivo | Qué hace |
@@ -33,7 +57,9 @@ En Mac: doble clic en `Correr agente.command`. En Windows: `Correr agente.cmd`. 
 | `src/agents/conciliacion.js` | Cruza cada clave del buzón contra `account.move.e_key`. |
 | `src/agents/cuentas.js` | Revisa cuentas contables línea por línea. **Único que escribe**, y solo con `--aplicar` + `PERMITIR_ESCRITURA=si`. |
 | `src/director-core.cjs` | El Director: decide qué agente ejecuta una instrucción. **Única implementación**: Node la importa y `run.js` la incrusta en la oficina. |
-| `src/run.js` | Punto de entrada. Reporte HTML/JSON, `data/estado.json`, regenera la oficina, correo opcional. Candado contra corridas simultáneas. |
+| `src/run.js` | Punto de entrada por terminal. Reporte HTML/JSON, `data/estado.json`, regenera la oficina, correo opcional. Candado contra corridas simultáneas. |
+| `src/servicio/` | **La app**: `db.js` (SQLite), `corridas.js` (corre agentes y persiste; aplica aprobadas; envía aprobados), `programador.js` (calendario), `api.js` (HTTP), `index.js` (arranque). |
+| `ui/app/index.html` | La app web que sirve el servicio. |
 | `scripts/construir-catalogo.js` | Arma `data/catalogo-cuentas.json` desde el histórico de Odoo (sin Excel). |
 | `data/roster.json` | El contrato de cada agente. El Director lo lee. |
 | `data/reglas.json` | Decisiones humanas sobre cuentas. Mandan sobre el histórico. |
@@ -80,6 +106,8 @@ agentes con las palabras del roster, pregunta si hay empate, pide la compañía 
 | `ALERTA_REFERENCIA` | `ultimo-correo` mide la ingesta contra el correo más reciente (para la copia de pruebas, que está congelada). |
 | `PERMITIR_ESCRITURA` | `si` habilita a CUENTAS a modificar Odoo (además de `--aplicar`). |
 | `CATALOGO_CUENTAS` | Otro catálogo que no sea `data/catalogo-cuentas.json`. |
+| `PUERTO`, `BASE_DE_DATOS`, `SERVICIO_TOKEN` | Del servicio: puerto (4180), ruta de la base (`data/oficina.db`), token para las acciones. |
+| `CORRIDA_DIARIA`, `CONCILIACION_SEMANAL` | Calendario del servicio: hora local `HH:MM` y día de la semana (0 domingo … 6 sábado). |
 
 Las variables de entorno pisan al `.env`, así que se puede correr en un contenedor o en CI sin el archivo.
 
@@ -88,6 +116,7 @@ Las variables de entorno pisan al `.env`, así que se puede correr en un contene
 - [ ] Crear el usuario de servicio con clave API y permisos mínimos; rotar la contraseña de `admin`.
 - [ ] Validar con TecnoDEM el efecto de `button_draft` / `action_post` sobre facturas de compra
       con factura electrónica (mensaje de aceptación a Hacienda) antes de usar `--aplicar` en producción.
-- [ ] Programar la corrida diaria (7:00 a.m.).
+- [ ] Login por enlace mágico para receptores (ven solo sus compañías) y roles.
 - [ ] Agentes Diagnóstico, Corrección y Reporte.
-- [ ] Servicio web con usuarios (contabilidad y receptores), calendario y cola de aprobaciones.
+- [ ] Director con modelo de lenguaje (tool use) sobre los agentes.
+- [ ] Desplegar el servicio en un VPS (Docker) apuntando a producción.

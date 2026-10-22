@@ -1,1 +1,287 @@
-<!doctype html><title>pronto</title>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oficina IASIMA</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --fondo:#F4F7F5; --panel:#FFFFFF; --borde:#D6E0DC; --borde2:#C4D0CC;
+  --tinta:#0E1614; --tinta2:#3C4B47; --tinta3:#6B7C77;
+  --sello:#0B4A3F; --sello2:#083A31;
+  --ok:#1B7F5E; --alto:#8A6410; --critico:#B3402E; --neutro:#566B77;
+  --m:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --fondo:#141816; --panel:#1C2220; --borde:#2C3531; --borde2:#3A4540;
+  --tinta:#EDE7D8; --tinta2:#BDB6A4; --tinta3:#8B9590;
+  --sello:#6FD3AE; --sello2:#4FB892;
+  --ok:#3FA87E; --alto:#D0A03A; --critico:#E07A62; --neutro:#8CA1AC;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--tinta);font:14px/1.5 Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:2px solid var(--sello);background:var(--panel);flex-wrap:wrap}
+header h1{margin:0;font:700 15px var(--m);letter-spacing:.04em;color:var(--sello)}
+header nav{display:flex;gap:4px;flex-wrap:wrap}
+header nav button{font:12px var(--m);padding:6px 12px;border:1px solid var(--borde2);background:transparent;color:var(--tinta2);border-radius:4px;cursor:pointer}
+header nav button[aria-selected="true"]{background:var(--sello);color:#fff;border-color:var(--sello)}
+header .yo{margin-left:auto;display:flex;gap:6px;align-items:center;font-size:12px;color:var(--tinta3)}
+header .yo input{font:12px var(--m);padding:5px 8px;border:1px solid var(--borde2);border-radius:4px;background:var(--fondo);color:var(--tinta);width:170px}
+main{max-width:1180px;margin:0 auto;padding:20px 16px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.chip{font:11px var(--m);padding:4px 10px;border:1px solid var(--borde2);border-radius:999px;color:var(--tinta2);background:var(--panel)}
+.chip b{color:var(--tinta)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:20px}
+.tile{background:var(--panel);border:1px solid var(--borde);border-radius:6px;padding:12px 14px}
+.tile .k{font:700 10.5px var(--m);letter-spacing:.1em;text-transform:uppercase;color:var(--tinta3)}
+.tile .v{font:700 26px/1.1 var(--m);margin-top:6px;color:var(--tinta)}
+.tile .s{font-size:11.5px;color:var(--tinta3);margin-top:4px}
+section{background:var(--panel);border:1px solid var(--borde);border-radius:6px;padding:14px 16px;margin-bottom:16px}
+section h2{margin:0 0 10px;font:700 11px var(--m);letter-spacing:.12em;text-transform:uppercase;color:var(--tinta3)}
+.fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+button.b{font:12px var(--m);padding:6px 12px;border:1px solid var(--sello);background:var(--sello);color:#fff;border-radius:4px;cursor:pointer}
+button.b.gh{background:transparent;color:var(--sello)}
+button.b.rj{background:transparent;color:var(--critico);border-color:var(--critico)}
+button.b:disabled{opacity:.5;cursor:default}
+select,input.f{font:12px var(--m);padding:6px 8px;border:1px solid var(--borde2);border-radius:4px;background:var(--fondo);color:var(--tinta)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:7px 8px;font:700 10.5px var(--m);letter-spacing:.06em;text-transform:uppercase;color:var(--tinta3);border-bottom:2px solid var(--borde2)}
+td{padding:7px 8px;border-bottom:1px solid var(--borde);vertical-align:top}
+td.n,th.n{text-align:right;font-family:var(--m)}
+.mono{font-family:var(--m);font-size:11.5px}
+.sub{font-size:11.5px;color:var(--tinta3)}
+.est{display:inline-block;font:700 10.5px var(--m);padding:2px 7px;border-radius:3px;border:1px solid}
+.est.ok{color:var(--ok);border-color:var(--ok)} .est.alto{color:var(--alto);border-color:var(--alto)}
+.est.critico{color:var(--critico);border-color:var(--critico)} .est.neutro{color:var(--neutro);border-color:var(--neutro)}
+.al{border-left:4px solid var(--neutro);padding:8px 12px;margin-bottom:8px;background:var(--fondo)}
+.al.alto{border-color:var(--alto)} .al.critico{border-color:var(--critico)} .al.ok{border-color:var(--ok)}
+.al .t{font-weight:700;font-size:13px} .al .d{font-size:12px;color:var(--tinta2);margin-top:3px;line-height:1.5}
+.aviso{font-size:12.5px;color:var(--tinta2);background:var(--fondo);padding:10px 12px;border-radius:4px;margin-bottom:10px}
+#msg{position:fixed;bottom:16px;right:16px;max-width:420px;background:var(--sello2);color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;display:none;z-index:9}
+#msg.err{background:var(--critico)}
+iframe.prev{width:100%;height:520px;border:1px solid var(--borde);border-radius:4px;background:#fff}
+a{color:var(--sello)}
+@media (max-width:640px){header{padding:10px 12px}main{padding:12px 10px}td,th{padding:6px 5px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>OFICINA IASIMA</h1>
+  <nav id="nav">
+    <button data-v="tablero" aria-selected="true">Tablero</button>
+    <button data-v="casos">Casos</button>
+    <button data-v="aprobaciones">Aprobaciones</button>
+    <button data-v="correos">Correos</button>
+    <button data-v="corridas">Corridas</button>
+    <button data-v="auditoria">Auditoría</button>
+  </nav>
+  <div class="yo">
+    <label for="quien">Soy</label><input id="quien" placeholder="nombre o correo">
+    <input id="token" placeholder="token (si aplica)" type="password">
+  </div>
+</header>
+<main id="main"></main>
+<div id="msg"></div>
+<script>
+(function(){
+"use strict";
+var S = { vista:"tablero", estado:null, companias:[], filtros:{ receptor:"", compania:"", frente:"", seguimiento:"abierto" }, correoAbierto:null };
+var $ = function(s){ return document.querySelector(s); };
+var esc = function(s){ return String(s==null?"":s).replace(/[<>&"]/g,function(c){return {"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c];}); };
+var n = function(x){ return typeof x==="number" ? x.toLocaleString("es-CR") : (x==null?"—":String(x)); };
+var fecha = function(s){ return s ? new Date(s).toLocaleString("es-CR",{dateStyle:"medium",timeStyle:"short"}) : "—"; };
+
+try { $("#quien").value = localStorage.getItem("iasima_quien")||""; $("#token").value = localStorage.getItem("iasima_token")||""; } catch(e){}
+$("#quien").addEventListener("change", function(){ try{ localStorage.setItem("iasima_quien", this.value); }catch(e){} });
+$("#token").addEventListener("change", function(){ try{ localStorage.setItem("iasima_token", this.value); }catch(e){} });
+
+function msg(t, err){ var m=$("#msg"); m.textContent=t; m.className=err?"err":""; m.style.display="block"; clearTimeout(msg.t); msg.t=setTimeout(function(){ m.style.display="none"; }, err?6000:3500); }
+function api(ruta, cuerpo){
+  var op = { headers: { "X-Quien": $("#quien").value || "anónimo" } };
+  if (cuerpo !== undefined){ op.method="POST"; op.headers["Content-Type"]="application/json"; op.body=JSON.stringify(cuerpo||{});
+    if ($("#token").value) op.headers["Authorization"]="Bearer "+$("#token").value; }
+  return fetch(ruta, op).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); });
+}
+function accion(ruta, cuerpo, ok){
+  return api(ruta, cuerpo||{}).then(function(j){ msg(ok || "Listo."); return j; }).catch(function(e){ msg(e.message, true); throw e; }).finally(cargar);
+}
+
+/* ---------- vistas ---------- */
+var V = {};
+V.tablero = function(){
+  var e = S.estado, u = e.ultimas, rec = u.recepcion;
+  var h = '<div class="chips">'+
+    '<span class="chip">Odoo: <b>'+esc(e.odoo.simulado ? "SIMULADO "+e.odoo.simulado : e.odoo.url+" · "+e.odoo.db)+'</b></span>'+
+    '<span class="chip">Escritura: <b>'+(e.escrituraPermitida?"permitida":"bloqueada")+'</b></span>'+
+    '<span class="chip">Correo: <b>'+(e.smtp?"configurado":"sin SMTP")+'</b></span>'+
+    '<span class="chip">Calendario: <b>'+esc(e.programador?e.programador.plan:"—")+'</b></span>'+
+    (e.enCurso?'<span class="chip">Corriendo: <b>'+esc(e.enCurso.agente)+'</b></span>':"")+'</div>';
+  var t = rec && rec.totales || {};
+  var ab = {}; (e.casos.porFrente||[]).forEach(function(x){ ab[x.frente+"|"+x.seguimiento]=x.n; });
+  h += '<div class="tiles">'+
+    tile("Correos en el buzón", t.total, rec?("última corrida "+fecha(rec.fin)):"sin corrida")+
+    tile("Tasa de registro", t.pctOk!=null?t.pctOk+" %":null, "registrados como factura")+
+    tile("Compañías", t.companias, "con correos en el buzón")+
+    tile("Por reclamar afuera", ab["afuera|abierto"]||0, "documentos abiertos")+
+    tile("Por revisar adentro", ab["adentro|abierto"]||0, "documentos abiertos")+
+    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar")+
+    tile("Correos por aprobar", e.pendientes.correos, e.pendientes.correosAprobados+" aprobados sin enviar")+
+    '</div>';
+  h += '<section><h2>Correr ahora</h2><div class="fila">'+
+    '<button class="b" data-correr="recepcion">Recepción (Marta)</button>'+
+    '<button class="b gh" data-correr="comunicacion">Comunicación (Victor) → borradores</button>'+
+    '<button class="b gh" data-correr="conciliacion">Conciliación</button>'+
+    '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
+    '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
+    '<a href="/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
+    '<div class="sub">Nada de esto escribe en Odoo ni manda correos: solo lee y propone. Lo que escribe pasa por Aprobaciones.</div></section>';
+  if (rec && rec.alertas && rec.alertas.length){
+    h += '<section><h2>Alertas de la última corrida de Recepción</h2>'+rec.alertas.map(alerta).join("")+'</section>';
+  }
+  var pc = e.casos.porCompania||[], pr = e.casos.porReceptor||[];
+  h += '<section><h2>Compañías con casos abiertos</h2>'+(pc.length?tabla(["Compañía",{t:"Afuera",n:1},{t:"Adentro",n:1},{t:"Total",n:1},""],
+      pc.slice(0,30).map(function(c){ return [esc(c.compania||"(sin compañía)"), n(c.afuera), n(c.adentro), "<b>"+n(c.total)+"</b>",
+        '<a href="#" data-ver-cia="'+c.compania_id+'">ver casos</a>']; })):'<div class="sub">Sin casos abiertos. Corra Recepción.</div>')+'</section>';
+  h += '<section><h2>Receptores con casos abiertos</h2>'+(pr.length?tabla(["Receptor",{t:"Afuera",n:1},{t:"Adentro",n:1},{t:"Total",n:1},""],
+      pr.slice(0,30).map(function(r){ return ['<span class="mono">'+esc(r.receptor)+'</span>', n(r.afuera), n(r.adentro), "<b>"+n(r.total)+"</b>",
+        '<a href="#" data-ver-rec="'+esc(r.receptor)+'">ver casos</a>']; })):'<div class="sub">—</div>')+'</section>';
+  return h;
+};
+V.casos = function(){
+  var f = S.filtros;
+  var h = '<section><h2>Casos — uno por documento y receptor</h2><div class="fila">'+
+    '<input class="f" id="fRec" placeholder="receptor" value="'+esc(f.receptor)+'">'+
+    '<select id="fCia"><option value="">todas las compañías</option>'+S.companias.map(function(c){return '<option value="'+c.id+'"'+(String(c.id)===String(f.compania)?" selected":"")+'>'+esc(c.name)+'</option>';}).join("")+'</select>'+
+    '<select id="fFrente"><option value="">afuera y adentro</option><option value="afuera"'+(f.frente==="afuera"?" selected":"")+'>afuera (reclamar al establecimiento)</option><option value="adentro"'+(f.frente==="adentro"?" selected":"")+'>adentro (revisar aquí)</option></select>'+
+    '<select id="fSeg"><option value="abierto"'+(f.seguimiento==="abierto"?" selected":"")+'>abiertos</option><option value="resuelto"'+(f.seguimiento==="resuelto"?" selected":"")+'>resueltos</option><option value="cerrado"'+(f.seguimiento==="cerrado"?" selected":"")+'>cerrados (dejaron de aparecer)</option><option value="todos"'+(f.seguimiento==="todos"?" selected":"")+'>todos</option></select>'+
+    '<button class="b gh" id="fIr">Filtrar</button></div><div id="casosTabla">Cargando…</div></section>';
+  return h;
+};
+function pintarCasos(lista){
+  var el = $("#casosTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Nada con esos filtros.</div>'; return; }
+  el.innerHTML = tabla(["Documento","Compañía / receptor","Establecimiento","Qué pasó","Visto",""], lista.map(function(c){
+    return ['<div><b class="mono">'+esc(c.consecutivo||c.asunto||"—")+'</b><div class="sub">'+esc(c.tipo||"")+(c.fecha_documento?" · "+esc(c.fecha_documento):"")+(c.veces>1?" · llegó "+c.veces+" veces":"")+'</div></div>',
+      '<div>'+esc(c.compania||"")+'<div class="sub mono">'+esc(c.receptor)+'</div></div>',
+      '<div>'+esc(c.establecimiento||c.cedula_emisor||"—")+(c.identificado_por&&c.identificado_por!=="clave"?'<div class="sub">'+esc(c.identificado_por)+'</div>':"")+'</div>',
+      '<span class="est '+(c.frente==="afuera"?"alto":"critico")+'">'+esc(c.estado_buzon)+'</span>'+(c.error?'<div class="sub">'+esc(String(c.error).slice(0,120))+'</div>':""),
+      '<div class="sub">'+fecha(c.ultima_vez)+(c.seguimiento!=="abierto"?'<br><span class="est '+(c.seguimiento==="resuelto"?"ok":"neutro")+'">'+c.seguimiento+'</span>'+(c.resuelto_por?' '+esc(c.resuelto_por):""):"")+'</div>',
+      c.seguimiento==="abierto" ? '<button class="b gh" data-resolver="'+c.id+'">Resuelto</button>' : '<button class="b gh" data-reabrir="'+c.id+'">Reabrir</button>'];
+  }));
+}
+V.aprobaciones = function(){
+  return '<section><h2>Propuestas de Cuentas — cuenta contable por línea</h2>'+
+    '<div class="aviso">Cada línea es una corrección que el agente propone. Apruebe o rechace una por una; luego «Aplicar aprobadas» corre el agente en modo escritura <b>solo sobre lo aprobado</b> de esa compañía. Requiere PERMITIR_ESCRITURA=si en el servicio.</div>'+
+    '<div class="fila"><select id="pEstado"><option value="propuesta">por decidir</option><option value="aprobada">aprobadas</option><option value="rechazada">rechazadas</option><option value="aplicada">aplicadas</option><option value="fallo">con fallo</option><option value="todas">todas</option></select>'+
+    '<select id="pCia"><option value="">todas las compañías</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
+    '<button class="b gh" id="pIr">Ver</button><span style="flex:1"></span>'+
+    '<select id="pAplicarCia"><option value="">Aplicar aprobadas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
+    '<button class="b" id="pAplicar">Aplicar en Odoo</button></div><div id="propTabla">Cargando…</div></section>';
+};
+function pintarPropuestas(lista){
+  var el=$("#propTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Revisar cuentas» en el tablero.</div>'; return; }
+  el.innerHTML = tabla(["Factura · línea","Cuenta actual","Debería ser","Fuente","Estado",""], lista.map(function(p){
+    return ['<div><b>'+esc(p.factura)+'</b><div class="sub">'+esc(p.articulo)+' · '+esc(p.compania||"")+' · '+esc(p.factura_estado)+'</div></div>',
+      '<span style="color:var(--critico)">'+esc(p.cuenta_actual)+'</span>', '<b style="color:var(--ok)">'+esc(p.cuenta_nueva)+'</b>',
+      '<span class="sub">'+esc(p.fuente)+(p.confianza!=null?" · "+p.confianza:"")+'</span>',
+      '<span class="est '+({propuesta:"neutro",aprobada:"ok",rechazada:"critico",aplicada:"ok",fallo:"critico"}[p.estado]||"neutro")+'">'+esc(p.estado)+'</span>'+(p.decidio?'<div class="sub">'+esc(p.decidio)+' · '+fecha(p.decidido_en)+'</div>':""),
+      p.estado==="propuesta" ? '<button class="b" data-aprobar="'+p.id+'">Aprobar</button> <button class="b rj" data-rechazar="'+p.id+'">Rechazar</button>' : ""];
+  }));
+}
+V.correos = function(){
+  return '<section><h2>Correos de Victor</h2>'+
+    '<div class="aviso">Victor redacta; nadie manda nada hasta que se apruebe. «Enviar aprobados (prueba)» los manda todos a su propio correo con el asunto marcado. «Enviar de verdad» los manda a cada receptor.</div>'+
+    '<div class="fila"><select id="cEstado"><option value="borrador">borradores</option><option value="aprobado">aprobados</option><option value="enviado">enviados</option><option value="rechazado">rechazados</option><option value="fallo">con fallo</option><option value="todos">todos</option></select>'+
+    '<button class="b gh" id="cIr">Ver</button><span style="flex:1"></span>'+
+    '<button class="b gh" id="cPrueba">Enviar aprobados (prueba)</button><button class="b" id="cReal">Enviar de verdad</button></div>'+
+    '<div id="corrTabla">Cargando…</div><div id="corrPrev"></div></section>';
+};
+function pintarCorreos(lista){
+  var el=$("#corrTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Comunicación» en el tablero.</div>'; return; }
+  el.innerHTML = tabla(["Para","Asunto",{t:"Casos",n:1},"Estado",""], lista.map(function(c){
+    return ['<div><span class="mono">'+esc(c.para)+'</span><div class="sub">'+(c.frente==="afuera"?"al establecimiento":"revisión interna")+' · '+esc((c.companias||[]).join(", "))+'</div></div>',
+      '<a href="#" data-ver-correo="'+c.id+'">'+esc(c.asunto)+'</a>', n(c.casos),
+      '<span class="est '+({borrador:"neutro",aprobado:"ok",enviado:"ok",rechazado:"critico",fallo:"critico",obsoleto:"neutro"}[c.estado]||"neutro")+'">'+esc(c.estado)+'</span>'+(c.enviado_a?'<div class="sub">→ '+esc(c.enviado_a)+'</div>':"")+(c.error?'<div class="sub">'+esc(c.error)+'</div>':""),
+      c.estado==="borrador" ? '<button class="b" data-aprobar-correo="'+c.id+'">Aprobar</button> <button class="b rj" data-rechazar-correo="'+c.id+'">Rechazar</button>' : ""];
+  }));
+}
+V.corridas = function(){ return '<section><h2>Corridas</h2><div id="corrdTabla">Cargando…</div></section>'; };
+function pintarCorridas(lista){
+  var el=$("#corrdTabla"); if(!el) return;
+  el.innerHTML = lista.length ? tabla(["#","Agente","Inicio",{t:"Segundos",n:1},{t:"Consultas",n:1},"Estado","Totales / error"], lista.map(function(c){
+    var t = c.totales ? Object.keys(c.totales).slice(0,4).map(function(k){ return k+": "+n(c.totales[k]); }).join(" · ") : "";
+    return [c.id, '<b>'+esc(c.agente)+'</b>'+(c.compania?'<div class="sub">'+esc(c.compania)+'</div>':"")+(c.modo?'<div class="sub">'+esc(c.modo)+'</div>':""), fecha(c.inicio), n(c.segundos), n(c.llamadas_odoo),
+      '<span class="est '+({ok:"ok",fallo:"critico",corriendo:"alto"}[c.estado]||"neutro")+'">'+esc(c.estado)+'</span>', '<span class="sub">'+esc(c.error||t)+'</span>'];
+  })) : '<div class="sub">Todavía no ha corrido nada.</div>';
+}
+V.auditoria = function(){ return '<section><h2>Auditoría — quién hizo qué</h2><div id="audTabla">Cargando…</div></section>'; };
+function pintarAuditoria(lista){
+  var el=$("#audTabla"); if(!el) return;
+  el.innerHTML = lista.length ? tabla(["Cuándo","Quién","Acción","Sobre","Detalle"], lista.map(function(a){
+    return [fecha(a.cuando), '<b>'+esc(a.quien)+'</b>', esc(a.accion), esc(a.objeto)+' #'+esc(a.objeto_id), '<span class="sub mono">'+esc(a.detalle?JSON.stringify(a.detalle).slice(0,140):"")+'</span>'];
+  })) : '<div class="sub">Sin acciones registradas.</div>';
+}
+
+/* ---------- piezas ---------- */
+function tile(k, v, s){ return '<div class="tile"><div class="k">'+esc(k)+'</div><div class="v">'+(v==null?"—":esc(n(v)))+'</div><div class="s">'+esc(s||"")+'</div></div>'; }
+function alerta(a){ return '<div class="al '+esc(a.nivel)+'"><div class="t">['+esc(String(a.nivel).toUpperCase())+'] '+esc(a.texto)+'</div>'+(a.detalle&&a.detalle.length?'<div class="d">'+a.detalle.slice(0,6).map(esc).join("<br>")+'</div>':"")+'</div>'; }
+function tabla(cab, filas){
+  return '<table><thead><tr>'+cab.map(function(c){ var o=typeof c==="object"?c:{t:c}; return '<th'+(o.n?' class="n"':"")+'>'+esc(o.t)+'</th>'; }).join("")+'</tr></thead><tbody>'+
+    filas.map(function(f){ return '<tr>'+f.map(function(c,i){ var o=typeof cab[i]==="object"?cab[i]:{}; return '<td'+(o.n?' class="n"':"")+'>'+c+'</td>'; }).join("")+'</tr>'; }).join("")+'</tbody></table>';
+}
+
+/* ---------- carga y eventos ---------- */
+function cargar(){
+  return Promise.all([api("/api/estado"), api("/api/companias")]).then(function(r){
+    S.estado=r[0]; S.companias=r[1];
+    pintar();
+  }).catch(function(e){ $("#main").innerHTML='<section><h2>Sin servicio</h2><div class="sub">'+esc(e.message)+'. ¿Está corriendo <code>npm run servicio</code>?</div></section>'; });
+}
+function pintar(){
+  document.querySelectorAll("#nav button").forEach(function(b){ b.setAttribute("aria-selected", b.dataset.v===S.vista?"true":"false"); });
+  $("#main").innerHTML = V[S.vista]();
+  if (S.vista==="casos") cargarCasos();
+  if (S.vista==="aprobaciones") cargarPropuestas();
+  if (S.vista==="correos") cargarCorreos();
+  if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
+  if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
+}
+function cargarCasos(){
+  var f=S.filtros, q=[]; if(f.receptor) q.push("receptor="+encodeURIComponent(f.receptor)); if(f.compania) q.push("compania="+f.compania); if(f.frente) q.push("frente="+f.frente); q.push("seguimiento="+f.seguimiento);
+  api("/api/casos?"+q.join("&")).then(pintarCasos);
+}
+function cargarPropuestas(){ var e=$("#pEstado"), c=$("#pCia"); api("/api/propuestas?estado="+(e?e.value:"propuesta")+(c&&c.value?"&compania="+c.value:"")).then(pintarPropuestas); }
+function cargarCorreos(){ var e=$("#cEstado"); api("/api/correos?estado="+(e?e.value:"borrador")).then(pintarCorreos); }
+
+$("#nav").addEventListener("click", function(ev){ var b=ev.target.closest("button"); if(!b) return; S.vista=b.dataset.v; pintar(); });
+$("#main").addEventListener("click", function(ev){
+  var t = ev.target.closest("button,a"); if(!t) return;
+  var d = t.dataset;
+  if (d.correr){ ev.preventDefault(); t.disabled=true; msg("Corriendo "+d.correr+"…"); accion("/api/corridas/"+d.correr, {}, "Corrida terminada."); }
+  else if (t.id==="correrCuentas"){ var cia=$("#ciaCuentas").value; if(!cia) return msg("Elija la compañía.", true); msg("Revisando cuentas…"); accion("/api/corridas/cuentas", {empresa:Number(cia)}, "Propuestas listas en Aprobaciones."); }
+  else if (d.verCia!==undefined){ ev.preventDefault(); S.filtros={receptor:"",compania:d.verCia,frente:"",seguimiento:"abierto"}; S.vista="casos"; pintar(); }
+  else if (d.verRec!==undefined){ ev.preventDefault(); S.filtros={receptor:d.verRec,compania:"",frente:"",seguimiento:"abierto"}; S.vista="casos"; pintar(); }
+  else if (t.id==="fIr"){ S.filtros={receptor:$("#fRec").value.trim(),compania:$("#fCia").value,frente:$("#fFrente").value,seguimiento:$("#fSeg").value}; cargarCasos(); }
+  else if (d.resolver){ var nota=prompt("Nota (opcional): qué se hizo"); if(nota===null) return; api("/api/casos/"+d.resolver+"/resolver",{nota:nota}).then(function(){ msg("Caso resuelto."); cargarCasos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.reabrir){ api("/api/casos/"+d.reabrir+"/reabrir",{}).then(function(){ msg("Caso reabierto."); cargarCasos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="pIr"){ cargarPropuestas(); }
+  else if (d.aprobar){ api("/api/propuestas/"+d.aprobar+"/aprobar",{}).then(function(){ msg("Aprobada."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.rechazar){ var m=prompt("Motivo del rechazo (opcional)"); if(m===null) return; api("/api/propuestas/"+d.rechazar+"/rechazar",{motivo:m}).then(function(){ msg("Rechazada."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="pAplicar"){ var ca=$("#pAplicarCia").value; if(!ca) return msg("Elija la compañía.", true);
+    if(!confirm("Esto ESCRIBE en Odoo las propuestas aprobadas de esa compañía. ¿Continuar?")) return;
+    msg("Aplicando…"); api("/api/propuestas/aplicar",{compania:Number(ca)}).then(function(j){ msg((j.aplicadas||0)+" facturas corregidas"+(j.fallos&&j.fallos.length?", "+j.fallos.length+" con fallo":"")+"."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="cIr"){ cargarCorreos(); }
+  else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }
+  else if (d.aprobarCorreo){ api("/api/correos/"+d.aprobarCorreo+"/aprobar",{}).then(function(){ msg("Aprobado."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.rechazarCorreo){ api("/api/correos/"+d.rechazarCorreo+"/rechazar",{}).then(function(){ msg("Rechazado."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="cPrueba"){ msg("Enviando a su correo…"); api("/api/correos/enviar",{real:false}).then(function(j){ msg(j.enviados.length+" enviados en modo prueba"+(j.fallos.length?", "+j.fallos.length+" fallos":"")+"."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="cReal"){ if(!confirm("Esto manda los correos aprobados A CADA RECEPTOR. ¿Continuar?")) return; msg("Enviando…"); api("/api/correos/enviar",{real:true}).then(function(j){ msg(j.enviados.length+" enviados a los receptores"+(j.fallos.length?", "+j.fallos.length+" fallos":"")+"."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
+});
+cargar();
+setInterval(function(){ if (S.vista==="tablero" && S.estado && S.estado.enCurso) cargar(); }, 5000);
+})();
+</script>
+</body>
+</html>

@@ -17,8 +17,9 @@ Oficina IASIMA.html
 # Sistema
 .DS_Store
 
-# Candado de corrida
+# Candado de corrida y base de datos del servicio
 data/corriendo.lock
+data/oficina.db*
 
 # Carpeta temporal de limpieza
 _to_delete/
