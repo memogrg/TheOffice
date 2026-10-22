@@ -20,6 +20,9 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { clave, tipoDeClave, cedulaEmisor, consecutivoDoc, fechaDeClave, TIPO_DOC } from "../lib/clave.js";
+import { receptores, remitenteVisible, unificarDocumentos, causasDominantes,
+         DOMINIO_HACIENDA, REMITENTE_AUTOMATICO, horasEntre, fechaOdoo } from "../lib/correo.js";
 
 export const meta = {
   id: "recepcion",
@@ -54,58 +57,6 @@ const MOTIVO = {
   vatiderror: "La cédula del emisor o del receptor viene inválida o ausente en el XML."
 };
 
-// La clave numérica de 50 dígitos:
-// país(3) + fecha(6) + cédula emisor(12) + consecutivo(20) + situación(1) + seguridad(8)
-// Dentro del consecutivo, el tipo de documento vive en las posiciones 30-31.
-const TIPO_DOC = {
-  "01": "Factura electrónica", "02": "Nota de débito", "03": "Nota de crédito",
-  "04": "Tiquete electrónico", "08": "Factura de compra", "09": "Factura de exportación"
-};
-// La clave puede venir en el nombre del archivo o, si no, en el asunto del correo.
-function clave(...textos) {
-  for (const t of textos) {
-    const m = String(t || "").replace(/[^0-9]/g, " ").match(/\d{50}/);
-    if (m) return m[0];
-  }
-  return null;
-}
-const tipoDeClave    = k => (k ? k.slice(29, 31) : null);
-const cedulaEmisor   = k => (k ? k.slice(9, 21).replace(/^0+/, "") : null);
-const consecutivoDoc = k => (k ? k.slice(21, 41) : null);
-function fechaDeClave(k) {
-  if (!k) return null;
-  const d = k.slice(3, 5), m = k.slice(5, 7), a = k.slice(7, 9);
-  return `20${a}-${m}-${d}`;
-}
-
-// to_mail viene sucio: '"alea@x.com" <alea@x.com>' o dos direcciones separadas por coma.
-function receptores(toMail) {
-  return String(toMail || "")
-    .split(/[,;]/)
-    .map(s => {
-      const m = s.match(/<([^>]+)>/);
-      return (m ? m[1] : s).replace(/["'<>\s]/g, "").toLowerCase();
-    })
-    .filter(s => s.includes("@"));
-}
-
-// Cuando la clave no se puede leer, el remitente es la mejor pista de quién emitió.
-// '"Colina Hermanos" <facturas@colina.com>' -> nombre "Colina Hermanos", dominio colina.com
-function remitenteVisible(fromMail) {
-  const s = String(fromMail || "");
-  const nom = s.match(/^\s*"?([^"<]+?)"?\s*</);
-  const dir = (s.match(/<([^>]+)>/) || [null, s]) [1].trim().toLowerCase();
-  const dom = dir.includes("@") ? dir.split("@")[1] : null;
-  const nombre = nom ? nom[1].trim() : null;
-  return { nombre, direccion: dir, dominio: dom };
-}
-// El buzón de Hacienda no es el emisor: es el acuse del Ministerio, y su correo no dice
-// quién emitió. Igual pasa con los remitentes automáticos de las casas de facturación.
-const DOMINIO_HACIENDA = /hacienda\.go\.cr$/i;
-const REMITENTE_AUTOMATICO = /^(no-?reply|noreply|facturaci[oó]n|facturas?|documento|comprobante|notificaci|info|soporte|admin)/i;
-
-const horas = (desde, hasta) => (hasta - desde) / 36e5;
-
 export async function ejecutar({ odoo, cfg, log, raiz }) {
   const t0 = Date.now();
   await odoo.conectar();
@@ -115,6 +66,12 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
   const companias = await odoo.leer("res.company", "search_read", [[], ["name"]], { order: "name" });
   const nombre = Object.fromEntries(companias.map(c => [c.id, c.name]));
   log(`${companias.length} compañías en la instancia`);
+  if (raiz) {
+    // El Director (terminal y oficina) y run.js leen esta lista. Se regenera en cada corrida
+    // para que nunca haya un número de compañías escrito a mano.
+    mkdirSync(join(raiz, "data"), { recursive: true });
+    writeFileSync(join(raiz, "data", "companias.json"), JSON.stringify(companias, null, 2));
+  }
 
   // 2. Conteo por compañía y estado, de un solo viaje
   const grupos = await odoo.leer(meta.modelo, "read_group",
@@ -144,10 +101,16 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
   }
 
   const ahora = new Date();
+  // Contra qué se mide "horas sin ingesta". Por defecto, contra ahora. En una copia de
+  // pruebas congelada (como la neutralizada) todo buzón parecería caído; con
+  // ALERTA_REFERENCIA=ultimo-correo se mide contra el correo más reciente de la instancia.
+  const ultimoCorreo = Object.values(ultimaPorCia).filter(Boolean).sort().pop();
+  const referencia = (cfg.ALERTA_REFERENCIA === "ultimo-correo" && ultimoCorreo) ? fechaOdoo(ultimoCorreo) : ahora;
+  if (referencia !== ahora) log(`Referencia de ingesta: último correo de la instancia (${ultimoCorreo} UTC)`);
   const lista = Object.values(porCia).map(c => {
     const u = ultimaPorCia[c.id];
     c.ultimaIngesta = u || null;
-    c.horasSinIngesta = u ? Math.round(horas(new Date(u.replace(" ", "T") + "Z"), ahora)) : null;
+    c.horasSinIngesta = u ? Math.round(horasEntre(fechaOdoo(u), referencia)) : null;
     c.pctOk = c.total ? Math.round((c.registradas / c.total) * 1000) / 10 : 0;
     return c;
   }).sort((a, b) => a.pctOk - b.pctOk);
@@ -159,16 +122,15 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
   log(`${total} correos: ${registradas} registrados, ${tiquetes} tiquetes, ${sinRegistrar} sin registrar`);
 
   // 5. TODO lo que no quedó registrado, con receptor, para consolidar.
-  const pendientes = await odoo.leer(meta.modelo, "search_read",
-    [[["state", "!=", "done"]],
-     ["company_id", "to_mail", "from_mail", "name", "e_invoice_name", "state", "error", "date"]],
-    { limit: 5000, order: "date desc" });
+  const pendientes = await odoo.leerTodo(meta.modelo, [["state", "!=", "done"]],
+    ["company_id", "to_mail", "from_mail", "name", "e_invoice_name", "state", "error", "date"],
+    { order: "date desc" });
   log(`${pendientes.length} correos sin registrar traídos con su receptor`);
 
   // 6. Nombre del establecimiento: la cédula del emisor sale de la clave.
   const cedulas = [...new Set(pendientes.map(f => cedulaEmisor(clave(f.e_invoice_name, f.name))).filter(Boolean))];
   const socios = cedulas.length
-    ? await odoo.leer("res.partner", "search_read", [[["vat", "in", cedulas]], ["vat", "name"]], { limit: 6000 })
+    ? await odoo.leerTodo("res.partner", [["vat", "in", cedulas]], ["vat", "name"])
     : [];
   const establecimiento = {};
   for (const p of socios) if (!establecimiento[p.vat]) establecimiento[p.vat] = p.name;
@@ -244,20 +206,6 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
     }
   }
 
-  // Un establecimiento que giró 30 tiquetes es una sola conversación, no 30.
-  // El mismo documento entra al buzón varias veces (reenvíos, adjunto y original).
-  // Se reclama una vez, diciendo cuántas veces llegó.
-  function unificarDocumentos(items) {
-    const g = new Map();
-    for (const c of items) {
-      const llave = c.clave || `${c.estado}|${c.archivo}|${c.asunto}`;
-      const y = g.get(llave);
-      if (y) { y.veces++; if ((c.fecha || "") > (y.fecha || "")) y.fecha = c.fecha; continue; }
-      g.set(llave, { ...c, veces: 1 });
-    }
-    return [...g.values()];
-  }
-
   function agruparPorEstablecimiento(items) {
     const g = {};
     for (const c of unificarDocumentos(items)) {
@@ -275,19 +223,6 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
       });
     }
     return Object.values(g).sort((a, b) => b.documentos.length - a.documentos.length);
-  }
-
-  // El texto del error se repite casi igual centenares de veces; lo que importa es la causa.
-  function causasDominantes(items) {
-    const g = {};
-    for (const c of items) {
-      const raw = (c.error || ESTADOS[c.estado] || c.estado).trim();
-      // se quitan fechas y números para que "periodo fiscal 2025-11-01" y "…2025-12-01" sean la misma causa
-      const llave = raw.replace(/\d{4}-\d{2}-\d{2}/g, "«fecha»").replace(/\d{6,}/g, "«número»").slice(0, 160);
-      const e = g[llave] || (g[llave] = { causa: llave, correos: 0, ejemplo: raw });
-      e.correos++;
-    }
-    return Object.values(g).sort((a, b) => b.correos - a.correos).slice(0, 8);
   }
 
   const listaReceptores = Object.values(porReceptor)
@@ -324,7 +259,7 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
       companias: [...new Set(b.internos.map(c => c.compania))],
       total: b.internos.length,
       documentosUnicos: unificarDocumentos(b.internos).length,
-      causas: causasDominantes(b.internos),
+      causas: causasDominantes(b.internos, { descripcionEstado: ESTADOS }),
       porEstado: ["duplicate", "error", "process", "vatiderror"].map(st => ({
         estado: st, descripcion: ESTADOS[st], motivo: MOTIVO[st],
         correos: b.internos.filter(c => c.estado === st).length,
@@ -363,8 +298,7 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
     if (t === "04") tipo04++;
     else inconsistentes.push({ id: c.id, compania: c.compania, tipo: t, esperado: "04" });
   }
-  const filasDone = await odoo.leer(meta.modelo, "search_read",
-    [[["state", "=", "done"]], ["company_id", "e_invoice_name"]], { limit: 12000 });
+  const filasDone = await odoo.leerTodo(meta.modelo, [["state", "=", "done"]], ["company_id", "e_invoice_name"]);
   const coladosComoFactura = filasDone
     .filter(f => tipoDeClave(clave(f.e_invoice_name)) === "04")
     .map(f => ({ id: f.id, compania: f.company_id ? f.company_id[1] : "—" }));

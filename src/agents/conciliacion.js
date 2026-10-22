@@ -3,41 +3,27 @@
 // y verifica que exista la factura correspondiente en la contabilidad.
 // Lo que no aparece es un gasto que el sistema da por bueno y no esta en los libros.
 
+import { clave, tipoDeClave, TIPO_DOC } from "../lib/clave.js";
+
 export const meta = {
   id: "conciliacion", nombre: "CONCILIACION", puesto: "Cruza con la contabilidad",
   modelo: "bdt.invoice.email", escribe: false
 };
-
-const clave = n => { const m = n && String(n).match(/\d{50}/); return m ? m[0] : null; };
-const tipoDoc = c => c ? c.slice(29, 31) : null;
-const TIPO = { "01":"Factura electronica","02":"Nota de debito","03":"Nota de credito",
-               "04":"Tiquete electronico","08":"Factura de compra","09":"Factura de exportacion" };
-
-async function paginar(odoo, modelo, dominio, campos, log, etiqueta){
-  const out = []; const paso = 4000;
-  for (let off = 0; ; off += paso){
-    const lote = await odoo.leer(modelo, "search_read", [dominio, campos], { limit: paso, offset: off });
-    out.push(...lote);
-    if (lote.length < paso) break;
-    log(`${etiqueta}: ${out.length} leidos...`);
-  }
-  return out;
-}
 
 export async function ejecutar({ odoo, cfg, log }){
   const t0 = Date.now();
   await odoo.conectar();
 
   // 1. Todas las claves que existen en la contabilidad
-  const asientos = await paginar(odoo, "account.move",
-    [["e_key", "!=", false]], ["e_key", "company_id", "move_type", "state"], log, "asientos");
+  const asientos = await odoo.leerTodo("account.move", [["e_key", "!=", false]],
+    ["e_key", "company_id", "move_type", "state"], { alAvanzar: n => n % 8000 === 0 && log(`asientos: ${n} leídos...`) });
   const enLibros = new Map();
   for (const a of asientos) if (a.e_key) enLibros.set(a.e_key, a);
   log(`${asientos.length} asientos con clave en la contabilidad`);
 
   // 2. Todos los correos dados por registrados
-  const correos = await paginar(odoo, meta.modelo,
-    [["state", "=", "done"]], ["company_id", "e_invoice_name", "name", "date"], log, "correos");
+  const correos = await odoo.leerTodo(meta.modelo, [["state", "=", "done"]],
+    ["company_id", "e_invoice_name", "name", "date"]);
   log(`${correos.length} correos en estado done`);
 
   // 3. El cruce
@@ -56,7 +42,7 @@ export async function ejecutar({ odoo, cfg, log }){
     porCia[cia].verificables++;
     if (enLibros.has(k)) { verificados++; continue; }
     porCia[cia].sinAsiento++;
-    const h = { clave: k, tipo: TIPO[tipoDoc(k)] || tipoDoc(k), compania: cia, companiaId: ciaId,
+    const h = { clave: k, tipo: TIPO_DOC[tipoDeClave(k)] || tipoDeClave(k), compania: cia, companiaId: ciaId,
                 fecha: (c.date || "").slice(0, 10), asunto: String(c.name || "").slice(0, 90), correoId: c.id };
     huecos.push(h);
     if (porCia[cia].documentos.length < 25) porCia[cia].documentos.push(h);

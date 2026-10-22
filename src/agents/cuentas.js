@@ -49,8 +49,8 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   log(`Compania: ${cia.name} (id ${CID})`);
 
   // --- plan de cuentas de esa compania
-  const ctas = await odoo.leer("account.account", "search_read",
-    [[["company_ids", "in", [CID]]], ["code", "name", "account_type", "deprecated"]], { ...ctx, limit: 4000 });
+  const ctas = await odoo.leerTodo("account.account", [["company_ids", "in", [CID]]],
+    ["code", "name", "account_type", "deprecated"], { context: ctx.context });
   const porCodigo = new Map();
   for (const c of ctas) if (!c.deprecated) porCodigo.set(canon(c.code), c);
   const porNombre = new Map();
@@ -67,10 +67,10 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   const rehacer = args.includes("--revisar-todo");
 
   // --- facturas de proveedor
-  const facturas = await odoo.leer("account.move", "search_read",
-    [[["move_type", "in", ["in_invoice", "in_refund"]], ["company_id", "=", CID], ["state", "in", ["draft", "posted"]]],
-     ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "ref"]],
-    { ...ctx, limit: 2000, order: "invoice_date desc" });
+  const facturas = await odoo.leerTodo("account.move",
+    [["move_type", "in", ["in_invoice", "in_refund"]], ["company_id", "=", CID], ["state", "in", ["draft", "posted"]]],
+    ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "ref"],
+    { context: ctx.context, order: "invoice_date desc" });
   log(`${facturas.length} facturas de proveedor (borrador + publicadas)`);
 
   const propuestas = [], revisionHumana = [], aplicadas = [], fallos = [];
@@ -168,21 +168,24 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
       continue;
     }
     try {
-      if (f.state === "posted"){ await odoo.leer("account.move", "button_draft", [[f.id]], ctx); log(`  ${etiqueta}: restablecida a borrador`); }
+      if (f.state === "posted"){ await odoo.escribir("account.move", "button_draft", [[f.id]], ctx); log(`  ${etiqueta}: restablecida a borrador`); }
       for (const a of arreglos){
         // Los "Otros cargos" no viven en la linea de factura sino en bdt.other.charge.line.
         // Escribir en la linea no sirve: Odoo la recalcula al publicar.
-        if (a.cargoId) await odoo.leer("bdt.other.charge.line", "write", [[a.cargoId], { account_id: a.cuentaNuevaId }], ctx);
-        await odoo.leer("account.move.line", "write", [[a.lineaId], { account_id: a.cuentaNuevaId }], ctx);
+        if (a.cargoId) await odoo.escribir("bdt.other.charge.line", "write", [[a.cargoId], { account_id: a.cuentaNuevaId }], ctx);
+        await odoo.escribir("account.move.line", "write", [[a.lineaId], { account_id: a.cuentaNuevaId }], ctx);
       }
-      await odoo.leer("account.move", "action_post", [[f.id]], ctx);
+      await odoo.escribir("account.move", "action_post", [[f.id]], ctx);
 
       // VERIFICACION: releer y confirmar que la cuenta quedo donde debia.
       const despues = await odoo.leer("account.move.line", "search_read",
         [[["move_id", "=", f.id], ["display_type", "in", LINEAS_REALES]], ["name", "account_id"]], ctx);
+      const porLinea = new Map(despues.map(x => [x.id, x]));
       const noPego = [];
       for (const a of arreglos){
-        const igual = despues.find(x => norm(x.name) === norm(a.articulo));
+        // Al republicar, Odoo conserva el id de la línea; se verifica por id y no por nombre,
+        // porque dos líneas del mismo artículo en la misma factura tendrían el mismo nombre.
+        const igual = porLinea.get(a.lineaId) || despues.find(x => norm(x.name) === norm(a.articulo));
         if (!igual || !igual.account_id || igual.account_id[0] !== a.cuentaNuevaId)
           noPego.push({ articulo: a.articulo, quedoEn: igual && igual.account_id ? igual.account_id[1] : "(no encontrada)" });
       }
