@@ -10,8 +10,8 @@
 //   · Sin dependencias: la API de Claude se llama con fetch.
 //
 // Configuración (.env): CLAUDE_API_KEY (obligatoria para este Director; sin ella el servicio
-// usa el Director de palabras clave), DIRECTOR_MODELO (por defecto claude-sonnet-4-5),
-// DIRECTOR_MAX_PASOS (8).
+// usa el Director de palabras clave), CLAUDE_WORKSPACE_ID (solo si la clave es de usuario,
+// sk-ant-usr-…), DIRECTOR_MODELO (por defecto claude-sonnet-4-5), DIRECTOR_MAX_PASOS (8).
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { causasDominantes } from "../lib/correo.js";
@@ -161,7 +161,10 @@ Reglas:
   async #llamar(mensajes) {
     const res = await this.fetch(API, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": this.cfg.CLAUDE_API_KEY, "anthropic-version": "2023-06-01" },
+      headers: { "Content-Type": "application/json", "x-api-key": this.cfg.CLAUDE_API_KEY, "anthropic-version": "2023-06-01",
+        // Una clave de usuario (sk-ant-usr-…) no está atada a un workspace y la API exige decir cuál;
+        // una clave de workspace (sk-ant-api03-…) no lo necesita.
+        ...(this.cfg.CLAUDE_WORKSPACE_ID ? { "anthropic-workspace-id": this.cfg.CLAUDE_WORKSPACE_ID } : {}) },
       body: JSON.stringify({ model: this.modelo, max_tokens: 2000, system: this.sistema(), tools: this.herramientas(), messages: mensajes })
     });
     const j = await res.json();

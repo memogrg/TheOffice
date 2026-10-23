@@ -36,6 +36,6 @@ for (const s of ["SIGINT", "SIGTERM"]) process.on(s, () => { programador.detener
 
 function delEntorno() {
   const out = {};
-  for (const [k, v] of Object.entries(process.env)) if (/^(ODOO_|ALERTA_|SMTP_|REPORTE_|PERMITIR_ESCRITURA|COMUNICACION_|CATALOGO_|SERVICIO_|CORRIDA_|CONCILIACION_|BASE_DE_DATOS|PUERTO|CLAUDE_API_KEY|DIRECTOR_)/.test(k)) out[k] = v;
+  for (const [k, v] of Object.entries(process.env)) if (/^(ODOO_|ALERTA_|SMTP_|REPORTE_|PERMITIR_ESCRITURA|COMUNICACION_|CATALOGO_|SERVICIO_|CORRIDA_|CONCILIACION_|BASE_DE_DATOS|PUERTO|CLAUDE_API_KEY|CLAUDE_WORKSPACE_ID|DIRECTOR_)/.test(k)) out[k] = v;
   return out;
 }
