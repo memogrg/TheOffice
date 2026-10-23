@@ -36,9 +36,10 @@ export class Programador {
     return partes.length ? partes.join("; ") : "sin corridas programadas (CORRIDA_DIARIA vacío)";
   }
 
+  // "Hoy" en hora local, que es como se configura CORRIDA_DIARIA. La base guarda UTC.
   #yaCorrioHoy(agente, ahora) {
     const u = this.db.ultimaCorrida(agente);
-    return u && u.inicio.slice(0, 10) === ahora.toISOString().slice(0, 10);
+    return Boolean(u) && diaLocal(new Date(u.inicio)) === diaLocal(ahora);
   }
 
   // Una pasada. Devuelve qué disparó (para los tests).
@@ -64,3 +65,5 @@ export class Programador {
     return disparos;
   }
 }
+
+const diaLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
