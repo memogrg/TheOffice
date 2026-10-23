@@ -58,9 +58,18 @@ async function main() {
   const ctx = { allowed_company_ids: companias.map(c => c.id) };
   log(`${companias.length} compañías`);
 
-  const cuentasOdoo = await odoo.leerTodo("account.account", [], ["code", "name"], { context: ctx });
-  const cuentaPorId = new Map(cuentasOdoo.map(c => [c.id, { codigo: canon(c.code), nombre: c.name }]));
-  log(`${cuentasOdoo.length} cuentas en los planes`);
+  // En Odoo 18 el código de cuenta depende de la compañía activa (code_mapping): leído con
+  // 79 compañías a la vez, solo las de la primera traen código. Se lee el plan de cada una
+  // por separado, igual que hace el agente Cuentas, y se indexa por (compañía, cuenta).
+  const codigoDe = new Map();   // "cia|cuentaId" -> { codigo, nombre }
+  let nCuentas = 0;
+  for (const c of companias) {
+    const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [c.id]]], ["code", "name"],
+      { context: { allowed_company_ids: [c.id] } });
+    for (const a of plan) codigoDe.set(`${c.id}|${a.id}`, { codigo: canon(a.code), nombre: a.name });
+    nCuentas += plan.length;
+  }
+  log(`${nCuentas} cuentas en los planes de ${companias.length} compañías`);
 
   // account.move.line trae company_id y parent_state propios; move_type no es almacenado,
   // así que el tipo se filtra por el asiento padre con un dominio relacionado.
@@ -77,11 +86,11 @@ async function main() {
     const texto = l.name || (l.product_id ? l.product_id[1] : "");
     const articulo = norm(texto);
     if (!articulo) { sinTexto++; continue; }
-    const cta = l.account_id ? cuentaPorId.get(l.account_id[0]) : null;
+    const ciaId = l.company_id ? l.company_id[0] : null;
+    const cta = l.account_id ? codigoDe.get(`${ciaId}|${l.account_id[0]}`) : null;
     if (!cta || !cta.codigo) { sinCuenta++; continue; }
     cuentas[cta.codigo] = cta.nombre;
     const llave = `${cta.codigo}|${cta.nombre}`;
-    const ciaId = l.company_id ? l.company_id[0] : null;
     const cia = norm(nombreCia[ciaId] || "");
     if (cia) {
       const pc = porCliente[cia] || (porCliente[cia] = {});
