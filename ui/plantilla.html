@@ -334,7 +334,7 @@ var BASE=[
   {id:"reporte",nm:"REPORTE",rl:"Entrega afuera",col:"#566B77",col2:"#41525C",h:0,sk:0,st:"idle",prog:0}
 ];
 
-var AG=[], sel="recepcion", tab="a", CHAT=[], movimiento=true;
+var AG=[], sel="recepcion", tab="a", CHAT=[], CONV=null, movimiento=true;
 
 function cargar(){
   try{ var raw=localStorage.getItem("iasima_oficina_v3");
@@ -499,7 +499,7 @@ function panelAgente(){
   if(a.jefe){
     h+='<div class="blk"><div class="k">Hable con el jefe</div><p class="doing" style="font-size:12.5px;color:var(--ink2)">Dele la instrucción a él. Él decide qué agente la ejecuta.</p></div>'+
       '<div class="chat" id="chat">'+(CHAT.length?CHAT:[{w:"ceo",t:"Buenos días. Recepción ya corrió"+(corrida?" a las "+new Date(corrida.actualizado).toLocaleTimeString("es-CR",{hour:"2-digit",minute:"2-digit"}):"")+". ¿Qué necesita?"}])
-      .map(function(m){return '<div class="msg '+m.w+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+esc(m.t)+"</div>";}).join("")+"</div>"+
+      .map(function(m){return '<div class="msg '+m.w+'" style="white-space:pre-wrap"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+esc(m.t)+"</div>";}).join("")+"</div>"+
       '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: revisá el buzón de International Animal Rescue" aria-label="Instrucción"><button class="b" type="submit">Enviar</button></form>';
   }
   h+='<div class="blk"><div class="k">Qué está haciendo</div><p class="doing">'+
@@ -598,11 +598,25 @@ function cablear(){
     var i=document.getElementById("ci"), v=i.value.trim(); if(!v) return;
     if(!CHAT.length) CHAT.push({w:"ceo",t:"Buenos días. ¿Qué necesita?"});
     CHAT.push({w:"me",t:v});
+    // Abierta desde el servicio (http://…/oficina), el jefe es el Director real de la app:
+    // ejecuta los agentes y responde con cifras. Abierta con doble clic (file://), es el
+    // Director de palabras, que solo dice a quién va cada cosa.
+    var enServicio = /^https?:$/.test(location.protocol);
+    if(enServicio){
+      CHAT.push({w:"ceo", t:"…", pensando:true}); pintar(); bajar();
+      fetch("/api/director",{method:"POST",headers:{"Content-Type":"application/json","X-Quien":"oficina"},
+        body:JSON.stringify({mensaje:v, conversacion:CONV})})
+      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); })
+      .then(function(j){ CONV=j.conversacion; CHAT.pop();
+        CHAT.push({w:"ceo", t:j.respuesta+(j.pasos&&j.pasos.length?"\n("+j.pasos.map(function(p){return p.herramienta;}).join(" → ")+")":"")}); pintar(); bajar(); })
+      .catch(function(e){ CHAT.pop(); var r=decidir(v); CHAT.push({w:"ceo", t:r.mensaje+"  [sin servicio: "+e.message+"]"}); pintar(); bajar(); });
+      return;
+    }
     var r = decidir(v);
     CHAT.push({w:"ceo", t:r.mensaje});
-    pintar(); var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight;
-    var ni=document.getElementById("ci"); if(ni) ni.focus();
+    pintar(); bajar();
   });
+  function bajar(){ var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight; var ni=document.getElementById("ci"); if(ni) ni.focus(); }
   var fx=document.getElementById("fx"); if(fx) fx.addEventListener("click",function(){ porId(sel).fire=true; pintar(); });
   var fn=document.getElementById("fn"); if(fn) fn.addEventListener("click",function(){ porId(sel).fire=false; pintar(); });
   var fy=document.getElementById("fy"); if(fy) fy.addEventListener("click",function(){
