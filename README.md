@@ -45,6 +45,14 @@ corre Recepción y Comunicación (borradores) todos los días; `CONCILIACION_SEM
 
 La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.html` con doble clic).
 
+**Varios inquilinos.** La misma app atiende varias firmas, cada una con su Odoo, su base, sus reglas,
+su calendario, su Director y su marca: `INQUILINOS=iasima,sima` y `IASIMA_ODOO_URL=…`, `SIMA_ODOO_URL=…`
+(cualquier `<ID>_VARIABLE` pisa la global para ese inquilino; `<ID>_NOMBRE`, `_COLOR`, `_LOGO`, `_DOMINIO`
+son la marca). Se entra por `/t/<id>/` o por el dominio del inquilino; la raíz muestra el selector.
+Los datos de cada uno viven en `inquilinos/<id>/`. Sin `INQUILINOS`, todo funciona como antes.
+
+**Desplegar**: ver `DESPLIEGUE.md` (Railway/Render/Fly con Docker; por qué no Vercel; flujo PR → pruebas → despliegue).
+
 ## Qué hay aquí
 
 | Archivo | Qué hace |
@@ -59,6 +67,9 @@ La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.htm
 | `src/agents/cuentas.js` | Revisa cuentas contables línea por línea. **Único que escribe**, y solo con `--aplicar` + `PERMITIR_ESCRITURA=si`. |
 | `src/director-core.cjs` | El Director: decide qué agente ejecuta una instrucción. **Única implementación**: Node la importa y `run.js` la incrusta en la oficina. |
 | `src/run.js` | Punto de entrada por terminal. Reporte HTML/JSON, `data/estado.json`, regenera la oficina, correo opcional. Candado contra corridas simultáneas. |
+| `src/oficina.js` | Genera la oficina 2D con cifras, Director y marca (la usan `run.js` y el servicio). |
+| `src/servicio/inquilinos.js` | Varios inquilinos: configuración por prefijo, raíces separadas, enrutamiento por `/t/<id>` o dominio. |
+| `Dockerfile`, `DESPLIEGUE.md`, `.github/workflows/pruebas.yml` | Despliegue y CI. |
 | `src/servicio/` | **La app**: `db.js` (SQLite), `corridas.js` (corre agentes y persiste; aplica aprobadas; envía aprobados), `programador.js` (calendario), `director-llm.js` (Claude con los agentes como herramientas), `api.js` (HTTP), `index.js` (arranque). |
 | `ui/app/index.html` | La app web que sirve el servicio. |
 | `scripts/construir-catalogo.js` | Arma `data/catalogo-cuentas.json` desde el histórico de Odoo (sin Excel). |

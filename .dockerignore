@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+data/*
+!data/roster.json
+!data/reglas.json
+inquilinos
+reportes
+Oficina IASIMA.html
+.git
+*.command
+*.cmd

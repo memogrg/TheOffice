@@ -17,6 +17,9 @@ Oficina IASIMA.html
 # Sistema
 .DS_Store
 
+# Datos de los inquilinos (bases, reportes, catálogos): se generan en cada despliegue
+inquilinos/
+
 # Candado de corrida y base de datos del servicio
 data/corriendo.lock
 data/oficina.db*

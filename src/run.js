@@ -18,6 +18,7 @@ import * as comunicacion from "./agents/comunicacion.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "./reporte.js";
 import { enviar } from "./mailer.js";
 import { Director } from "./director.js";
+import { escribirOficina } from "./oficina.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENTES = { recepcion, conciliacion, cuentas, comunicacion };
@@ -44,26 +45,6 @@ function tomarCandado(quien) {
   }
   writeFileSync(ruta, JSON.stringify({ agente: quien, desde: new Date().toISOString(), pid: process.pid }));
   return () => { try { unlinkSync(ruta); } catch { /* ya no está */ } };
-}
-
-// La oficina 2D se reescribe con las cifras reales incrustadas y con el mismo Director
-// que usa la terminal, para que se abra con doble clic sin servidor ni node.
-function escribirOficina(cfg, estado) {
-  const datos = { ...estado };
-  datos.correo = (cfg.SMTP_HOST && cfg.SMTP_USER) ? cfg.REPORTE_PARA : "";
-  datos.roster = leerJSON(join(RAIZ, "data", "roster.json"), { agentes: [], noConstruidos: [] });
-  datos.companias = leerJSON(join(RAIZ, "data", "companias.json"), []).map(c => ({ id: c.id, name: c.name }));
-  const plantilla = readFileSync(join(RAIZ, "ui", "plantilla.html"), "utf8");
-  const director = readFileSync(join(RAIZ, "src", "director-core.cjs"), "utf8");
-  const oficina = plantilla
-    .replace(/\/\*DATOS\*\/[\s\S]*?\/\*FIN\*\//, () =>
-      "/*DATOS*/ " + JSON.stringify(datos)
-        // Hay lineas de Odoo con el caracter de reemplazo donde iba una vocal acentuada.
-        // Se escapa para no dejarlo literal en el archivo; el dato se conserva tal cual.
-        .replace(/�/g, "\\uFFFD")
-        .replace(/<\//g, "<\\/") + " /*FIN*/")
-    .replace(/\/\*DIRECTOR\*\/[\s\S]*?\/\*FINDIRECTOR\*\//, () => "/*DIRECTOR*/\n" + director + "\n/*FINDIRECTOR*/");
-  writeFileSync(join(RAIZ, "Oficina IASIMA.html"), oficina);
 }
 
 export function crearCliente(cfg, agente) {
@@ -142,7 +123,7 @@ async function main() {
     const agentes = (previo.agentes || []).filter(a => a.id !== ficha.id).concat([ficha]);
     const estado = { actualizado: r.corrida, agentes };
     writeFileSync(join(RAIZ, "data", "estado.json"), JSON.stringify(estado, null, 2));
-    escribirOficina(cfg, estado);
+    escribirOficina({ raizProyecto: RAIZ, raiz: RAIZ, cfg, estado, marca: { nombre: cfg.NOMBRE || "IASIMA", color: cfg.COLOR || null } });
     log("Oficina actualizada: Oficina IASIMA.html");
 
     const cab = (r.alertas || []).filter(a => a.nivel !== "ok").map(a => a.texto).slice(0, 2).join(" · ");

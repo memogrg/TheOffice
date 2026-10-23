@@ -20,14 +20,23 @@ import { fileURLToPath } from "node:url";
 import { Odoo, cargarEnv } from "../src/odoo.js";
 import { OdooSimulado } from "../src/odoo-simulado.js";
 import { norm, canon } from "../src/catalogo.js";
+import { cargarInquilinos } from "../src/servicio/inquilinos.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
-const salida = (args.find(a => a.startsWith("--salida=")) || "").split("=")[1] || join(RAIZ, "data", "catalogo-cuentas.json");
+const salidaArg = (args.find(a => a.startsWith("--salida=")) || "").split("=")[1];
 const minimoVeces = Number((args.find(a => a.startsWith("--minimo=")) || "").split("=")[1] || 1);
 
 const rutaEnv = join(RAIZ, ".env");
-const cfg = { ...cargarEnv(existsSync(rutaEnv) ? readFileSync(rutaEnv, "utf8") : ""), ...process.env };
+const cfgGlobal = { ...cargarEnv(existsSync(rutaEnv) ? readFileSync(rutaEnv, "utf8") : ""), ...process.env };
+// --inquilino=sima: usa la conexión de ese inquilino y escribe en inquilinos/sima/data/
+const idInquilino = (args.find(a => a.startsWith("--inquilino=")) || "").split("=")[1];
+const inquilinos = cargarInquilinos(cfgGlobal, RAIZ);
+const inquilino = idInquilino ? inquilinos.find(i => i.id === idInquilino.toLowerCase()) : inquilinos[0];
+if (!inquilino) { console.error(`  No existe el inquilino "${idInquilino}". Hay: ${inquilinos.map(i => i.id).join(", ")}`); process.exit(1); }
+const cfg = inquilino.cfg;
+const salida = salidaArg || join(inquilino.raiz, "data", "catalogo-cuentas.json");
+if (inquilinos.length > 1) console.log(`  Inquilino: ${inquilino.nombre} (${inquilino.id})`);
 const log = m => console.log("  " + m);
 
 function cliente() {

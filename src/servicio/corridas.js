@@ -12,19 +12,21 @@ import * as cuentas from "../agents/cuentas.js";
 import * as comunicacion from "../agents/comunicacion.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
+import { escribirOficina } from "../oficina.js";
 
 export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion };
 
 export class Corridas {
-  constructor({ db, cfg, raiz, log = () => {} }) {
-    this.db = db; this.cfg = cfg; this.raiz = raiz; this.logExterno = log;
+  constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
+    this.db = db; this.cfg = cfg; this.raiz = raiz; this.raizProyecto = raizProyecto; this.marca = marca; this.prefijo = prefijo; this.logExterno = log;
     this.enCurso = null;
   }
 
   crearCliente(agente) {
     const cfg = this.cfg;
     if (cfg.ODOO_SIMULADO) {
-      const ruta = join(this.raiz, cfg.ODOO_SIMULADO);
+      // relativo a la raíz del inquilino o, si no está ahí, a la del proyecto (test/simulado/…)
+      const ruta = [join(this.raiz, cfg.ODOO_SIMULADO), join(this.raizProyecto, cfg.ODOO_SIMULADO)].find(existsSync) || join(this.raiz, cfg.ODOO_SIMULADO);
       return new OdooSimulado(existsSync(ruta) ? JSON.parse(readFileSync(ruta, "utf8")) : null, { permitirEscritura: agente.meta.escribe === true });
     }
     for (const k of ["ODOO_URL", "ODOO_DB", "ODOO_USER", "ODOO_PASSWORD"]) if (!cfg[k]) throw new Error(`Falta ${k} en .env`);
@@ -108,6 +110,8 @@ export class Corridas {
     };
     const estado = { actualizado: r.corrida, agentes: (previo.agentes || []).filter(a => a.id !== ficha.id).concat([ficha]) };
     writeFileSync(rutaEstado, JSON.stringify(estado, null, 2));
+    try { escribirOficina({ raizProyecto: this.raizProyecto, raiz: this.raiz, cfg: this.cfg, estado, marca: this.marca, prefijo: this.prefijo }); }
+    catch (e) { this.logExterno("oficina: " + e.message); }
   }
 
   // --- Cola de aprobaciones -------------------------------------------------

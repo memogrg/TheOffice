@@ -1,0 +1,18 @@
+# Cada push y cada pull request corre las pruebas. Nada se despliega si fallan.
+name: pruebas
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - name: Corrida simulada de punta a punta
+        run: ODOO_SIMULADO=test/simulado/instancia.json ALERTA_REFERENCIA=ultimo-correo node src/run.js recepcion

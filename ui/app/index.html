@@ -75,7 +75,7 @@ a{color:var(--sello)}
 </head>
 <body>
 <header>
-  <h1>OFICINA IASIMA</h1>
+  <h1 id="marca">OFICINA</h1>
   <nav id="nav">
     <button data-v="tablero" aria-selected="true">Tablero</button>
     <button data-v="director">Director</button>
@@ -96,6 +96,8 @@ a{color:var(--sello)}
 (function(){
 "use strict";
 var S = { vista:"tablero", estado:null, companias:[], filtros:{ receptor:"", compania:"", frente:"", seguimiento:"abierto" }, correoAbierto:null, chat:[], conversacion:null };
+// Con varios inquilinos la app vive en /t/<id>/; todas las llamadas llevan ese prefijo.
+var PREFIJO = (location.pathname.match(/^\/t\/[a-z0-9_-]+/i)||[""])[0];
 var $ = function(s){ return document.querySelector(s); };
 var esc = function(s){ return String(s==null?"":s).replace(/[<>&"]/g,function(c){return {"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c];}); };
 var n = function(x){ return typeof x==="number" ? x.toLocaleString("es-CR") : (x==null?"—":String(x)); };
@@ -110,7 +112,7 @@ function api(ruta, cuerpo){
   var op = { headers: { "X-Quien": $("#quien").value || "anónimo" } };
   if (cuerpo !== undefined){ op.method="POST"; op.headers["Content-Type"]="application/json"; op.body=JSON.stringify(cuerpo||{});
     if ($("#token").value) op.headers["Authorization"]="Bearer "+$("#token").value; }
-  return fetch(ruta, op).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); });
+  return fetch(PREFIJO+ruta, op).then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); });
 }
 function accion(ruta, cuerpo, ok){
   return api(ruta, cuerpo||{}).then(function(j){ msg(ok || "Listo."); return j; }).catch(function(e){ msg(e.message, true); throw e; }).finally(cargar);
@@ -143,7 +145,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="conciliacion">Conciliación</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
-    '<a href="/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
+    '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
     '<div class="sub">Nada de esto escribe en Odoo ni manda correos: solo lee y propone. Lo que escribe pasa por Aprobaciones.</div></section>';
   if (rec && rec.alertas && rec.alertas.length){
     h += '<section><h2>Alertas de la última corrida de Recepción</h2>'+rec.alertas.map(alerta).join("")+'</section>';
@@ -259,8 +261,25 @@ function tabla(cab, filas){
 function cargar(){
   return Promise.all([api("/api/estado"), api("/api/companias")]).then(function(r){
     S.estado=r[0]; S.companias=r[1];
+    marcar(S.estado.inquilino);
     pintar();
-  }).catch(function(e){ $("#main").innerHTML='<section><h2>Sin servicio</h2><div class="sub">'+esc(e.message)+'. ¿Está corriendo <code>npm run servicio</code>?</div></section>'; });
+  }).catch(function(e){
+    // varios inquilinos y la URL no dice cuál: selector
+    fetch("/api/inquilinos").then(function(x){ return x.json(); }).then(function(lista){
+      if (Array.isArray(lista) && lista.length>1 && !PREFIJO){
+        $("#main").innerHTML='<section><h2>¿Qué oficina?</h2>'+lista.map(function(i){
+          return '<p><a href="'+esc(i.prefijo)+'/" style="font:700 16px var(--m)">'+esc(i.nombre)+'</a> <span class="sub">'+esc(i.prefijo)+'/</span></p>';}).join("")+'</section>';
+      } else {
+        $("#main").innerHTML='<section><h2>Sin servicio</h2><div class="sub">'+esc(e.message)+'. ¿Está corriendo <code>npm run servicio</code>?</div></section>';
+      }
+    }).catch(function(){ $("#main").innerHTML='<section><h2>Sin servicio</h2><div class="sub">'+esc(e.message)+'. ¿Está corriendo <code>npm run servicio</code>?</div></section>'; });
+  });
+}
+function marcar(m){
+  if(!m) return;
+  document.title="Oficina "+m.nombre;
+  var h=$("#marca"); h.innerHTML=(m.logo?'<img src="'+esc(m.logo)+'" alt="" style="height:20px;vertical-align:middle;margin-right:8px">':"")+"OFICINA "+esc(m.nombre).toUpperCase();
+  if(m.color){ document.documentElement.style.setProperty("--sello", m.color); document.documentElement.style.setProperty("--sello2", m.color); }
 }
 function pintar(){
   document.querySelectorAll("#nav button").forEach(function(b){ b.setAttribute("aria-selected", b.dataset.v===S.vista?"true":"false"); });
