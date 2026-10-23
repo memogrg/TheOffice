@@ -10,7 +10,7 @@ import { join, extname, normalize, sep } from "node:path";
 
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
-export function crearApi({ db, corridas, programador, cfg, raiz, log = () => {} }) {
+export function crearApi({ db, corridas, programador, director = null, cfg, raiz, log = () => {} }) {
   const rutas = [];
   const ruta = (metodo, patron, fn) => rutas.push({ metodo, re: new RegExp("^" + patron.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn });
 
@@ -22,6 +22,7 @@ export function crearApi({ db, corridas, programador, cfg, raiz, log = () => {} 
     smtp: Boolean(cfg.SMTP_HOST && cfg.SMTP_USER),
     enCurso: corridas.enCurso,
     programador: programador ? { plan: programador.describir(), ultimoTick: programador.ultimoTick } : null,
+    director: director ? { modo: director.disponible ? "llm" : "palabras", modelo: director.disponible ? director.modelo : null } : null,
     ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas"].map(a => {
       const u = db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
@@ -69,6 +70,21 @@ export function crearApi({ db, corridas, programador, cfg, raiz, log = () => {} 
   ruta("POST", "/api/correos/:id/rechazar", (q, p, cuerpo, quien) => ({ ok: db.decidirCorreo(Number(p.id), "rechazado", quien) }));
   ruta("POST", "/api/correos/enviar", (q, p, cuerpo, quien) =>
     corridas.enviarAprobados({ quienPide: quien, prueba: cuerpo.real !== true, ids: Array.isArray(cuerpo.ids) ? cuerpo.ids.map(Number) : null }));
+
+  // --- el Director (modelo de lenguaje con los agentes como herramientas; solo lee y propone)
+  ruta("GET", "/api/director", () => ({ disponible: Boolean(director?.disponible), modelo: director?.modelo || null, modo: director?.disponible ? "llm" : "palabras",
+    conversaciones: db.conversaciones(20) }));
+  ruta("GET", "/api/director/:id", (q, p) => db.conversacion(Number(p.id)) || error(404, "No existe esa conversación."));
+  ruta("POST", "/api/director", async (q, p, cuerpo, quien) => {
+    if (!director) return error(503, "El Director no está configurado.");
+    const texto = String(cuerpo.mensaje || "").trim();
+    if (!texto) return error(400, "Falta el mensaje.");
+    const previa = cuerpo.conversacion ? db.conversacion(Number(cuerpo.conversacion)) : null;
+    const r = await director.responder(texto, { conversacion: previa?.mensajes || [], quien });
+    const id = db.guardarConversacion(previa?.id || null, { quien, modo: r.modo, mensajes: r.conversacion, turno: { pregunta: texto, respuesta: r.respuesta, pasos: r.pasos, cuando: new Date().toISOString() } });
+    db.auditar(quien, "preguntar", "conversacion", id, { pregunta: texto.slice(0, 200), pasos: r.pasos.map(x => x.herramienta) });
+    return { conversacion: id, respuesta: r.respuesta, pasos: r.pasos, modo: r.modo };
+  });
 
   ruta("GET", "/api/auditoria", (q) => db.auditoria(Number(q.limite || 100)));
   ruta("GET", "/api/companias", () => {

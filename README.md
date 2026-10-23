@@ -36,6 +36,7 @@ escribe en Odoo o manda por correo pasa antes por una persona:
 | **Casos** | Un caso por documento y receptor. Filtro por receptor, compañía, frente (afuera/adentro). «Resuelto» lo marca una persona; la corrida siguiente no lo pisa, y lo que deja de aparecer en Odoo se cierra solo. |
 | **Aprobaciones** | Las propuestas de Cuentas, línea por línea. Aprobar / rechazar; «Aplicar en Odoo» corre el agente en escritura **solo sobre lo aprobado** de esa compañía. |
 | **Correos** | Los borradores de Victor con vista previa. Aprobar / rechazar; enviar en prueba (todo a su correo) o de verdad. |
+| **Director** | Chat. Con `CLAUDE_API_KEY`, un modelo de lenguaje decide qué agente atiende, lo corre como herramienta y responde con cifras («¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk»). Sus herramientas son de solo lectura y propuesta: no puede escribir en Odoo ni enviar correos. Sin clave, es el Director de palabras clave. |
 | **Corridas** y **Auditoría** | Qué corrió, cuánto tardó, qué encontró; y quién aprobó, rechazó, aplicó o envió qué, y cuándo. |
 
 API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, toda acción exige `Authorization: Bearer <token>`;
@@ -58,7 +59,7 @@ La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.htm
 | `src/agents/cuentas.js` | Revisa cuentas contables línea por línea. **Único que escribe**, y solo con `--aplicar` + `PERMITIR_ESCRITURA=si`. |
 | `src/director-core.cjs` | El Director: decide qué agente ejecuta una instrucción. **Única implementación**: Node la importa y `run.js` la incrusta en la oficina. |
 | `src/run.js` | Punto de entrada por terminal. Reporte HTML/JSON, `data/estado.json`, regenera la oficina, correo opcional. Candado contra corridas simultáneas. |
-| `src/servicio/` | **La app**: `db.js` (SQLite), `corridas.js` (corre agentes y persiste; aplica aprobadas; envía aprobados), `programador.js` (calendario), `api.js` (HTTP), `index.js` (arranque). |
+| `src/servicio/` | **La app**: `db.js` (SQLite), `corridas.js` (corre agentes y persiste; aplica aprobadas; envía aprobados), `programador.js` (calendario), `director-llm.js` (Claude con los agentes como herramientas), `api.js` (HTTP), `index.js` (arranque). |
 | `ui/app/index.html` | La app web que sirve el servicio. |
 | `scripts/construir-catalogo.js` | Arma `data/catalogo-cuentas.json` desde el histórico de Odoo (sin Excel). |
 | `data/roster.json` | El contrato de cada agente. El Director lo lee. |
@@ -108,6 +109,7 @@ agentes con las palabras del roster, pregunta si hay empate, pide la compañía 
 | `CATALOGO_CUENTAS` | Otro catálogo que no sea `data/catalogo-cuentas.json`. |
 | `PUERTO`, `BASE_DE_DATOS`, `SERVICIO_TOKEN` | Del servicio: puerto (4180), ruta de la base (`data/oficina.db`), token para las acciones. |
 | `CORRIDA_DIARIA`, `CONCILIACION_SEMANAL` | Calendario del servicio: hora local `HH:MM` y día de la semana (0 domingo … 6 sábado). |
+| `CLAUDE_API_KEY`, `DIRECTOR_MODELO`, `DIRECTOR_MAX_PASOS` | El Director por modelo de lenguaje. Sin clave, Director de palabras. |
 
 Las variables de entorno pisan al `.env`, así que se puede correr en un contenedor o en CI sin el archivo.
 
@@ -118,5 +120,4 @@ Las variables de entorno pisan al `.env`, así que se puede correr en un contene
       con factura electrónica (mensaje de aceptación a Hacienda) antes de usar `--aplicar` en producción.
 - [ ] Login por enlace mágico para receptores (ven solo sus compañías) y roles.
 - [ ] Agentes Diagnóstico, Corrección y Reporte.
-- [ ] Director con modelo de lenguaje (tool use) sobre los agentes.
 - [ ] Desplegar el servicio en un VPS (Docker) apuntando a producción.

@@ -111,6 +111,16 @@ CREATE TABLE IF NOT EXISTS correos (
 );
 CREATE INDEX IF NOT EXISTS correos_estado ON correos(estado);
 
+CREATE TABLE IF NOT EXISTS conversaciones (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  quien     TEXT NOT NULL,
+  inicio    TEXT NOT NULL,
+  ultimo    TEXT NOT NULL,
+  modo      TEXT,
+  mensajes  TEXT NOT NULL,     -- JSON: el historial tal cual lo consume la API del modelo
+  resumen   TEXT               -- JSON: [{pregunta, respuesta, pasos}] para mostrar
+);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   cuando    TEXT NOT NULL,
@@ -306,11 +316,29 @@ export class BaseDeDatos {
     this.correr("UPDATE correos SET estado=?, enviado_a=?, enviado_en=?, error=? WHERE id=?", estado, enviadoA, estado === "enviado" ? this.#ahora() : null, error, id);
   }
 
+  // --- conversaciones con el Director
+  conversacion(id) { return desempacar(this.uno("SELECT * FROM conversaciones WHERE id=?", id)); }
+  guardarConversacion(id, { quien, modo, mensajes, turno }) {
+    const ahora = this.#ahora();
+    if (id) {
+      const c = this.conversacion(id);
+      const resumen = [...(c?.resumen || []), turno];
+      this.correr("UPDATE conversaciones SET ultimo=?, modo=?, mensajes=?, resumen=? WHERE id=?", ahora, modo, JSON.stringify(mensajes), JSON.stringify(resumen), id);
+      return id;
+    }
+    const r = this.correr("INSERT INTO conversaciones (quien, inicio, ultimo, modo, mensajes, resumen) VALUES (?,?,?,?,?,?)",
+      quien, ahora, ahora, modo, JSON.stringify(mensajes), JSON.stringify([turno]));
+    return Number(r.lastInsertRowid);
+  }
+  conversaciones(limite = 30) {
+    return this.todos("SELECT id, quien, inicio, ultimo, modo, resumen FROM conversaciones ORDER BY ultimo DESC LIMIT ?", limite).map(desempacar);
+  }
+
   auditoria(limite = 100) { return this.todos("SELECT * FROM auditoria ORDER BY id DESC LIMIT ?", limite).map(desempacar); }
 }
 
 // Columnas JSON vuelven a ser objetos.
-const JSON_COLS = new Set(["totales", "alertas", "resultado", "correo_ids", "companias", "detalle"]);
+const JSON_COLS = new Set(["totales", "alertas", "resultado", "correo_ids", "companias", "detalle", "mensajes", "resumen"]);
 function desempacar(fila) {
   if (!fila) return fila;
   const out = { ...fila };
