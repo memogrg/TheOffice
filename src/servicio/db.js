@@ -121,6 +121,35 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   resumen   TEXT               -- JSON: [{pregunta, respuesta, pasos}] para mostrar
 );
 
+CREATE TABLE IF NOT EXISTS usuarios (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  correo    TEXT NOT NULL UNIQUE,     -- en minúsculas
+  nombre    TEXT,
+  rol       TEXT NOT NULL DEFAULT 'receptor',   -- contable | receptor
+  activo    INTEGER NOT NULL DEFAULT 1,
+  creado_en TEXT NOT NULL,
+  creado_por TEXT,
+  ultimo_acceso TEXT
+);
+
+CREATE TABLE IF NOT EXISTS invitaciones (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  token_hash TEXT NOT NULL UNIQUE,   -- nunca el token en claro
+  vence     TEXT NOT NULL,
+  usada_en  TEXT,
+  creada_en TEXT NOT NULL,
+  creada_por TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sesiones (
+  id        TEXT PRIMARY KEY,         -- hash del id que viaja en la cookie
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  creada_en TEXT NOT NULL,
+  vence     TEXT NOT NULL,
+  ultimo_uso TEXT
+);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   cuando    TEXT NOT NULL,
@@ -333,6 +362,60 @@ export class BaseDeDatos {
   conversaciones(limite = 30) {
     return this.todos("SELECT id, quien, inicio, ultimo, modo, resumen FROM conversaciones ORDER BY ultimo DESC LIMIT ?", limite).map(desempacar);
   }
+
+  // --- usuarios, invitaciones y sesiones
+  usuarios() { return this.todos("SELECT id, correo, nombre, rol, activo, creado_en, creado_por, ultimo_acceso FROM usuarios ORDER BY rol, correo"); }
+  usuario(id) { return this.uno("SELECT * FROM usuarios WHERE id=?", id); }
+  usuarioPorCorreo(correo) { return this.uno("SELECT * FROM usuarios WHERE correo=?", String(correo || "").trim().toLowerCase()); }
+  crearUsuario({ correo, nombre = null, rol = "receptor", quien = "sistema" }) {
+    const c = String(correo || "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)) throw new Error("Correo inválido.");
+    if (!["contable", "receptor"].includes(rol)) throw new Error("Rol inválido.");
+    const existe = this.usuarioPorCorreo(c);
+    if (existe) {
+      this.correr("UPDATE usuarios SET nombre=COALESCE(?, nombre), rol=?, activo=1 WHERE id=?", nombre, rol, existe.id);
+      return this.usuario(existe.id);
+    }
+    const r = this.correr("INSERT INTO usuarios (correo, nombre, rol, creado_en, creado_por) VALUES (?,?,?,?,?)", c, nombre, rol, this.#ahora(), quien);
+    this.auditar(quien, "crear-usuario", "usuario", Number(r.lastInsertRowid), { correo: c, rol });
+    return this.usuario(Number(r.lastInsertRowid));
+  }
+  desactivarUsuario(id, quien) {
+    this.correr("UPDATE usuarios SET activo=0 WHERE id=?", id);
+    this.correr("DELETE FROM sesiones WHERE usuario_id=?", id);
+    this.auditar(quien, "desactivar-usuario", "usuario", id);
+  }
+  crearInvitacion(usuarioId, tokenHash, { minutos = 60 * 24 * 3, quien = "sistema" } = {}) {
+    const vence = new Date(Date.now() + minutos * 60e3).toISOString();
+    this.correr("INSERT INTO invitaciones (usuario_id, token_hash, vence, creada_en, creada_por) VALUES (?,?,?,?,?)", usuarioId, tokenHash, vence, this.#ahora(), quien);
+    this.auditar(quien, "invitar", "usuario", usuarioId, { vence });
+    return vence;
+  }
+  // Canjea una invitación: una sola vez, antes de vencer, usuario activo. Devuelve el usuario o null.
+  canjearInvitacion(tokenHash) {
+    const inv = this.uno("SELECT * FROM invitaciones WHERE token_hash=?", tokenHash);
+    if (!inv || inv.usada_en || inv.vence < this.#ahora()) return null;
+    const u = this.usuario(inv.usuario_id);
+    if (!u || !u.activo) return null;
+    this.correr("UPDATE invitaciones SET usada_en=? WHERE id=?", this.#ahora(), inv.id);
+    return u;
+  }
+  crearSesion(idHash, usuarioId, { dias = 30 } = {}) {
+    const ahora = this.#ahora();
+    this.correr("INSERT INTO sesiones (id, usuario_id, creada_en, vence, ultimo_uso) VALUES (?,?,?,?,?)", idHash, usuarioId, ahora, new Date(Date.now() + dias * 864e5).toISOString(), ahora);
+    this.correr("UPDATE usuarios SET ultimo_acceso=? WHERE id=?", ahora, usuarioId);
+  }
+  // Devuelve el usuario de una sesión viva, o null.
+  usuarioDeSesion(idHash) {
+    if (!idHash) return null;
+    const s = this.uno("SELECT * FROM sesiones WHERE id=?", idHash);
+    if (!s || s.vence < this.#ahora()) return null;
+    const u = this.usuario(s.usuario_id);
+    if (!u || !u.activo) return null;
+    this.correr("UPDATE sesiones SET ultimo_uso=? WHERE id=?", this.#ahora(), idHash);
+    return u;
+  }
+  cerrarSesion(idHash) { this.correr("DELETE FROM sesiones WHERE id=?", idHash); }
 
   auditoria(limite = 100) { return this.todos("SELECT * FROM auditoria ORDER BY id DESC LIMIT ?", limite).map(desempacar); }
 }

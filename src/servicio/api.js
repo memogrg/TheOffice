@@ -6,7 +6,8 @@
 // pide el token una vez y lo guarda en cookie; la oficina 2D funciona con esa misma cookie.
 // Quién decide se toma de la cabecera X-Quien (o del cuerpo, campo "quien"). El login por
 // enlace mágico para receptores viene después; la API ya deja todo auditado con nombre.
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
+import { enviarCorreo } from "../mailer.js";
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, extname, normalize, sep } from "node:path";
@@ -22,11 +23,15 @@ export function crearApi(opciones) {
   const inquilinos = contextos.map(c => c.inquilino);
   const rutas = [];
   // Cada manejador recibe (q, params, cuerpo, quien, ctx) donde ctx es el contexto del inquilino.
-  const ruta = (metodo, patron, fn) => rutas.push({ metodo, re: new RegExp("^" + patron.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn });
+  const ruta = (metodo, patron, fn, roles = ["contable"]) => rutas.push({ metodo, re: new RegExp("^" + patron.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn, roles });
+  const AMBOS = ["contable", "receptor"];
+  // Un receptor solo ve lo suyo: sus casos (por su correo) y los correos dirigidos a él.
+  const esReceptor = ctx => ctx.usuario?.rol === "receptor";
 
   // --- estado general
-  ruta("GET", "/api/estado", (q, p, c, quien, ctx) => ({
+  ruta("GET", "/api/estado", (q, p, c, quien, ctx) => esReceptor(ctx) ? estadoReceptor(ctx) : ({
     ahora: new Date().toISOString(),
+    usuario: ctx.usuario ? { correo: ctx.usuario.correo, nombre: ctx.usuario.nombre, rol: ctx.usuario.rol } : { rol: "contable", porToken: true },
     inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
@@ -45,7 +50,22 @@ export function crearApi(opciones) {
       correos: ctx.db.correos({ estado: "borrador" }).length,
       correosAprobados: ctx.db.correos({ estado: "aprobado" }).length
     }
-  }));
+  }), AMBOS);
+  function estadoReceptor(ctx) {
+    const u = ctx.usuario;
+    const abiertos = ctx.db.casos({ receptor: u.correo, seguimiento: "abierto", limite: 5000 });
+    const porCia = {};
+    for (const c of abiertos) { const k = c.compania_id; porCia[k] = porCia[k] || { compania_id: k, compania: c.compania, afuera: 0, adentro: 0, total: 0 }; porCia[k][c.frente]++; porCia[k].total++; }
+    const rec = ctx.db.ultimaCorrida("recepcion");
+    return {
+      ahora: new Date().toISOString(), usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol },
+      inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
+      ultimaRecepcion: rec ? rec.fin : null,
+      casos: { afuera: abiertos.filter(c => c.frente === "afuera").length, adentro: abiertos.filter(c => c.frente === "adentro").length,
+        resueltos: ctx.db.casos({ receptor: u.correo, seguimiento: "resuelto", limite: 5000 }).length, porCompania: Object.values(porCia).sort((a, b) => b.total - a.total) },
+      correos: ctx.db.correos({ estado: "todos" }).filter(c => c.para === u.correo && ["aprobado", "enviado"].includes(c.estado)).length
+    };
+  }
 
   // --- corridas
   ruta("GET", "/api/corridas", (q, p, c, quien, ctx) => ctx.db.corridas({ agente: q.agente || null, limite: Number(q.limite || 50) }));
@@ -60,10 +80,11 @@ export function crearApi(opciones) {
   });
 
   // --- casos (lo que Recepción encontró, por receptor y compañía)
-  ruta("GET", "/api/casos", (q, p, c, quien, ctx) => ctx.db.casos({ receptor: q.receptor || null, companiaId: q.compania ? Number(q.compania) : null,
-    frente: q.frente || null, seguimiento: q.seguimiento || "abierto", limite: Number(q.limite || 500) }));
-  ruta("POST", "/api/casos/:id/resolver", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.resolverCaso(Number(p.id), quien, cuerpo.nota || null) }));
-  ruta("POST", "/api/casos/:id/reabrir", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.reabrirCaso(Number(p.id), quien) }));
+  ruta("GET", "/api/casos", (q, p, c, quien, ctx) => ctx.db.casos({ receptor: esReceptor(ctx) ? ctx.usuario.correo : (q.receptor || null), companiaId: q.compania ? Number(q.compania) : null,
+    frente: q.frente || null, seguimiento: q.seguimiento || "abierto", limite: Number(q.limite || 500) }), AMBOS);
+  const casoPropio = (ctx, id) => !esReceptor(ctx) || ctx.db.casos({ receptor: ctx.usuario.correo, seguimiento: "todos", limite: 10000 }).some(c => c.id === id);
+  ruta("POST", "/api/casos/:id/resolver", (q, p, cuerpo, quien, ctx) => casoPropio(ctx, Number(p.id)) ? ({ ok: ctx.db.resolverCaso(Number(p.id), quien, cuerpo.nota || null) }) : error(403, "Ese caso no es suyo."), AMBOS);
+  ruta("POST", "/api/casos/:id/reabrir", (q, p, cuerpo, quien, ctx) => casoPropio(ctx, Number(p.id)) ? ({ ok: ctx.db.reabrirCaso(Number(p.id), quien) }) : error(403, "Ese caso no es suyo."), AMBOS);
 
   // --- propuestas de Cuentas
   ruta("GET", "/api/propuestas", (q, p, c, quien, ctx) => ctx.db.propuestas({ estado: q.estado || "propuesta", companiaId: q.compania ? Number(q.compania) : null }));
@@ -75,8 +96,15 @@ export function crearApi(opciones) {
   });
 
   // --- correos de Victor
-  ruta("GET", "/api/correos", (q, p, c, quien, ctx) => ctx.db.correos({ estado: q.estado || "borrador" }));
-  ruta("GET", "/api/correos/:id", (q, p, c, quien, ctx) => ctx.db.correo(Number(p.id)) || error(404, "No existe ese correo."));
+  ruta("GET", "/api/correos", (q, p, c, quien, ctx) => esReceptor(ctx)
+    ? ctx.db.correos({ estado: "todos" }).filter(x => x.para === ctx.usuario.correo && ["aprobado", "enviado"].includes(x.estado))
+    : ctx.db.correos({ estado: q.estado || "borrador" }), AMBOS);
+  ruta("GET", "/api/correos/:id", (q, p, c, quien, ctx) => {
+    const x = ctx.db.correo(Number(p.id));
+    if (!x) return error(404, "No existe ese correo.");
+    if (esReceptor(ctx) && (x.para !== ctx.usuario.correo || !["aprobado", "enviado"].includes(x.estado))) return error(403, "Ese correo no es suyo.");
+    return x;
+  }, AMBOS);
   ruta("POST", "/api/correos/:id/aprobar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirCorreo(Number(p.id), "aprobado", quien) }));
   ruta("POST", "/api/correos/:id/rechazar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirCorreo(Number(p.id), "rechazado", quien) }));
   ruta("POST", "/api/correos/enviar", (q, p, cuerpo, quien, ctx) =>
@@ -100,8 +128,47 @@ export function crearApi(opciones) {
   ruta("GET", "/api/auditoria", (q, p, c, quien, ctx) => ctx.db.auditoria(Number(q.limite || 100)));
   ruta("GET", "/api/companias", (q, p, c, quien, ctx) => {
     const r = join(ctx.raiz, "data", "companias.json");
-    return existsSync(r) ? JSON.parse(readFileSync(r, "utf8")) : [];
+    const todas = existsSync(r) ? JSON.parse(readFileSync(r, "utf8")) : [];
+    if (!esReceptor(ctx)) return todas;
+    const mias = new Set(ctx.db.casos({ receptor: ctx.usuario.correo, seguimiento: "todos", limite: 10000 }).map(x => x.compania_id));
+    return todas.filter(x => mias.has(x.id));
+  }, AMBOS);
+
+  // --- usuarios (solo contable): alta, baja, invitación por enlace (correo si hay SMTP, y siempre copiable)
+  ruta("GET", "/api/usuarios", (q, p, c, quien, ctx) => ctx.db.usuarios());
+  ruta("POST", "/api/usuarios", (q, p, cuerpo, quien, ctx) => ctx.db.crearUsuario({ correo: cuerpo.correo, nombre: cuerpo.nombre || null, rol: cuerpo.rol || "receptor", quien }));
+  ruta("POST", "/api/usuarios/:id/desactivar", (q, p, cuerpo, quien, ctx) => { ctx.db.desactivarUsuario(Number(p.id), quien); return { ok: true }; });
+  ruta("POST", "/api/usuarios/:id/invitar", async (q, p, cuerpo, quien, ctx) => {
+    const u = ctx.db.usuario(Number(p.id));
+    if (!u || !u.activo) return error(404, "No existe ese usuario o está desactivado.");
+    const token = randomBytes(24).toString("base64url");
+    const vence = ctx.db.crearInvitacion(u.id, hash(token), { quien });
+    const base = String(cuerpo.base || "").replace(/\/+$/, "");
+    const enlace = `${base}${ctx.prefijo || ""}/?t=${token}`;
+    let enviado = false, errorCorreo = null;
+    if (cuerpo.enviar !== false && ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS) {
+      try {
+        await enviarCorreo({ cfg: ctx.cfg, para: u.correo, asunto: `Su acceso a la Oficina ${ctx.inquilino.nombre}`,
+          html: `<p>Hola${u.nombre ? " " + esc(u.nombre) : ""}. Entre a la Oficina ${esc(ctx.inquilino.nombre)} con este enlace (vale una sola vez, hasta ${esc(vence.slice(0, 16).replace("T", " "))} UTC):</p><p><a href="${esc(enlace)}">${esc(enlace)}</a></p>`,
+          texto: `Entre a la Oficina ${ctx.inquilino.nombre} con este enlace (una sola vez): ${enlace}` });
+        enviado = true;
+      } catch (e) { errorCorreo = e.message; }
+    }
+    return { enlace, vence, enviado, errorCorreo };
   });
+  // Un usuario ya registrado pide su enlace por correo (solo funciona con SMTP; nunca revela si el correo existe).
+  ruta("POST", "/api/acceso/pedir", async (q, p, cuerpo, quien, ctx) => {
+    const u = ctx.db.usuarioPorCorreo(cuerpo.correo);
+    if (!(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS)) return error(503, "El envío de correo no está configurado; pida el enlace a su contador.");
+    if (u && u.activo) {
+      const token = randomBytes(24).toString("base64url");
+      ctx.db.crearInvitacion(u.id, hash(token), { minutos: 30, quien: "acceso/pedir" });
+      const enlace = `${String(cuerpo.base || "").replace(/\/+$/, "")}${ctx.prefijo || ""}/?t=${token}`;
+      try { await enviarCorreo({ cfg: ctx.cfg, para: u.correo, asunto: `Su enlace de acceso a la Oficina ${ctx.inquilino.nombre}`, html: `<p><a href="${esc(enlace)}">${esc(enlace)}</a> (vale 30 minutos, una sola vez)</p>`, texto: enlace }); }
+      catch { /* no se revela nada */ }
+    }
+    return { ok: true, mensaje: "Si el correo está registrado, el enlace va en camino." };
+  }, ["publico"]);
 
   // lista de inquilinos (para el selector cuando hay varios y ninguno se puede deducir)
   const listaInquilinos = () => inquilinos.map(i => ({ ...marcaDe(i), prefijo: `/t/${i.id}` }));
@@ -136,14 +203,40 @@ export function crearApi(opciones) {
         res.setHeader("Set-Cookie", `${nombreCookie}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`);
         return responder(res, 200, { ok: true });
       }
-      // ¿Tiene token? Cabecera Bearer o cookie firmada. Sin SERVICIO_TOKEN configurado, pasa todo.
-      const autorizado = !token
-        || (req.headers.authorization === `Bearer ${token}`)
-        || igual(cookie(req, nombreCookie), firmar(token));
-      // Sin token no se ve nada del inquilino salvo la app en sí (que pedirá el token) y el estado
-      // mínimo para saber que hay que entrar.
+      // Canje de una invitación: POST /api/acceso/entrar {token} → sesión en cookie.
+      const nombreSesion = `sesion_${ctx.inquilino.id}`;
+      if (pathname === "/api/acceso/entrar" && req.method === "POST") {
+        const cuerpo = await leerCuerpo(req);
+        const u = ctx.db.canjearInvitacion(hash(String(cuerpo.token || "")));
+        if (!u) return responder(res, 401, { error: "El enlace no es válido, ya se usó o venció. Pida uno nuevo." });
+        const id = randomBytes(24).toString("base64url");
+        ctx.db.crearSesion(hash(id), u.id);
+        ctx.db.auditar(u.correo, "entrar", "usuario", u.id);
+        res.setHeader("Set-Cookie", `${nombreSesion}=${id}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Lax; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+        return responder(res, 200, { ok: true, usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol } });
+      }
+      if (pathname === "/api/acceso/salir" && req.method === "POST") {
+        ctx.db.cerrarSesion(hash(cookie(req, nombreSesion)));
+        res.setHeader("Set-Cookie", `${nombreSesion}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`);
+        return responder(res, 200, { ok: true });
+      }
+
+      // ¿Quién es? (1) token de servicio: contable sin nombre fijo; (2) sesión de un usuario registrado.
+      const porToken = Boolean(token) && ((req.headers.authorization === `Bearer ${token}`) || igual(cookie(req, nombreCookie), firmar(token)));
+      const usuario = ctx.db.usuarioDeSesion(hash(cookie(req, nombreSesion)));
+      ctx.usuario = usuario;
+      // Sin SERVICIO_TOKEN configurado y sin sesión, todo es contable (modo local de siempre).
+      const autorizado = !token || porToken || Boolean(usuario);
       if (!autorizado) {
-        if (pathname.startsWith("/api/")) return responder(res, 401, { error: "Hace falta el token de acceso.", entrar: true, inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "" });
+        if (pathname.startsWith("/api/")) {
+          const r = rutas.find(x => x.metodo === req.method && x.re.test(pathname));
+          if (r && r.roles.includes("publico")) {
+            const cuerpo = req.method === "POST" ? await leerCuerpo(req) : {};
+            const out = await r.fn(q, pathname.match(r.re).groups || {}, cuerpo, "anónimo", ctx);
+            return out && out.__error ? responder(res, out.__error, { error: out.mensaje }) : responder(res, 200, out ?? {});
+          }
+          return responder(res, 401, { error: "Hace falta entrar.", entrar: true, inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS) });
+        }
         if (pathname === "/oficina") return redirigir(res, (r0.prefijo || "") + "/");
         return estatico(res, raizProyecto, pathname);
       }
@@ -151,9 +244,11 @@ export function crearApi(opciones) {
       if (pathname.startsWith("/api/")) {
         const r = rutas.find(x => x.metodo === req.method && x.re.test(pathname));
         if (!r) return responder(res, 404, { error: "No existe esa ruta." });
+        const rol = usuario ? usuario.rol : "contable";
+        if (!r.roles.includes(rol) && !r.roles.includes("publico")) return responder(res, 403, { error: "Su acceso no permite esta acción." });
         let cuerpo = {};
         if (req.method === "POST") cuerpo = await leerCuerpo(req);
-        const quien = String(req.headers["x-quien"] || cuerpo.quien || "anónimo").slice(0, 120);
+        const quien = usuario ? (usuario.nombre ? `${usuario.nombre} <${usuario.correo}>` : usuario.correo) : String(req.headers["x-quien"] || cuerpo.quien || "anónimo").slice(0, 120);
         const params = pathname.match(r.re).groups || {};
         const out = await r.fn(q, params, cuerpo, quien, ctx);
         if (out && out.__error) return responder(res, out.__error, { error: out.mensaje });
@@ -161,6 +256,7 @@ export function crearApi(opciones) {
       }
       // la oficina 2D regenerada del inquilino
       if (pathname === "/oficina") {
+        if (esReceptor(ctx)) return redirigir(res, (r0.prefijo || "") + "/");
         const of = join(ctx.raiz, "Oficina IASIMA.html");
         if (!existsSync(of)) return responder(res, 404, { error: "Todavía no hay oficina: corra Recepción primero." });
         res.writeHead(200, { "Content-Type": TIPOS[".html"] });
@@ -194,6 +290,8 @@ function normalizar(o) {
 const error = (codigo, mensaje) => ({ __error: codigo, mensaje });
 // La cookie no lleva el token en claro sino un HMAC de él: sirve para entrar, no para leer el token.
 const firmar = t => createHmac("sha256", "oficina-cookie|" + t).update(t).digest("hex");
+const hash = t => createHash("sha256").update(String(t)).digest("hex");
+const esc = s => String(s ?? "").replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
 function igual(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && x.length > 0 && timingSafeEqual(x, y); }
 function cookie(req, nombre) {
   const m = String(req.headers.cookie || "").split(";").map(s => s.trim()).find(s => s.startsWith(nombre + "="));

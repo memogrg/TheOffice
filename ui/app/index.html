@@ -84,10 +84,12 @@ a{color:var(--sello)}
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
     <button data-v="auditoria">Auditoría</button>
+    <button data-v="usuarios">Usuarios</button>
   </nav>
   <div class="yo">
     <label for="quien">Soy</label><input id="quien" placeholder="nombre o correo">
     <input id="token" placeholder="token (opcional, si no entró)" type="password" title="Solo hace falta si no usó la pantalla de entrada">
+    <button class="b gh" id="salir" style="display:none" title="Cerrar sesión">Salir</button>
   </div>
 </header>
 <main id="main"></main>
@@ -113,17 +115,22 @@ function api(ruta, cuerpo){
   if ($("#token").value) op.headers["Authorization"]="Bearer "+$("#token").value;
   if (cuerpo !== undefined){ op.method="POST"; op.headers["Content-Type"]="application/json"; op.body=JSON.stringify(cuerpo||{}); }
   return fetch(PREFIJO+ruta, op).then(function(r){ return r.json().then(function(j){
-    if(r.status===401 && j.entrar){ var e=new Error(j.error||"Hace falta el token."); e.entrar=true; e.inquilino=j.inquilino; throw e; }
+    if(r.status===401 && j.entrar){ var e=new Error(j.error||"Hace falta entrar."); e.entrar=true; e.inquilino=j.inquilino; e.smtp=j.smtp; throw e; }
     if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); });
 }
 // Pantalla de entrada: el token se valida una vez y queda en una cookie del navegador.
-function pedirEntrada(m){
+function pedirEntrada(m, smtp){
   marcar(m);
   $("#main").innerHTML='<section style="max-width:420px;margin:40px auto"><h2>Entrar</h2>'+
-    '<div class="sub" style="margin-bottom:10px">Esta oficina está protegida. Escriba su nombre y el token de acceso que le dieron.</div>'+
-    '<form id="entrar"><div class="fila"><input class="f" id="eQuien" placeholder="su nombre o correo" style="flex:1" value="'+esc($("#quien").value)+'"></div>'+
-    '<div class="fila"><input class="f" id="eToken" type="password" placeholder="token de acceso" style="flex:1" autofocus></div>'+
-    '<div class="fila"><button class="b" type="submit">Entrar</button></div><div class="sub" id="eMsg"></div></form></section>';
+    '<div class="sub" style="margin-bottom:10px">Si le mandaron un <b>enlace de acceso</b>, ábralo y entra directo. '+(smtp?'Si ya está registrado, pida uno nuevo con su correo.':'Si no lo tiene, pídaselo a su contador.')+'</div>'+
+    (smtp?'<form id="pedir"><div class="fila"><input class="f" id="pCorreo" type="email" placeholder="su correo" style="flex:1" autofocus><button class="b" type="submit">Enviarme el enlace</button></div><div class="sub" id="pMsg"></div></form>':"")+
+    '<details style="margin-top:14px"><summary class="sub" style="cursor:pointer">Soy del equipo contable: entrar con token</summary>'+
+    '<form id="entrar" style="margin-top:8px"><div class="fila"><input class="f" id="eQuien" placeholder="su nombre o correo" style="flex:1" value="'+esc($("#quien").value)+'"></div>'+
+    '<div class="fila"><input class="f" id="eToken" type="password" placeholder="token de acceso" style="flex:1"></div>'+
+    '<div class="fila"><button class="b" type="submit">Entrar</button></div><div class="sub" id="eMsg"></div></form></details></section>';
+  var pf=$("#pedir"); if(pf) pf.addEventListener("submit", function(ev){ ev.preventDefault();
+    fetch(PREFIJO+"/api/acceso/pedir",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({correo:$("#pCorreo").value.trim(), base:location.origin}),credentials:"same-origin"})
+      .then(function(r){ return r.json(); }).then(function(j){ $("#pMsg").textContent=j.mensaje||j.error||"Listo."; }); });
   $("#entrar").addEventListener("submit", function(ev){ ev.preventDefault();
     var t=$("#eToken").value.trim(), q=$("#eQuien").value.trim();
     if(q){ $("#quien").value=q; try{ localStorage.setItem("iasima_quien", q); }catch(e){} }
@@ -191,10 +198,38 @@ V.director = function(){
     '<form class="row" id="cf"><input id="ci" placeholder="Escriba la instrucción…" autocomplete="off"><button class="b" type="submit" id="cEnviar">Enviar</button>'+
     (S.chat.length?'<button class="b gh" type="button" id="cNueva">Nueva conversación</button>':"")+'</form></section>';
 };
+V.tableroReceptor = function(){
+  var e=S.estado, c=e.casos;
+  return '<div class="tiles">'+tile("Por reclamar al establecimiento", c.afuera, "tiquetes y rechazados: pida la factura real")+tile("Por revisar adentro", c.adentro, "duplicados, errores, cédulas")+
+    tile("Resueltos", c.resueltos, "marcados por usted")+tile("Avisos recibidos", e.correos, "correos de la oficina para usted")+'</div>'+
+    '<section><h2>Hola, '+esc(e.usuario.nombre||e.usuario.correo)+'</h2><div class="sub">Última lectura del buzón: '+fecha(e.ultimaRecepcion)+'. Lo que ve aquí es solo lo que llega a <b>'+esc(e.usuario.correo)+'</b>. Cuando resuelva algo (pidió la factura, el proveedor reemitió, era un reenvío), márquelo como resuelto en Casos.</div></section>'+
+    '<section><h2>Sus compañías</h2>'+(c.porCompania.length?tabla(["Compañía",{t:"Afuera",n:1},{t:"Adentro",n:1},""],c.porCompania.map(function(x){ return [esc(x.compania||"—"), n(x.afuera), n(x.adentro), '<a href="#" data-ver-cia="'+x.compania_id+'">ver casos</a>']; })):'<div class="sub">Nada abierto. 🙂</div>')+'</section>';
+};
+V.usuarios = function(){
+  return '<section><h2>Usuarios</h2><div class="aviso">Los <b>receptores</b> entran con un enlace y ven solo los casos de su propio correo (el que recibe las facturas en el buzón). Los <b>contables</b> ven todo. '+
+    (S.estado.smtp?'El enlace se envía por correo y también queda aquí para copiarlo.':'Sin SMTP configurado, el enlace no se envía: cópielo y mándelo usted (WhatsApp, Teams). Vale 3 días y una sola vez.')+'</div>'+
+    '<form class="fila" id="uNuevo"><input class="f" id="uCorreo" type="email" placeholder="correo (el del buzón, p. ej. contabilidad@puuk.cr)" style="flex:2" required><input class="f" id="uNombre" placeholder="nombre" style="flex:1">'+
+    '<select id="uRol"><option value="receptor">receptor</option><option value="contable">contable</option></select><button class="b" type="submit">Agregar e invitar</button></form>'+
+    '<div id="uEnlace"></div><div id="usuTabla">Cargando…</div></section>';
+};
+function pintarUsuarios(lista){
+  var el=$("#usuTabla"); if(!el) return;
+  el.innerHTML = lista.length ? tabla(["Correo","Nombre","Rol","Último acceso",""], lista.map(function(u){
+    return ['<span class="mono">'+esc(u.correo)+'</span>', esc(u.nombre||"—"), '<span class="est '+(u.rol==="contable"?"ok":"neutro")+'">'+esc(u.rol)+'</span>'+(u.activo?"":' <span class="est critico">inactivo</span>'),
+      '<span class="sub">'+fecha(u.ultimo_acceso)+'</span>',
+      u.activo ? '<button class="b gh" data-invitar="'+u.id+'">Nuevo enlace</button> <button class="b rj" data-desactivar="'+u.id+'">Desactivar</button>' : ""];
+  })) : '<div class="sub">Todavía no hay usuarios. Agregue el correo de un receptor del buzón.</div>';
+}
+function invitar(id){
+  api("/api/usuarios/"+id+"/invitar",{base:location.origin}).then(function(j){
+    $("#uEnlace").innerHTML='<div class="aviso"><b>Enlace de acceso'+(j.enviado?" (también enviado por correo)":"")+':</b><br><input class="f" style="width:100%;margin-top:6px" readonly value="'+esc(j.enlace)+'" onclick="this.select()"><div class="sub" style="margin-top:4px">Vale hasta '+fecha(j.vence)+', una sola vez.'+(j.errorCorreo?' No se pudo enviar por correo: '+esc(j.errorCorreo):"")+'</div></div>';
+    msg("Enlace listo.");
+  }).catch(function(e){ msg(e.message,true); });
+}
 V.casos = function(){
   var f = S.filtros;
   var h = '<section><h2>Casos — uno por documento y receptor</h2><div class="fila">'+
-    '<input class="f" id="fRec" placeholder="receptor" value="'+esc(f.receptor)+'">'+
+    (S.estado.usuario&&S.estado.usuario.rol==="receptor"?'<input type="hidden" id="fRec" value="">':'<input class="f" id="fRec" placeholder="receptor" value="'+esc(f.receptor)+'">')+
     '<select id="fCia"><option value="">todas las compañías</option>'+S.companias.map(function(c){return '<option value="'+c.id+'"'+(String(c.id)===String(f.compania)?" selected":"")+'>'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<select id="fFrente"><option value="">afuera y adentro</option><option value="afuera"'+(f.frente==="afuera"?" selected":"")+'>afuera (reclamar al establecimiento)</option><option value="adentro"'+(f.frente==="adentro"?" selected":"")+'>adentro (revisar aquí)</option></select>'+
     '<select id="fSeg"><option value="abierto"'+(f.seguimiento==="abierto"?" selected":"")+'>abiertos</option><option value="resuelto"'+(f.seguimiento==="resuelto"?" selected":"")+'>resueltos</option><option value="cerrado"'+(f.seguimiento==="cerrado"?" selected":"")+'>cerrados (dejaron de aparecer)</option><option value="todos"'+(f.seguimiento==="todos"?" selected":"")+'>todos</option></select>'+
@@ -283,7 +318,7 @@ function cargar(){
     marcar(S.estado.inquilino);
     pintar();
   }).catch(function(e){
-    if (e.entrar) return pedirEntrada(e.inquilino);
+    if (e.entrar) return pedirEntrada(e.inquilino, e.smtp);
     // varios inquilinos y la URL no dice cuál: selector
     fetch("/api/inquilinos").then(function(x){ return x.json(); }).then(function(lista){
       if (Array.isArray(lista) && lista.length>1 && !PREFIJO){
@@ -301,14 +336,21 @@ function marcar(m){
   var h=$("#marca"); h.innerHTML=(m.logo?'<img src="'+esc(m.logo)+'" alt="" style="height:20px;vertical-align:middle;margin-right:8px">':"")+"OFICINA "+esc(m.nombre).toUpperCase();
   if(m.color){ document.documentElement.style.setProperty("--sello", m.color); document.documentElement.style.setProperty("--sello2", m.color); }
 }
+var VISTAS_RECEPTOR = ["tablero","casos","correos"];
 function pintar(){
-  document.querySelectorAll("#nav button").forEach(function(b){ b.setAttribute("aria-selected", b.dataset.v===S.vista?"true":"false"); });
-  $("#main").innerHTML = V[S.vista]();
+  var receptor = S.estado && S.estado.usuario && S.estado.usuario.rol==="receptor";
+  document.querySelectorAll("#nav button").forEach(function(b){ b.style.display = (!receptor || VISTAS_RECEPTOR.indexOf(b.dataset.v)>=0) ? "" : "none"; b.setAttribute("aria-selected", b.dataset.v===S.vista?"true":"false"); });
+  if (receptor && VISTAS_RECEPTOR.indexOf(S.vista)<0) S.vista="tablero";
+  $("#salir").style.display = (S.estado && S.estado.usuario && !S.estado.usuario.porToken) ? "" : "none";
+  $("#token").style.display = receptor ? "none" : "";
+  if (receptor) $("#quien").readOnly = true;
+  $("#main").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
   if (S.vista==="casos") cargarCasos();
   if (S.vista==="aprobaciones") cargarPropuestas();
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
+  if (S.vista==="usuarios") api("/api/usuarios").then(pintarUsuarios);
 }
 function cargarCasos(){
   var f=S.filtros, q=[]; if(f.receptor) q.push("receptor="+encodeURIComponent(f.receptor)); if(f.compania) q.push("compania="+f.compania); if(f.frente) q.push("frente="+f.frente); q.push("seguimiento="+f.seguimiento);
@@ -319,6 +361,9 @@ function cargarCorreos(){ var e=$("#cEstado"); api("/api/correos?estado="+(e?e.v
 
 $("#nav").addEventListener("click", function(ev){ var b=ev.target.closest("button"); if(!b) return; S.vista=b.dataset.v; pintar(); });
 $("#main").addEventListener("submit", function(ev){
+  if (ev.target.id==="uNuevo"){ ev.preventDefault();
+    api("/api/usuarios",{correo:$("#uCorreo").value.trim(), nombre:$("#uNombre").value.trim()||null, rol:$("#uRol").value}).then(function(u){ invitar(u.id); api("/api/usuarios").then(pintarUsuarios); $("#uCorreo").value=""; $("#uNombre").value=""; }).catch(function(e){ msg(e.message,true); });
+    return; }
   if (ev.target.id!=="cf") return; ev.preventDefault();
   var i=$("#ci"), v=i.value.trim(); if(!v) return;
   S.chat.push({w:"me", t:v}); S.chat.push({w:"dir", t:"…", pensando:true}); pintar();
@@ -346,13 +391,27 @@ $("#main").addEventListener("click", function(ev){
     msg("Aplicando…"); api("/api/propuestas/aplicar",{compania:Number(ca)}).then(function(j){ msg((j.aplicadas||0)+" facturas corregidas"+(j.fallos&&j.fallos.length?", "+j.fallos.length+" con fallo":"")+"."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="cIr"){ cargarCorreos(); }
   else if (t.id==="cNueva"){ S.chat=[]; S.conversacion=null; pintar(); }
+  else if (d.invitar){ invitar(d.invitar); }
+  else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }
   else if (d.aprobarCorreo){ api("/api/correos/"+d.aprobarCorreo+"/aprobar",{}).then(function(){ msg("Aprobado."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.rechazarCorreo){ api("/api/correos/"+d.rechazarCorreo+"/rechazar",{}).then(function(){ msg("Rechazado."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="cPrueba"){ msg("Enviando a su correo…"); api("/api/correos/enviar",{real:false}).then(function(j){ msg(j.enviados.length+" enviados en modo prueba"+(j.fallos.length?", "+j.fallos.length+" fallos":"")+"."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="cReal"){ if(!confirm("Esto manda los correos aprobados A CADA RECEPTOR. ¿Continuar?")) return; msg("Enviando…"); api("/api/correos/enviar",{real:true}).then(function(j){ msg(j.enviados.length+" enviados a los receptores"+(j.fallos.length?", "+j.fallos.length+" fallos":"")+"."); cargarCorreos(); }).catch(function(e){ msg(e.message,true); }); }
 });
-cargar();
+(function arranque(){
+  var t = new URLSearchParams(location.search).get("t");
+  if(!t) return cargar();
+  // enlace de acceso: se canjea una sola vez, queda la sesión en cookie y se limpia la URL
+  fetch(PREFIJO+"/api/acceso/entrar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t}),credentials:"same-origin"})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||"Enlace inválido."); return j; }); })
+    .then(function(j){ if(j.usuario){ $("#quien").value=j.usuario.nombre||j.usuario.correo; try{ localStorage.setItem("iasima_quien", $("#quien").value); }catch(e){} }
+      history.replaceState(null,"",location.pathname); cargar(); })
+    .catch(function(e){ history.replaceState(null,"",location.pathname); cargar().then(function(){ var m=$("#pMsg")||$("#eMsg"); if(m){ m.textContent=e.message; m.style.color="var(--critico)"; } }); });
+})();
+$("#salir").addEventListener("click", function(){
+  fetch(PREFIJO+"/api/acceso/salir",{method:"POST",credentials:"same-origin"}).then(function(){ location.reload(); });
+});
 setInterval(function(){ if (S.vista==="tablero" && S.estado && S.estado.enCurso) cargar(); }, 5000);
 })();
 </script>

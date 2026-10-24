@@ -105,6 +105,6 @@ docker run -d --name oficina -p 4180:4180 --env-file .env \
 ## Seguridad en internet
 
 - `SERVICIO_TOKEN` obligatorio: con él, **nada** del inquilino se ve sin entrar (lectura incluida). La app pide el token una vez y lo guarda en una cookie firmada; la API acepta `Authorization: Bearer <token>`.
-- El login por enlace mágico para receptores (cada uno ve solo sus compañías) es lo siguiente en la Fase 2.
+- Receptores y contables entran con un **enlace de un solo uso** (pestaña Usuarios); cada receptor ve solo sus compañías y casos. Con SMTP el enlace sale por correo; sin SMTP se copia y se manda a mano.
 - `PERMITIR_ESCRITURA` vacío hasta que TecnoDEM confirme el ambiente de Hacienda de la copia.
 - Claves API de Odoo y de Claude solo en variables del host, nunca en el repo.

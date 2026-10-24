@@ -37,11 +37,17 @@ escribe en Odoo o manda por correo pasa antes por una persona:
 | **Aprobaciones** | Las propuestas de Cuentas, línea por línea. Aprobar / rechazar; «Aplicar en Odoo» corre el agente en escritura **solo sobre lo aprobado** de esa compañía. |
 | **Correos** | Los borradores de Victor con vista previa. Aprobar / rechazar; enviar en prueba (todo a su correo) o de verdad. |
 | **Director** | Chat. Con `CLAUDE_API_KEY`, un modelo de lenguaje decide qué agente atiende, lo corre como herramienta y responde con cifras («¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk»). Sus herramientas son de solo lectura y propuesta: no puede escribir en Odoo ni enviar correos. Sin clave, es el Director de palabras clave. |
+| **Usuarios** (contable) | Alta de receptores y contables, y **enlace de acceso** de un solo uso (3 días): se envía por correo si hay SMTP y siempre queda para copiarlo. Desactivar cierra sus sesiones. |
 | **Corridas** y **Auditoría** | Qué corrió, cuánto tardó, qué encontró; y quién aprobó, rechazó, aplicó o envió qué, y cuándo. |
 
 API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, **todo** (lectura incluida) exige el token: la app lo pide
 una vez en una pantalla de entrada y lo guarda en una cookie firmada; la API acepta `Authorization: Bearer <token>`.
-La cabecera `X-Quien` identifica a quien decide y queda en la auditoría. Calendario: `CORRIDA_DIARIA=07:00`
+La cabecera `X-Quien` identifica a quien decide y queda en la auditoría.
+
+**Roles.** Un **receptor** (el correo que recibe las facturas en el buzón) entra con su enlace y ve solo lo suyo:
+sus compañías, sus casos (y puede marcarlos resueltos, firmados con su nombre) y los avisos aprobados o enviados
+dirigidos a él; nada de propuestas, corridas, Director ni oficina 2D. Un **contable** ve y hace todo. El token de
+servicio sigue valiendo como contable sin nombre fijo (modo local). Las sesiones viven 30 días en una cookie. Calendario: `CORRIDA_DIARIA=07:00`
 corre Recepción y Comunicación (borradores) todos los días; `CONCILIACION_SEMANAL=1` corre Conciliación los lunes.
 
 La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.html` con doble clic).
@@ -130,6 +136,5 @@ Las variables de entorno pisan al `.env`, así que se puede correr en un contene
 - [ ] Crear el usuario de servicio con clave API y permisos mínimos; rotar la contraseña de `admin`.
 - [ ] Validar con TecnoDEM el efecto de `button_draft` / `action_post` sobre facturas de compra
       con factura electrónica (mensaje de aceptación a Hacienda) antes de usar `--aplicar` en producción.
-- [ ] Login por enlace mágico para receptores (ven solo sus compañías) y roles.
 - [ ] Agentes Diagnóstico, Corrección y Reporte.
 - [ ] Desplegar el servicio en un VPS (Docker) apuntando a producción.
