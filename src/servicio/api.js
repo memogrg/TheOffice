@@ -1,9 +1,12 @@
 // La API del servicio. node:http, sin framework: una tabla de rutas y JSON.
 //
-// Seguridad en esta fase: si SERVICIO_TOKEN está en .env, toda petición que modifique algo
-// (POST) tiene que traer  Authorization: Bearer <token>. Quién decide se toma de la cabecera
-// X-Quien (o del cuerpo, campo "quien"). El login por enlace mágico para receptores viene en
-// la fase 2; la API ya deja todo auditado con nombre.
+// Seguridad en esta fase: si SERVICIO_TOKEN está configurado (global o por inquilino), TODA
+// petición a ese inquilino —lectura incluida— tiene que traer el token: como cabecera
+// Authorization: Bearer <token>, o como cookie puesta por POST /api/entrar {token}. La app web
+// pide el token una vez y lo guarda en cookie; la oficina 2D funciona con esa misma cookie.
+// Quién decide se toma de la cabecera X-Quien (o del cuerpo, campo "quien"). El login por
+// enlace mágico para receptores viene después; la API ya deja todo auditado con nombre.
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, extname, normalize, sep } from "node:path";
@@ -118,14 +121,38 @@ export function crearApi(opciones) {
       const ctx0 = contextos.find(c => c.inquilino === r0.inquilino);
       const ctx = { ...ctx0, prefijo: r0.prefijo };
       const pathname = r0.ruta;
+      const token = ctx.cfg.SERVICIO_TOKEN || "";
+      const nombreCookie = `oficina_${ctx.inquilino.id}`;
+
+      // Entrar: valida el token y lo deja en una cookie (HttpOnly) para la app y la oficina 2D.
+      if (pathname === "/api/entrar" && req.method === "POST") {
+        const cuerpo = await leerCuerpo(req);
+        if (!token) return responder(res, 200, { ok: true, token: false });
+        if (!igual(String(cuerpo.token || ""), token)) return responder(res, 401, { error: "Token incorrecto." });
+        res.setHeader("Set-Cookie", `${nombreCookie}=${firmar(token)}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Lax; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+        return responder(res, 200, { ok: true, token: true });
+      }
+      if (pathname === "/api/salir" && req.method === "POST") {
+        res.setHeader("Set-Cookie", `${nombreCookie}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`);
+        return responder(res, 200, { ok: true });
+      }
+      // ¿Tiene token? Cabecera Bearer o cookie firmada. Sin SERVICIO_TOKEN configurado, pasa todo.
+      const autorizado = !token
+        || (req.headers.authorization === `Bearer ${token}`)
+        || igual(cookie(req, nombreCookie), firmar(token));
+      // Sin token no se ve nada del inquilino salvo la app en sí (que pedirá el token) y el estado
+      // mínimo para saber que hay que entrar.
+      if (!autorizado) {
+        if (pathname.startsWith("/api/")) return responder(res, 401, { error: "Hace falta el token de acceso.", entrar: true, inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "" });
+        if (pathname === "/oficina") return redirigir(res, (r0.prefijo || "") + "/");
+        return estatico(res, raizProyecto, pathname);
+      }
+
       if (pathname.startsWith("/api/")) {
         const r = rutas.find(x => x.metodo === req.method && x.re.test(pathname));
         if (!r) return responder(res, 404, { error: "No existe esa ruta." });
         let cuerpo = {};
-        if (req.method === "POST") {
-          if (ctx.cfg.SERVICIO_TOKEN && req.headers.authorization !== `Bearer ${ctx.cfg.SERVICIO_TOKEN}`) return responder(res, 401, { error: "Falta o no coincide el token." });
-          cuerpo = await leerCuerpo(req);
-        }
+        if (req.method === "POST") cuerpo = await leerCuerpo(req);
         const quien = String(req.headers["x-quien"] || cuerpo.quien || "anónimo").slice(0, 120);
         const params = pathname.match(r.re).groups || {};
         const out = await r.fn(q, params, cuerpo, quien, ctx);
@@ -165,6 +192,14 @@ function normalizar(o) {
 }
 
 const error = (codigo, mensaje) => ({ __error: codigo, mensaje });
+// La cookie no lleva el token en claro sino un HMAC de él: sirve para entrar, no para leer el token.
+const firmar = t => createHmac("sha256", "oficina-cookie|" + t).update(t).digest("hex");
+function igual(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && x.length > 0 && timingSafeEqual(x, y); }
+function cookie(req, nombre) {
+  const m = String(req.headers.cookie || "").split(";").map(s => s.trim()).find(s => s.startsWith(nombre + "="));
+  return m ? decodeURIComponent(m.slice(nombre.length + 1)) : "";
+}
+function redirigir(res, a) { res.writeHead(302, { Location: a }); res.end(); }
 function responder(res, codigo, obj) {
   res.writeHead(codigo, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(obj));

@@ -1,0 +1,32 @@
+# Render — Blueprint. En render.com: New → Blueprint → este repo. Instancia Starter (US$7/mes)
+# con disco persistente; el plan Free no sirve (se duerme y no guarda disco).
+services:
+  - type: web
+    name: oficina
+    runtime: docker
+    plan: starter
+    region: ohio
+    healthCheckPath: /api/inquilinos
+    disk:
+      name: oficina-datos
+      mountPath: /app/inquilinos
+      sizeGB: 1
+    envVars:
+      - key: PUERTO
+        value: "4180"
+      - key: TZ
+        value: America/Costa_Rica
+      - key: INQUILINOS
+        sync: false
+      - key: SERVICIO_TOKEN
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: IASIMA_ODOO_URL
+        sync: false
+      - key: IASIMA_ODOO_DB
+        sync: false
+      - key: IASIMA_ODOO_USER
+        sync: false
+      - key: IASIMA_ODOO_PASSWORD
+        sync: false

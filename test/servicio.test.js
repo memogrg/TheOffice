@@ -141,10 +141,26 @@ test("API: estado, correr, casos, propuestas, correos, token", async () => {
   const api = crearApi({ db, corridas, programador: null, cfg: c, raiz });
   await new Promise(ok => api.listen(0, ok));
   const base = `http://127.0.0.1:${api.address().port}`;
-  const get = p => fetch(base + p).then(r => r.json());
+  const get = (p, token = "secreto") => fetch(base + p, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
   const post = (p, cuerpo, token = "secreto") => fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json", "X-Quien": "memo", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(cuerpo || {}) });
 
   try {
+    // sin token no se lee nada; con /api/entrar queda una cookie que sí sirve
+    const cerrado = await fetch(base + "/api/estado");
+    assert.equal(cerrado.status, 401);
+    assert.equal((await cerrado.json()).entrar, true);
+    const mal = await post("/api/entrar", { token: "otro" }, null);
+    assert.equal(mal.status, 401);
+    const entrar = await post("/api/entrar", { token: "secreto" }, null);
+    assert.equal(entrar.status, 200);
+    const galleta = entrar.headers.get("set-cookie");
+    assert.match(galleta, /^oficina_iasima=[0-9a-f]{64}; Path=\/; HttpOnly/);
+    assert.ok(!galleta.includes("secreto"), "la cookie no lleva el token en claro");
+    const conCookie = await fetch(base + "/api/estado", { headers: { Cookie: galleta.split(";")[0] } });
+    assert.equal(conCookie.status, 200);
+    const sinOficina = await fetch(base + "/oficina", { redirect: "manual" });
+    assert.equal(sinOficina.status, 302, "la oficina sin token manda a la app para entrar");
+
     const e0 = await get("/api/estado");
     assert.equal(e0.ultimas.recepcion, null);
     assert.equal(e0.escrituraPermitida, true);
@@ -184,7 +200,8 @@ test("API: estado, correr, casos, propuestas, correos, token", async () => {
     const html = await fetch(base + "/").then(r => r.text());
     assert.match(html, /<title>app<\/title>/);
     assert.equal((await fetch(base + "/../package.json")).status, 404);
-    assert.equal((await fetch(base + "/api/nada")).status, 404);
+    assert.equal((await fetch(base + "/api/nada")).status, 401, "sin token ni siquiera se sabe qué rutas existen");
+    assert.equal((await fetch(base + "/api/nada", { headers: { Authorization: "Bearer secreto" } })).status, 404);
   } finally {
     api.close();
   }

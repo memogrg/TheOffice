@@ -39,8 +39,9 @@ escribe en Odoo o manda por correo pasa antes por una persona:
 | **Director** | Chat. Con `CLAUDE_API_KEY`, un modelo de lenguaje decide qué agente atiende, lo corre como herramienta y responde con cifras («¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk»). Sus herramientas son de solo lectura y propuesta: no puede escribir en Odoo ni enviar correos. Sin clave, es el Director de palabras clave. |
 | **Corridas** y **Auditoría** | Qué corrió, cuánto tardó, qué encontró; y quién aprobó, rechazó, aplicó o envió qué, y cuándo. |
 
-API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, toda acción exige `Authorization: Bearer <token>`;
-la cabecera `X-Quien` identifica a quien decide y queda en la auditoría. Calendario: `CORRIDA_DIARIA=07:00`
+API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, **todo** (lectura incluida) exige el token: la app lo pide
+una vez en una pantalla de entrada y lo guarda en una cookie firmada; la API acepta `Authorization: Bearer <token>`.
+La cabecera `X-Quien` identifica a quien decide y queda en la auditoría. Calendario: `CORRIDA_DIARIA=07:00`
 corre Recepción y Comunicación (borradores) todos los días; `CONCILIACION_SEMANAL=1` corre Conciliación los lunes.
 
 La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.html` con doble clic).
@@ -69,7 +70,7 @@ Los datos de cada uno viven en `inquilinos/<id>/`. Sin `INQUILINOS`, todo funcio
 | `src/run.js` | Punto de entrada por terminal. Reporte HTML/JSON, `data/estado.json`, regenera la oficina, correo opcional. Candado contra corridas simultáneas. |
 | `src/oficina.js` | Genera la oficina 2D con cifras, Director y marca (la usan `run.js` y el servicio). |
 | `src/servicio/inquilinos.js` | Varios inquilinos: configuración por prefijo, raíces separadas, enrutamiento por `/t/<id>` o dominio. |
-| `Dockerfile`, `DESPLIEGUE.md`, `.github/workflows/pruebas.yml` | Despliegue y CI. |
+| `Dockerfile`, `fly.toml`, `render.yaml`, `DESPLIEGUE.md`, `.github/workflows/` | Despliegue (Fly.io, Render, Docker) y CI. |
 | `src/servicio/` | **La app**: `db.js` (SQLite), `corridas.js` (corre agentes y persiste; aplica aprobadas; envía aprobados), `programador.js` (calendario), `director-llm.js` (Claude con los agentes como herramientas), `api.js` (HTTP), `index.js` (arranque). |
 | `ui/app/index.html` | La app web que sirve el servicio. |
 | `scripts/construir-catalogo.js` | Arma `data/catalogo-cuentas.json` desde el histórico de Odoo (sin Excel). |

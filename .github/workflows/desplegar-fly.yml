@@ -1,0 +1,17 @@
+# Despliega a Fly.io cada vez que main cambia, solo si el secreto FLY_API_TOKEN existe en el repo
+# (Settings → Secrets → Actions). Sin el secreto, el flujo no hace nada.
+name: desplegar-fly
+on:
+  push:
+    branches: ["main"]
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DESPLEGAR_FLY == 'si' }}
+    concurrency: fly-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

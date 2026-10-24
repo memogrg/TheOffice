@@ -75,7 +75,7 @@ test("API con dos inquilinos: bases aisladas, prefijo en el estado, selector en 
   const srv = crearApi({ contextos, raizProyecto: raiz });
   await new Promise(ok => srv.listen(0, ok));
   const base = `http://127.0.0.1:${srv.address().port}`;
-  const get = p => fetch(base + p).then(r => r.json());
+  const get = (p, token = null) => fetch(base + p, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
   const post = (p, token) => fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json", "X-Quien": "memo", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: "{}" });
   try {
     const sel = await fetch(base + "/api/estado");
@@ -90,7 +90,8 @@ test("API con dos inquilinos: bases aisladas, prefijo en el estado, selector en 
     assert.equal(ia.inquilinos, 2);
     assert.equal(ia.casos.porFrente.length, 2);
 
-    const si = await get("/t/sima/api/estado");
+    assert.equal((await get("/t/sima/api/estado")).entrar, true, "SIMA exige token hasta para leer; IASIMA no tiene token");
+    const si = await get("/t/sima/api/estado", "secreto-sima");
     assert.equal(si.inquilino.nombre, "SIMA");
     assert.deepEqual(si.casos.porFrente, [], "la base de SIMA no vio la corrida de IASIMA");
     assert.equal((await post("/t/sima/api/corridas/recepcion")).status, 401, "SIMA tiene su propio token");

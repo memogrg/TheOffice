@@ -1,0 +1,36 @@
+# Fly.io — un proceso, una máquina pequeña, un volumen para los datos de los inquilinos.
+#   flyctl launch --copy-config --no-deploy     (una vez; cambie app y region si quiere)
+#   flyctl volumes create oficina_datos --size 1 --region mia
+#   flyctl secrets set INQUILINOS=iasima,sima IASIMA_ODOO_URL=… SERVICIO_TOKEN=… CLAUDE_API_KEY=…
+#   flyctl deploy
+app = "oficina-iasima"
+primary_region = "mia"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PUERTO = "4180"
+  TZ = "America/Costa_Rica"
+
+[http_service]
+  internal_port = 4180
+  force_https = true
+  auto_stop_machines = "off"      # el calendario necesita el proceso vivo
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/inquilinos"
+
+[[mounts]]
+  source = "oficina_datos"
+  destination = "/app/inquilinos"
+  initial_size = "1gb"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
