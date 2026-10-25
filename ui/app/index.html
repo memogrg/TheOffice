@@ -108,7 +108,9 @@ var md = function(t){ return esc(t).replace(/^#{1,4} +(.+)$/gm,"<b>$1</b>").repl
 var fecha = function(s){ return s ? new Date(s).toLocaleString("es-CR",{dateStyle:"medium",timeStyle:"short"}) : "—"; };
 
 try { $("#quien").value = localStorage.getItem("iasima_quien")||""; $("#token").value = localStorage.getItem("iasima_token")||""; } catch(e){}
-$("#quien").addEventListener("change", function(){ try{ localStorage.setItem("iasima_quien", this.value); }catch(e){} });
+$("#quien").addEventListener("change", function(){ try{ localStorage.setItem("iasima_quien", this.value); }catch(e){}
+  // la memoria del Director es por persona: al cambiar el nombre se carga SU conversación, sin recargar
+  S.chat=[]; S.conversacion=null; S.nueva=false; S.directorCargado=false; if (S.vista==="director") pintar(); });
 $("#token").addEventListener("change", function(){ try{ localStorage.setItem("iasima_token", this.value); }catch(e){} });
 
 function msg(t, err){ var m=$("#msg"); m.textContent=t; m.className=err?"err":""; m.style.display="block"; clearTimeout(msg.t); msg.t=setTimeout(function(){ m.style.display="none"; }, err?6000:3500); }
@@ -193,7 +195,7 @@ V.director = function(){
     '<div class="aviso">'+(d.modo==="llm"
       ? 'Modelo de lenguaje <b>'+esc(d.modelo)+'</b> con los agentes como herramientas. Solo lee y propone: no existe herramienta que escriba en Odoo ni que envíe correos. Pregunte como le preguntaría a una persona: «¿cómo está el buzón?», «¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk».'
       : 'Director de <b>palabras clave</b>: dice a qué agente va cada instrucción. Para que además ejecute y responda con cifras, configure <code>CLAUDE_API_KEY</code> en el .env y reinicie el servicio.')+'</div>'+
-    (!$("#quien").value || $("#quien").value==="anónimo" ? '<div class="aviso" style="border-color:var(--critico)">Escriba su nombre en <b>Soy</b> (arriba a la derecha) y recargue: la memoria del Director es por persona, y sin nombre todos comparten la conversación «anónimo».</div>' : '')+
+    (!$("#quien").value || $("#quien").value==="anónimo" ? '<div class="aviso" style="border-color:var(--critico)">Escriba su nombre en <b>Soy</b> (arriba a la derecha) y pulse Enter: la memoria del Director es por persona, y sin nombre todos comparten la conversación «anónimo».</div>' : '')+
     (S.directorCargado?'':'<div class="sub">Cargando la conversación…</div>')+
     '<div class="chat" id="chat">'+(S.chat.length?S.chat.map(function(m){
       return '<div class="msg '+(m.w==="me"?"me":"dir")+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+(m.cuando?' <span style="font-weight:400;opacity:.6">· '+esc(fecha(m.cuando))+'</span>':"")+'</span>'+(m.w==="me"?esc(m.t):md(m.t))+
