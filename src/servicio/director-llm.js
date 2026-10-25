@@ -11,11 +11,12 @@
 //
 // Configuración (.env): CLAUDE_API_KEY (obligatoria para este Director; sin ella el servicio
 // usa el Director de palabras clave), CLAUDE_WORKSPACE_ID (solo si la clave es de usuario,
-// sk-ant-usr-…), DIRECTOR_MODELO (por defecto claude-sonnet-4-5), DIRECTOR_MAX_PASOS (8).
+// sk-ant-usr-…), DIRECTOR_MODELO (por defecto claude-sonnet-4-5), DIRECTOR_MAX_PASOS (12).
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { causasDominantes } from "../lib/correo.js";
 import { DirectorCore } from "../director.js";
+import { Catalogo, canon, norm } from "../catalogo.js";
 
 const API = "https://api.anthropic.com/v1/messages";
 
@@ -23,7 +24,7 @@ export class DirectorLLM {
   constructor({ db, corridas, cfg, raiz, log = () => {}, fetchImpl = globalThis.fetch }) {
     this.db = db; this.corridas = corridas; this.cfg = cfg; this.raiz = raiz; this.log = log; this.fetch = fetchImpl;
     this.modelo = cfg.DIRECTOR_MODELO || "claude-sonnet-4-5";
-    this.maxPasos = Number(cfg.DIRECTOR_MAX_PASOS || 8);
+    this.maxPasos = Number(cfg.DIRECTOR_MAX_PASOS || 12);
     this.roster = leerJSON(join(raiz, "data", "roster.json"), { agentes: [], noConstruidos: [] });
   }
 
@@ -46,6 +47,8 @@ export class DirectorLLM {
         input_schema: { type: "object", properties: { estado: { type: "string" } } } },
       { name: "causas_errores", description: "Agrupa los correos en estado error por causa (texto del error normalizado). Es el adelanto del agente Diagnóstico, que todavía no está construido.",
         input_schema: { type: "object", properties: { compania: { type: "integer" } } } },
+      { name: "revisar_factura", description: "Revisa UNA factura de proveedor línea por línea con el criterio del agente Cuentas: para cada línea devuelve la cuenta actual y la cuenta que el catálogo histórico de esa compañía (o una regla humana) sugiere, con fuente y confianza, si esa cuenta existe en el plan de la compañía y qué hacen las demás compañías con el mismo artículo. Úsala cuando pregunten en qué cuenta debería ir una factura o sus ítems. Solo lee y propone; no cambia nada.",
+        input_schema: { type: "object", properties: { factura: { type: "integer", description: "id de account.move" }, nombre: { type: "string", description: "número de la factura (name) o parte, si no se sabe el id" }, proveedor: { type: "string", description: "nombre del proveedor, para acotar la búsqueda por nombre" }, compania: { type: "integer", description: "id de compañía, para acotar la búsqueda" } } } },
       { name: "leer_odoo", description: "Lectura directa de Odoo (search_read) con un dominio. SOLO LECTURA. Modelos útiles: bdt.invoice.email (buzón), account.move (asientos; e_key es la clave de Hacienda), account.move.line, res.partner (vat = cédula), res.company. Máximo 200 filas; para conteos usa agrupar_odoo.",
         input_schema: { type: "object", properties: { modelo: { type: "string" }, dominio: { type: "array", description: "dominio Odoo, p. ej. [[\"state\",\"=\",\"done\"],[\"company_id\",\"=\",126]]" }, campos: { type: "array", items: { type: "string" } }, limite: { type: "integer" }, orden: { type: "string" } }, required: ["modelo", "dominio", "campos"] } },
       { name: "agrupar_odoo", description: "Conteos y agregados en Odoo (read_group). SOLO LECTURA. Ej.: correos por estado y compañía: modelo bdt.invoice.email, agrupar [\"company_id\",\"state\"].",
@@ -90,6 +93,7 @@ export class DirectorLLM {
         const casos = db.casos({ frente: "adentro", companiaId: args.compania || null, seguimiento: "todos", limite: 5000 }).filter(c => c.estado_buzon === "error");
         return { correosConError: casos.length, causas: causasDominantes(casos.map(c => ({ error: c.error, estado: "error" })), { max: 10 }) };
       }
+      case "revisar_factura": return this.#revisarFactura(args);
       case "leer_odoo": {
         const odoo = this.corridas.crearCliente({ meta: { escribe: false } });
         const filas = await odoo.leer(args.modelo, "search_read", [args.dominio || [], args.campos || []],
@@ -102,6 +106,59 @@ export class DirectorLLM {
       }
       default: return { error: `No existe la herramienta ${nombre}.` };
     }
+  }
+
+  // Una factura con el criterio de Cuentas, sin escribir ni registrar propuestas: lo que el
+  // agente haría con esa factura, explicado línea por línea para que el Director lo cuente.
+  async #revisarFactura(args) {
+    const rutaCatalogo = this.cfg.CATALOGO_CUENTAS ? join(this.raiz, this.cfg.CATALOGO_CUENTAS) : join(this.raiz, "data", "catalogo-cuentas.json");
+    if (!existsSync(rutaCatalogo)) return { error: "No hay catálogo de cuentas (data/catalogo-cuentas.json). Hay que construirlo con: npm run catalogo" };
+    const odoo = this.corridas.crearCliente({ meta: { escribe: false } });
+    const ctxTodas = { context: contextoTodas(this.raiz) };
+    let dom;
+    if (args.factura) dom = [["id", "=", Number(args.factura)]];
+    else if (args.nombre || args.proveedor) {
+      dom = [["move_type", "in", ["in_invoice", "in_refund"]]];
+      if (args.nombre) dom.push(["name", "ilike", args.nombre]);
+      if (args.proveedor) dom.push(["partner_id.name", "ilike", args.proveedor]);
+      if (args.compania) dom.push(["company_id", "=", Number(args.compania)]);
+    } else return { error: "Indique la factura: id (factura), número (nombre) o proveedor." };
+    const facturas = await odoo.leer("account.move", "search_read",
+      [dom, ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "company_id", "move_type"]], { limit: 5, order: "invoice_date desc", ...ctxTodas });
+    if (!facturas.length) return { error: "No encontré esa factura." };
+    if (facturas.length > 1 && !args.factura) return { varias: facturas.map(f => ({ id: f.id, nombre: f.name, proveedor: f.partner_id?.[1], compania: f.company_id?.[1], fecha: f.invoice_date, total: f.amount_total })), nota: "Hay varias; vuelva a llamar con el id (factura)." };
+    const f = facturas[0];
+    const CID = f.company_id?.[0], ciaNombre = f.company_id?.[1] || "";
+    const ctx = { context: { allowed_company_ids: [CID] } };
+    const lineas = await odoo.leer("account.move.line", "search_read",
+      [[["move_id", "=", f.id], ["display_type", "in", ["product", "other"]]], ["name", "account_id", "product_id", "balance", "quantity", "price_unit"]], ctx);
+    const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [CID]]], ["code", "name", "account_type", "deprecated"], { context: ctx.context });
+    const porCodigo = new Map(); const porNombre = new Map();
+    for (const c of plan) if (!c.deprecated) { porCodigo.set(canon(c.code), c); porNombre.set(norm(c.name), c); }
+    const cat = new Catalogo(rutaCatalogo, join(this.raiz, "data", "reglas.json"));
+    const CAJON = ["5.04.999", "5.04.099", "5.04.99", "7.01.001", "7.01"];
+    const items = lineas.map(l => {
+      const texto = l.name || (l.product_id ? l.product_id[1] : "");
+      const actual = l.account_id ? l.account_id[1] : "(sin cuenta)";
+      const codigoActual = canon(actual.split(" ")[0]);
+      const d = cat.resolver(ciaNombre, texto);
+      const g = cat.global[norm(texto)];
+      const r = { lineaId: l.id, articulo: String(texto).slice(0, 80), monto: l.balance, cuentaActual: actual, esCajonDeSastre: CAJON.includes(codigoActual) };
+      if (!d) { r.sugerencia = null; r.veredicto = "sin referencia: el artículo no está en el catálogo histórico de esta compañía ni en el global; lo decide un contador"; }
+      else {
+        const destino = porCodigo.get(d.codigo) || porNombre.get(norm(d.cuenta)) || null;
+        r.sugerencia = { codigo: d.codigo, cuenta: d.cuenta, fuente: d.fuente, confianza: d.confianza, veces: d.veces, parecidoA: d.parecidoA, decidio: d.decidio, existeEnPlan: Boolean(destino) };
+        if (!destino) r.veredicto = `el catálogo pide ${d.codigo} ${d.cuenta} pero esa cuenta no existe en el plan de ${ciaNombre}`;
+        else if (l.account_id && l.account_id[0] === destino.id) r.veredicto = "correcta: coincide con el histórico";
+        else if (d.confianza < 0.9) r.veredicto = `parecido no seguro (${d.confianza}); Cuentas lo mandaría a revisión humana`;
+        else r.veredicto = `Cuentas propondría cambiarla a ${destino.code} ${destino.name}`;
+      }
+      if (g && !actual.includes(g[1])) r.otrasCompanias = { cuenta: `${g[0]} ${g[1]}`, veces: g[2] };
+      return r;
+    });
+    return { factura: { id: f.id, nombre: f.name, proveedor: f.partner_id?.[1], compania: ciaNombre, companiaId: CID, estado: f.state, pago: f.payment_state, fecha: f.invoice_date, total: f.amount_total },
+      lineas: items, planCuentas: plan.length,
+      nota: "Nada se cambió. Para que quede como propuesta formal hay que correr el agente cuentas sobre la compañía (correr_agente) y aprobar en la pestaña Aprobaciones." };
   }
 
   // --- El bucle de conversación -------------------------------------------------------
@@ -122,7 +179,8 @@ Reglas:
 2. Si la instrucción puede ser de dos agentes, preguntá cuál. Si falta la compañía para Cuentas, pedila (buscá primero con "companias" si dieron un nombre).
 3. No existe herramienta para escribir en Odoo ni para enviar correos, y así debe ser. Si piden corregir, publicar, enviar o borrar algo, explicá exactamente qué se cambiaría y terminá con: "Esto requiere aprobación humana en la pestaña Aprobaciones; no lo ejecuté."
 4. Respondé en español, breve, con las cifras y, cuando sea útil, el agente y la herramienta que usaste. Usá listas solo si hay varios elementos.
-5. Estados del buzón: done registrada; isticket tiquete (no deducible, se reclama al establecimiento); rejected rechazada (se reclama); duplicate, error, process, vatiderror (se revisan adentro). La clave de Hacienda son 50 dígitos; tipo de documento en posiciones 30-31 (04 = tiquete); cédula del emisor en 10-21.${congelada}`;
+5. Si preguntan en qué cuenta contable debería ir una factura o sus ítems, usá "revisar_factura" (una sola llamada trae líneas, cuenta actual, sugerencia del catálogo y plan): no reconstruyas eso con leer_odoo.
+6. Estados del buzón: done registrada; isticket tiquete (no deducible, se reclama al establecimiento); rejected rechazada (se reclama); duplicate, error, process, vatiderror (se revisan adentro). La clave de Hacienda son 50 dígitos; tipo de documento en posiciones 30-31 (04 = tiquete); cédula del emisor en 10-21.${congelada}`;
   }
 
   async responder(mensaje, { conversacion = [], quien = "anónimo" } = {}) {
@@ -155,17 +213,29 @@ Reglas:
       }
       mensajes.push({ role: "user", content: resultados });
     }
+    // Se acabaron los pasos: una última llamada sin herramientas para que responda con lo
+    // que ya consultó y diga qué le faltó, en vez de rendirse en silencio.
+    mensajes.push({ role: "user", content: `Se agotó el límite de ${this.maxPasos} consultas. No podés usar más herramientas: respondé ahora con lo que ya obtuviste, con las cifras que tengas, y decí en una línea qué quedó sin consultar.` });
+    try {
+      const r = await this.#llamar(mensajes, { sinHerramientas: true });
+      const bloques = r.content || [];
+      mensajes.push({ role: "assistant", content: bloques });
+      const texto = bloques.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+      if (texto && !bloques.some(b => b.type === "tool_use")) return { respuesta: texto, pasos, conversacion: mensajes, modo: "llm", modelo: this.modelo, truncado: true };
+    } catch (e) { this.log(`director[${quien}] cierre sin herramientas falló: ${e.message}`); }
     return { respuesta: "Me quedé sin pasos antes de terminar. Intente con una pregunta más acotada.", pasos, conversacion: mensajes, modo: "llm" };
   }
 
-  async #llamar(mensajes) {
+  async #llamar(mensajes, { sinHerramientas = false } = {}) {
     const res = await this.fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": this.cfg.CLAUDE_API_KEY, "anthropic-version": "2023-06-01",
         // Una clave de usuario (sk-ant-usr-…) no está atada a un workspace y la API exige decir cuál;
         // una clave de workspace (sk-ant-api03-…) no lo necesita.
         ...(this.cfg.CLAUDE_WORKSPACE_ID ? { "anthropic-workspace-id": this.cfg.CLAUDE_WORKSPACE_ID } : {}) },
-      body: JSON.stringify({ model: this.modelo, max_tokens: 2000, system: this.sistema(), tools: this.herramientas(), messages: mensajes })
+      // Las herramientas van siempre (la conversación ya trae tool_use); "none" le impide pedir más.
+      body: JSON.stringify({ model: this.modelo, max_tokens: 2000, system: this.sistema(), tools: this.herramientas(), messages: mensajes,
+        ...(sinHerramientas ? { tool_choice: { type: "none" } } : {}) })
     });
     const j = await res.json();
     if (!res.ok) throw new Error(`API de Claude: ${j.error?.message || res.status}`);
