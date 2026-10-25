@@ -56,7 +56,7 @@ test("ninguna herramienta escribe: nombres, y correr_agente nunca pasa --aplicar
   const { director, corridas, db } = armar({ CLAUDE_API_KEY: "x", PERMITIR_ESCRITURA: "si" });
   const nombres = director.herramientas().map(h => h.name);
   for (const n of nombres) assert.ok(!/escrib|aplicar|enviar|write|unlink|create|post/i.test(n), n);
-  assert.deepEqual(nombres.sort(), ["agrupar_odoo", "casos", "causas_errores", "companias", "correos", "correr_agente", "estado", "leer_odoo", "proponer_regla", "propuestas", "revisar_factura"]);
+  assert.deepEqual(nombres.sort(), ["agrupar_odoo", "casos", "causas_errores", "companias", "consultas", "correos", "correr_agente", "estado", "leer_odoo", "proponer_regla", "propuestas", "revisar_factura"]);
 
   await director.ejecutarHerramienta("correr_agente", { agente: "cuentas", empresa: 144 }, "memo");
   const c = db.corridas({ agente: "cuentas" })[0];
@@ -97,7 +97,7 @@ test("bucle de herramientas: el modelo pide estado, luego casos, y responde con 
   assert.match(r.respuesta, /4 documentos por reclamar afuera/);
   assert.deepEqual(r.pasos.map(p => p.herramienta), ["correr_agente", "casos"]);
   assert.equal(api.llamadas.length, 3);
-  assert.equal(api.llamadas[0].tools.length, 11);
+  assert.equal(api.llamadas[0].tools.length, 12);
   assert.match(api.llamadas[0].system, /Director de la Oficina IASIMA/);
   assert.match(api.llamadas[0].system, /copia de pruebas congelada/);
   assert.equal(db.corridas({ agente: "recepcion" }).length, 1, "la herramienta corrió a Marta de verdad");
@@ -112,7 +112,7 @@ test("límite de pasos: una última llamada sin herramientas responde con lo que
   const pide = usar("leer_odoo", { modelo: "no.existe", dominio: [], campos: [] }, "z");   // siempre pide lo mismo
   const api = apiFalsa([pide, pide, pide, b => {
     assert.deepEqual(b.tool_choice, { type: "none" }, "el cierre no permite más herramientas");
-    assert.equal(b.tools.length, 11, "pero las herramientas siguen declaradas: la conversación trae tool_use");
+    assert.equal(b.tools.length, 12, "pero las herramientas siguen declaradas: la conversación trae tool_use");
     assert.match(b.messages[b.messages.length - 1].content, /Se agotó el límite de 3/);
     return textoFinal("Con lo que tengo: nada; faltó leer el modelo.");
   }]);
@@ -137,14 +137,15 @@ test("revisar_factura: una factura con el criterio de Cuentas, sin escribir", as
   assert.equal(r.factura.compania, "Puuk");
   assert.equal(r.lineas.length, 2);
   const luz = r.lineas.find(l => l.articulo === "SERVICIO ELECTRICO");
-  assert.equal(luz.esCajonDeSastre, true);
-  assert.equal(luz.sugerencia.codigo, "5.04.002.002");
-  assert.equal(luz.sugerencia.fuente, "cliente-exacto");
-  assert.equal(luz.sugerencia.existeEnPlan, true);
+  assert.equal(luz.esComodin, true);
+  assert.equal(luz.decision, "proponer");
+  assert.equal(luz.sugerida, "5.04.002.002 Electricidad");
+  assert.match(luz.fuente, /historial/);
   assert.match(luz.veredicto, /propondría cambiarla a 5.04.002.002 Electricidad/);
+  assert.ok(luz.pasos.some(p => /historial de esta compañía/.test(p)), "explica los pasos de la guía");
   const tornillos = r.lineas.find(l => /TORNILLOS/.test(l.articulo));
-  assert.equal(tornillos.sugerencia, null);
-  assert.match(tornillos.veredicto, /sin referencia/);
+  assert.equal(tornillos.naturaleza, "Materiales y servicios de mantenimiento del local u oficina", "naturaleza por la palabra, con plural");
+  assert.match(tornillos.veredicto, /consulta/, "Mantenimiento de local no existe en el plan simulado de Puuk");
   assert.equal(db.propuestas({ estado: "todas" }).length, 0, "no registra propuestas: solo cuenta lo que haría");
 
   // por número o proveedor; ambigua → lista

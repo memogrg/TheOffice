@@ -178,6 +178,35 @@ export class BaseDeDatos {
     if (!conv.has("abierta")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN abierta INTEGER NOT NULL DEFAULT 1");
     if (!conv.has("titulo")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN titulo TEXT");
     this.db.exec("CREATE INDEX IF NOT EXISTS conversaciones_quien ON conversaciones(quien, abierta, ultimo)");
+    // Consultas al contador que deja Cuentas (paso 3 y 4 de la guía de clasificación)
+    this.db.exec(`CREATE TABLE IF NOT EXISTS consultas (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      corrida_id  INTEGER,
+      compania_id INTEGER,
+      compania    TEXT,
+      factura_id  INTEGER,
+      factura     TEXT,
+      linea_id    INTEGER NOT NULL,
+      articulo    TEXT,
+      proveedor   TEXT,
+      proveedor_id INTEGER,
+      actividad   TEXT,
+      cuenta_actual TEXT,
+      sugerida    TEXT,
+      tipo        TEXT,      -- personal | choque | dividido | naturaleza | no-identificado | salvaguarda | pagada | plan | parecido | poco-historial | consulta
+      motivo      TEXT,
+      pasos       TEXT,      -- JSON
+      naturaleza  TEXT,
+      estado      TEXT NOT NULL DEFAULT 'abierta',   -- abierta | resuelta | descartada | cerrada (dejó de salir)
+      resolvio    TEXT,
+      resuelto_en TEXT,
+      nota        TEXT,
+      creada_en   TEXT NOT NULL,
+      vista_en    TEXT
+    )`);
+    this.db.exec("CREATE INDEX IF NOT EXISTS consultas_estado ON consultas(estado, compania_id)");
+    const prop = columnas("propuestas");
+    if (!prop.has("razon")) this.db.exec("ALTER TABLE propuestas ADD COLUMN razon TEXT");
     // Reglas contables que alguien dicta en el chat («esto siempre va a 5.04.17.01»). El Director
     // las deja aquí; un contable las aprueba y recién entonces se escriben en data/reglas.json.
     this.db.exec(`CREATE TABLE IF NOT EXISTS reglas_propuestas (
@@ -200,6 +229,52 @@ export class BaseDeDatos {
       decidido_en TEXT,
       corrida_id  INTEGER
     )`);
+  }
+
+  // --- consultas al contador (paso 3 y 4 de la guía): lo que Cuentas no cierra solo
+  sincronizarConsultas(corridaId, consultas, { companiaId, compania }) {
+    const ahora = this.#ahora();
+    let nuevas = 0, siguen = 0, cerradas = 0;
+    this.transaccion(() => {
+      const vistas = new Set();
+      for (const c of consultas) {
+        vistas.add(c.lineaId);
+        const ya = this.uno("SELECT id, estado FROM consultas WHERE linea_id=? AND estado='abierta'", c.lineaId);
+        const valores = [corridaId, c.facturaId, c.factura, c.articulo, c.proveedor ?? null, c.proveedorId ?? null, c.actividad ?? null, c.cuentaActual ?? null,
+          c.sugerida ?? null, c.tipo || "consulta", c.motivo || "", JSON.stringify(c.pasos || []), c.naturaleza ?? null, ahora];
+        if (ya) {
+          this.correr(`UPDATE consultas SET corrida_id=?, factura_id=?, factura=?, articulo=?, proveedor=?, proveedor_id=?, actividad=?, cuenta_actual=?, sugerida=?,
+            tipo=?, motivo=?, pasos=?, naturaleza=?, vista_en=? WHERE id=?`, ...valores, ya.id);
+          siguen++;
+        } else {
+          // si ya se resolvió antes con una regla o se descartó, no se reabre sola
+          const resuelta = this.uno("SELECT id FROM consultas WHERE linea_id=? AND estado IN ('resuelta','descartada')", c.lineaId);
+          if (resuelta) continue;
+          this.correr(`INSERT INTO consultas (corrida_id, factura_id, factura, articulo, proveedor, proveedor_id, actividad, cuenta_actual, sugerida, tipo, motivo, pasos,
+            naturaleza, vista_en, compania_id, compania, linea_id, estado, creada_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'abierta',?)`,
+            ...valores, companiaId, compania, c.lineaId, ahora);
+          nuevas++;
+        }
+      }
+      // las abiertas de esta compañía que ya no salen: la línea cambió o tiene regla → se cierran solas
+      for (const a of this.todos("SELECT id, linea_id FROM consultas WHERE compania_id=? AND estado='abierta'", companiaId)) {
+        if (!vistas.has(a.linea_id)) { this.correr("UPDATE consultas SET estado='cerrada', resuelto_en=? WHERE id=?", ahora, a.id); cerradas++; }
+      }
+    });
+    return { nuevas, siguen, cerradas };
+  }
+  consultas({ estado = "abierta", companiaId = null, limite = 500 } = {}) {
+    const cond = [], p = [];
+    if (estado !== "todas") { cond.push("estado=?"); p.push(estado); }
+    if (companiaId) { cond.push("compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT * FROM consultas${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY compania, factura, id LIMIT ?`, ...p, limite).map(desempacar);
+  }
+  consulta(id) { return desempacar(this.uno("SELECT * FROM consultas WHERE id=?", id)); }
+  anotarConsulta(id, nota) { this.correr("UPDATE consultas SET nota=? WHERE id=?", nota, id); }
+  cerrarConsulta(id, estado, quien, nota = null) {
+    const r = this.correr("UPDATE consultas SET estado=?, resolvio=?, resuelto_en=?, nota=? WHERE id=? AND estado='abierta'", estado, quien, this.#ahora(), nota, id);
+    if (r.changes) this.auditar(quien, estado === "resuelta" ? "resolver" : "descartar", "consulta", id, nota ? { nota } : null);
+    return r.changes > 0;
   }
 
   // --- reglas propuestas
@@ -334,10 +409,11 @@ export class BaseDeDatos {
     let nuevas = 0, repetidas = 0;
     this.transaccion(() => {
       const ins = this.db.prepare(`INSERT OR IGNORE INTO propuestas (corrida_id, compania_id, compania, factura_id, factura, factura_estado, linea_id, cargo_id,
-        articulo, cuenta_actual_id, cuenta_actual, cuenta_nueva_id, cuenta_nueva, fuente, confianza, creada_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        articulo, cuenta_actual_id, cuenta_actual, cuenta_nueva_id, cuenta_nueva, fuente, confianza, creada_en, razon) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       for (const p of propuestas) {
         const r = ins.run(corridaId, companiaId, compania, p.facturaId, p.factura, p.estado, p.lineaId, p.cargoId ?? null,
-          p.articulo, p.cuentaActualId ?? null, p.cuentaActual, p.cuentaNuevaId, p.cuentaNueva, p.fuente, p.confianza ?? null, ahora);
+          p.articulo, p.cuentaActualId ?? null, p.cuentaActual, p.cuentaNuevaId, p.cuentaNueva, p.fuente, p.confianza ?? null, ahora,
+          [p.motivo, ...(p.pasos || [])].filter(Boolean).join(" · ").slice(0, 600) || null);
         if (r.changes) nuevas++; else repetidas++;
       }
     });
@@ -501,7 +577,7 @@ export class BaseDeDatos {
 }
 
 // Columnas JSON vuelven a ser objetos.
-const JSON_COLS = new Set(["totales", "alertas", "resultado", "correo_ids", "companias", "detalle", "mensajes", "resumen"]);
+const JSON_COLS = new Set(["totales", "alertas", "resultado", "correo_ids", "companias", "detalle", "mensajes", "resumen", "pasos"]);
 function desempacar(fila) {
   if (!fila) return fila;
   const out = { ...fila };

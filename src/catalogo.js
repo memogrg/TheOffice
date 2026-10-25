@@ -70,6 +70,28 @@ export class Catalogo {
   }
 
   // Devuelve { codigo, cuenta, fuente, confianza } o null
+  // Piezas sueltas para el clasificador (src/clasificador.js), que sigue la guía de Victor.
+  regla(cliente, articulo, proveedor = {}){
+    const a = norm(articulo), c = norm(cliente);
+    const r = (a && (this.reglas.get(c + "|" + a) || this.reglas.get("*|" + a))) || this.#reglaProveedor(c, proveedor);
+    return r ? { ...r, porProveedor: !this.reglas.get(c + "|" + a) && !this.reglas.get("*|" + a) } : null;
+  }
+  propio(cliente, articulo){
+    const pc = this.porCliente[norm(cliente)], a = norm(articulo);
+    return pc && pc[a] ? { codigo: pc[a][0], cuenta: pc[a][1], veces: pc[a][2] } : null;
+  }
+  globalExacto(articulo){
+    const g = this.global[norm(articulo)];
+    return g ? { codigo: g[0], cuenta: g[1], veces: g[2] } : null;
+  }
+  aproximadoPropio(cliente, articulo){
+    const pc = this.porCliente[norm(cliente)], a = norm(articulo);
+    if (!pc || !a) return null;
+    let mejor = null;
+    for (const k of Object.keys(pc)){ const s = this.#jaccard(a, k); if (s >= .7 && (!mejor || s > mejor.s)) mejor = { s, k }; }
+    return mejor ? { codigo: pc[mejor.k][0], cuenta: pc[mejor.k][1], parecidoA: mejor.k, confianza: Math.round(mejor.s * 100) / 100 } : null;
+  }
+
   // proveedor: { proveedorId, proveedor } de la factura, para las reglas por proveedor.
   resolver(cliente, articulo, proveedor = {}){
     const a = norm(articulo);

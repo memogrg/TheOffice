@@ -16,6 +16,7 @@ const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 
 import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
+import { proponerRegla } from "./reglas.js";
 
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
 // Por compatibilidad también se acepta un solo contexto suelto (un inquilino "iasima").
@@ -50,7 +51,8 @@ export function crearApi(opciones) {
       aprobadas: ctx.db.propuestas({ estado: "aprobada" }).length,
       correos: ctx.db.correos({ estado: "borrador" }).length,
       correosAprobados: ctx.db.correos({ estado: "aprobado" }).length,
-      reglas: ctx.db.reglas().length
+      reglas: ctx.db.reglas().length,
+      consultas: ctx.db.consultas().length
     }
   }), AMBOS);
   function estadoReceptor(ctx) {
@@ -95,6 +97,26 @@ export function crearApi(opciones) {
   ruta("POST", "/api/propuestas/aplicar", async (q, p, cuerpo, quien, ctx) => {
     if (!cuerpo.compania) return error(400, "Falta la compañía (compania).");
     return ctx.corridas.aplicarAprobadas(Number(cuerpo.compania), { quienPide: quien });
+  });
+
+  // --- consultas al contador (lo que Cuentas no cierra solo, según la guía de clasificación)
+  ruta("GET", "/api/consultas", (q, p, c, quien, ctx) => ctx.db.consultas({ estado: q.estado || "abierta", companiaId: q.compania ? Number(q.compania) : null }));
+  ruta("POST", "/api/consultas/:id/descartar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.cerrarConsulta(Number(p.id), "descartada", quien, cuerpo.nota || null) }));
+  // Resolver una consulta = dejar el criterio como regla propia del cliente (principio 7 de la guía).
+  // La consulta sigue abierta hasta que la regla se aprueba y Cuentas deja de levantarla.
+  ruta("POST", "/api/consultas/:id/regla", async (q, p, cuerpo, quien, ctx) => {
+    const k = ctx.db.consulta(Number(p.id));
+    if (!k) return error(404, "No existe esa consulta.");
+    const porProveedor = cuerpo.alcance === "proveedor";
+    if (porProveedor && !k.proveedor_id) return error(400, "Esa línea no tiene proveedor identificado; use una regla por artículo.");
+    const codigo = String(cuerpo.codigo || "").trim() || String(k.sugerida || "").split(" ")[0];
+    if (!codigo) return error(400, "Falta la cuenta (codigo).");
+    const r = await proponerRegla({ corridas: ctx.corridas, db: ctx.db, compania: k.compania_id, codigo,
+      proveedorId: porProveedor ? k.proveedor_id : null, articulos: porProveedor ? [] : [k.articulo],
+      motivo: cuerpo.motivo || `Consulta #${k.id}: ${k.motivo || ""}`.slice(0, 300), factura: k.factura_id, propuso: quien });
+    if (r.error) return error(400, r.error + (r.parecidas?.length ? ` Parecidas: ${r.parecidas.join(", ")}` : ""));
+    ctx.db.anotarConsulta(k.id, `regla #${r.propuestas.map(x => x.id).join(", #")} propuesta por ${quien}`);
+    return r;
   });
 
   // --- reglas contables dictadas en el chat (propuestas por el Director, aprobadas por un contable)

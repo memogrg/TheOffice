@@ -166,7 +166,7 @@ V.tablero = function(){
     tile("Compañías", t.companias, "con correos en el buzón")+
     tile("Por reclamar afuera", ab["afuera|abierto"]||0, "documentos abiertos")+
     tile("Por revisar adentro", ab["adentro|abierto"]||0, "documentos abiertos")+
-    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas del chat":""))+
+    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas":"")+(e.pendientes.consultas?" · "+e.pendientes.consultas+" consultas":""))+
     tile("Correos por aprobar", e.pendientes.correos, e.pendientes.correosAprobados+" aprobados sin enviar")+
     '</div>';
   h += '<section><h2>Correr ahora</h2><div class="fila">'+
@@ -216,7 +216,7 @@ function chatDe(resumen){
 function cargarDirector(retomar){
   return api("/api/director").then(function(j){
     S.retencionDias=j.retencionDias||30; S.conversaciones=j.conversaciones||[];
-    if (retomar){ S.conversacion=j.actual?j.actual.id:null; S.chat=chatDe(j.actual?j.actual.resumen:[]); }
+    if (retomar){ S.conversacion=j.actual?j.actual.id:null; S.chat=chatDe(j.actual?j.actual.resumen:[]); S.chatAlFinal=true; }
     S.directorCargado=true; if (S.vista==="director") { pintar(); var c=$("#chat"); if(c) c.scrollTop=c.scrollHeight; }
   }).catch(function(e){ S.directorCargado=true; msg(e.message,true); });
 }
@@ -271,9 +271,13 @@ function pintarCasos(lista){
   }));
 }
 V.aprobaciones = function(){
-  return '<section><h2>Reglas propuestas en el chat</h2>'+
-    '<div class="aviso">Decisiones contables que alguien le dictó al Director («todo lo de este proveedor va a 5.04.17.01»). Al <b>aprobar</b>, la regla se guarda (manda sobre el histórico) y Cuentas revisa de nuevo esa compañía: cada línea afectada aparece abajo como propuesta.</div>'+
+  return '<section><h2>Reglas por aprobar</h2>'+
+    '<div class="aviso">Decisiones contables dictadas en el chat del Director («todo lo de este proveedor va a 5.04.17.01») o creadas desde una consulta. Al <b>aprobar</b>, la regla se guarda (manda sobre el histórico) y Cuentas revisa de nuevo esa compañía: cada línea afectada aparece abajo como propuesta.</div>'+
     '<div id="reglasTabla">Cargando…</div></section>'+
+    '<section><h2>Consultas al contador</h2>'+
+    '<div class="aviso">Líneas que el agente Cuentas no cierra solo, según la guía de clasificación: historial dividido o que choca con la naturaleza del gasto, gasto que parece personal, o sin identificar en un comodín. Resuélvalas con una <b>regla</b> (por artículo o por todo lo del proveedor en esa compañía): pasa por la tabla de arriba y, al aprobarla, la consulta se cierra sola.</div>'+
+    '<div class="fila"><select id="kCia"><option value="">todas las compañías</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select><button class="b gh" id="kIr">Ver</button></div>'+
+    '<div id="consultasTabla">Cargando…</div></section>'+
     '<section><h2>Propuestas de Cuentas — cuenta contable por línea</h2>'+
     '<div class="aviso">Cada línea es una corrección que el agente propone. Apruebe o rechace una por una; luego «Aplicar aprobadas» corre el agente en modo escritura <b>solo sobre lo aprobado</b> de esa compañía. Requiere PERMITIR_ESCRITURA=si en el servicio.</div>'+
     '<div class="fila"><select id="pEstado"><option value="propuesta">por decidir</option><option value="aprobada">aprobadas</option><option value="rechazada">rechazadas</option><option value="aplicada">aplicadas</option><option value="fallo">con fallo</option><option value="todas">todas</option></select>'+
@@ -292,13 +296,37 @@ function pintarReglas(lista){
       '<button class="b" data-aprobar-regla="'+r.id+'">Aprobar</button> <button class="b rj" data-rechazar-regla="'+r.id+'">Rechazar</button>'];
   }));
 }
+var TIPO_CONSULTA = { personal:"parece personal", choque:"historial vs naturaleza", dividido:"historial dividido", naturaleza:"naturaleza dudosa", "no-identificado":"sin identificar", salvaguarda:"factura publicada", pagada:"factura pagada", plan:"cuenta no está en el plan", parecido:"solo parecido", "poco-historial":"poco historial", consulta:"consulta" };
+function pintarConsultas(lista){
+  var el=$("#consultasTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">No hay consultas abiertas. Aparecen al correr «Revisar cuentas» en el Tablero.</div>'; return; }
+  el.innerHTML = '<div class="sub" style="margin-bottom:6px">'+lista.length+' abiertas</div>'+tabla(["Factura · línea","Cuenta actual","Sugerida","Por qué",""], lista.map(function(k){
+    return ['<div><b>'+esc(k.articulo)+'</b><div class="sub">'+esc(k.factura||"")+' · '+esc(k.compania||"")+'</div>'+(k.actividad?'<div class="sub">'+esc(k.actividad)+'</div>':"")+'</div>',
+      '<span style="color:var(--critico)">'+esc(k.cuenta_actual||"—")+'</span>',
+      k.sugerida?'<b style="color:var(--ok)">'+esc(k.sugerida)+'</b>':'<span class="sub">—</span>',
+      '<span class="est '+(k.tipo==="personal"||k.tipo==="no-identificado"?"critico":"alto")+'">'+esc(TIPO_CONSULTA[k.tipo]||k.tipo)+'</span><div class="sub" style="margin-top:3px">'+esc(k.motivo||"")+'</div>'+
+        (k.pasos&&k.pasos.length?'<details><summary class="sub" style="cursor:pointer">pasos de la guía</summary><div class="sub">'+k.pasos.map(esc).join("<br>")+'</div></details>':"")+
+        (k.nota?'<div class="sub" style="color:var(--ok)">'+esc(k.nota)+'</div>':""),
+      '<button class="b" data-regla-art="'+k.id+'" data-sug="'+esc(k.sugerida||"")+'">Regla: este artículo</button> '+
+        (k.proveedor_id?'<button class="b gh" data-regla-prov="'+k.id+'" data-sug="'+esc(k.sugerida||"")+'" data-prov="'+esc(k.proveedor||"")+'">Regla: todo lo de '+esc((k.proveedor||"").slice(0,24))+'</button> ':"")+
+        '<button class="b rj" data-descartar-consulta="'+k.id+'">Descartar</button>'];
+  }));
+}
+function cargarConsultas(){ var c=$("#kCia"); api("/api/consultas"+(c&&c.value?"?compania="+c.value:"")).then(pintarConsultas).catch(function(e){ msg(e.message,true); }); }
+function reglaDesdeConsulta(id, alcance, sugerida, proveedor){
+  var codigo = prompt((alcance==="proveedor"?"Todo lo de "+proveedor+" en esta compañía va a la cuenta (código):":"Este artículo va siempre a la cuenta (código):"), (sugerida||"").split(" ")[0]);
+  if(!codigo) return;
+  var motivo = prompt("¿Por qué? (queda en la regla)", "");
+  if(motivo===null) return;
+  api("/api/consultas/"+id+"/regla",{alcance:alcance, codigo:codigo.trim(), motivo:motivo}).then(function(j){ msg("Regla propuesta"+(j.lineasAfectadasHoy!=null?" ("+j.lineasAfectadasHoy+" líneas hoy)":"")+": apruébela arriba."); api("/api/reglas").then(pintarReglas); cargarConsultas(); }).catch(function(e){ msg(e.message,true); });
+}
 function pintarPropuestas(lista){
   var el=$("#propTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Revisar cuentas» en el tablero.</div>'; return; }
   el.innerHTML = tabla(["Factura · línea","Cuenta actual","Debería ser","Fuente","Estado",""], lista.map(function(p){
     return ['<div><b>'+esc(p.factura)+'</b><div class="sub">'+esc(p.articulo)+' · '+esc(p.compania||"")+' · '+esc(p.factura_estado)+'</div></div>',
       '<span style="color:var(--critico)">'+esc(p.cuenta_actual)+'</span>', '<b style="color:var(--ok)">'+esc(p.cuenta_nueva)+'</b>',
-      '<span class="sub">'+esc(p.fuente)+(p.confianza!=null?" · "+p.confianza:"")+'</span>',
+      '<span class="sub">'+esc(p.fuente)+(p.confianza!=null?" · "+p.confianza:"")+'</span>'+(p.razon?'<details><summary class="sub" style="cursor:pointer">por qué</summary><div class="sub">'+esc(p.razon)+'</div></details>':""),
       '<span class="est '+({propuesta:"neutro",aprobada:"ok",rechazada:"critico",aplicada:"ok",fallo:"critico"}[p.estado]||"neutro")+'">'+esc(p.estado)+'</span>'+(p.decidio?'<div class="sub">'+esc(p.decidio)+' · '+fecha(p.decidido_en)+'</div>':""),
       p.estado==="propuesta" ? '<button class="b" data-aprobar="'+p.id+'">Aprobar</button> <button class="b rj" data-rechazar="'+p.id+'">Rechazar</button>' : ""];
   }));
@@ -381,10 +409,12 @@ function pintar(){
   if (receptor) $("#quien").readOnly = true;
   $("#main").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
   // el chat abre siempre en el último mensaje (al volver a la pestaña, al recargar, al responder)
-  if (S.vista==="director"){ var ch=$("#chat"); if(ch){ ch.scrollTop=ch.scrollHeight; requestAnimationFrame(function(){ ch.scrollTop=ch.scrollHeight; }); } }
+  // Chat: vuelve a donde quedó la lectura. Si estaba al final (o es la primera vez), al último mensaje;
+  // si había subido a leer algo anterior, a ese mismo punto (mejora 1 del log, variante de Victor).
+  if (S.vista==="director"){ var ch=$("#chat"); if(ch){ var ir=function(){ ch.scrollTop = (S.chatPos!=null && !S.chatAlFinal) ? S.chatPos : ch.scrollHeight; }; ir(); requestAnimationFrame(ir); } }
   if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
   if (S.vista==="casos") cargarCasos();
-  if (S.vista==="aprobaciones"){ cargarPropuestas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
+  if (S.vista==="aprobaciones"){ cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -397,18 +427,19 @@ function cargarCasos(){
 function cargarPropuestas(){ var e=$("#pEstado"), c=$("#pCia"); api("/api/propuestas?estado="+(e?e.value:"propuesta")+(c&&c.value?"&compania="+c.value:"")).then(pintarPropuestas); }
 function cargarCorreos(){ var e=$("#cEstado"); api("/api/correos?estado="+(e?e.value:"borrador")).then(pintarCorreos); }
 
-$("#nav").addEventListener("click", function(ev){ var b=ev.target.closest("button"); if(!b) return; S.vista=b.dataset.v; pintar(); });
+function recordarChat(){ var ch=$("#chat"); if(S.vista==="director" && ch){ S.chatPos=ch.scrollTop; S.chatAlFinal = ch.scrollHeight - ch.scrollTop - ch.clientHeight < 40; } }
+$("#nav").addEventListener("click", function(ev){ var b=ev.target.closest("button"); if(!b) return; recordarChat(); S.vista=b.dataset.v; pintar(); });
 $("#main").addEventListener("submit", function(ev){
   if (ev.target.id==="uNuevo"){ ev.preventDefault();
     api("/api/usuarios",{correo:$("#uCorreo").value.trim(), nombre:$("#uNombre").value.trim()||null, rol:$("#uRol").value}).then(function(u){ invitar(u.id); api("/api/usuarios").then(pintarUsuarios); $("#uCorreo").value=""; $("#uNombre").value=""; }).catch(function(e){ msg(e.message,true); });
     return; }
   if (ev.target.id!=="cf") return; ev.preventDefault();
   var i=$("#ci"), v=i.value.trim(); if(!v) return;
-  S.chat.push({w:"me", t:v, cuando:new Date().toISOString()}); S.chat.push({w:"dir", t:"…", pensando:true}); pintar();
+  S.chatAlFinal=true; S.chat.push({w:"me", t:v, cuando:new Date().toISOString()}); S.chat.push({w:"dir", t:"…", pensando:true}); pintar();
   var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight;
   // sin id el servicio sigue la conversación abierta de esta persona; nueva:true solo tras «Nueva conversación»
   api("/api/director", {mensaje:v, conversacion:S.conversacion, nueva:S.nueva===true}).then(function(j){
-    S.conversacion=j.conversacion; S.nueva=false; S.chat.pop(); S.chat.push({w:"dir", t:j.respuesta, pasos:j.pasos}); pintar();
+    S.conversacion=j.conversacion; S.nueva=false; S.chatAlFinal=true; S.chat.pop(); S.chat.push({w:"dir", t:j.respuesta, pasos:j.pasos}); pintar();
     var c=$("#chat"); if(c) c.scrollTop=c.scrollHeight; var n=$("#ci"); if(n) n.focus();
     cargarDirector(false);
   }).catch(function(e){ S.chat.pop(); S.chat.push({w:"dir", t:"Error: "+e.message}); pintar(); });
@@ -429,14 +460,18 @@ $("#main").addEventListener("click", function(ev){
   else if (t.id==="pAplicar"){ var ca=$("#pAplicarCia").value; if(!ca) return msg("Elija la compañía.", true);
     if(!confirm("Esto ESCRIBE en Odoo las propuestas aprobadas de esa compañía. ¿Continuar?")) return;
     msg("Aplicando…"); api("/api/propuestas/aplicar",{compania:Number(ca)}).then(function(j){ msg((j.aplicadas||0)+" facturas corregidas"+(j.fallos&&j.fallos.length?", "+j.fallos.length+" con fallo":"")+"."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="kIr"){ cargarConsultas(); }
+  else if (d.reglaArt){ reglaDesdeConsulta(d.reglaArt, "articulo", d.sug); }
+  else if (d.reglaProv){ reglaDesdeConsulta(d.reglaProv, "proveedor", d.sug, d.prov); }
+  else if (d.descartarConsulta){ var nota=prompt("¿Por qué se descarta? (queda en la auditoría)", ""); if(nota===null) return; api("/api/consultas/"+d.descartarConsulta+"/descartar",{nota:nota}).then(function(){ msg("Consulta descartada."); cargarConsultas(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aprobarRegla){ if(!confirm("La regla se guarda y Cuentas revisa de nuevo esa compañía (puede tardar hasta un minuto). No escribe en Odoo. ¿Continuar?")) return;
     t.disabled=true; msg("Guardando la regla y corriendo Cuentas…");
-    api("/api/reglas/"+d.aprobarRegla+"/aprobar",{}).then(function(j){ msg(j.mensaje||"Regla aprobada."); api("/api/reglas").then(pintarReglas); cargarPropuestas(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
+    api("/api/reglas/"+d.aprobarRegla+"/aprobar",{}).then(function(j){ msg(j.mensaje||"Regla aprobada."); api("/api/reglas").then(pintarReglas); cargarPropuestas(); cargarConsultas(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
   else if (d.rechazarRegla){ api("/api/reglas/"+d.rechazarRegla+"/rechazar",{}).then(function(){ msg("Regla rechazada."); api("/api/reglas").then(pintarReglas); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="cIr"){ cargarCorreos(); }
   else if (t.id==="cNueva"){ var cid=S.conversacion; S.chat=[]; S.conversacion=null; S.nueva=true; pintar();
     if (cid) api("/api/director/"+cid+"/cerrar",{}).then(function(){ cargarDirector(false); }).catch(function(e){ msg(e.message,true); }); }
-  else if (d.conv){ api("/api/director/"+d.conv+"/reabrir",{}).then(function(c){ S.conversacion=c.id; S.nueva=false; S.chat=chatDe(c.resumen); cargarDirector(false); pintar(); var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight; }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.conv){ api("/api/director/"+d.conv+"/reabrir",{}).then(function(c){ S.conversacion=c.id; S.nueva=false; S.chatAlFinal=true; S.chat=chatDe(c.resumen); cargarDirector(false); pintar(); var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight; }).catch(function(e){ msg(e.message,true); }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }

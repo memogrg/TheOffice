@@ -1,0 +1,33 @@
+{
+  "_comentario": "Tipo de proveedor a partir de su actividad económica (campo economic_activity_purchase_id de la factura de compra: la actividad del EMISOR que viene en el XML). Está en el 98,8 % de las líneas de compra del sandbox. Cada patrón es una frase en mayúsculas sin tildes (como norm() de src/catalogo.js) que se busca como palabras completas dentro del nombre de la actividad. 'categoria' apunta a un id de naturaleza-del-gasto.json; 'personal' marca proveedores cuyo gasto suele ser personal (paso 3 de la guía: va a consulta); 'compatibles' = el proveedor no decide entre esas categorías, decide el artículo.",
+  "version": "1.0 · propuesta",
+  "estado": "PROPUESTA — pendiente de revisión de Victor (contador). Igual que naturaleza-del-gasto.json: el agente solo propone.",
+  "fecha": "2026-10-25",
+  "tipos": [
+    { "id": "restaurante", "categoria": "alimentacion-restaurante",
+      "patrones": ["RESTAURANTE", "RESTAURANTES", "CAFETERIA", "CAFETERIAS", "SODA", "SODAS", "EXPENDIO DE COMIDA", "EXPENDIOS DE COMIDA", "COMIDA RAPIDA", "COMIDAS RAPIDAS", "SERVICIO DE ALIMENTACION", "SERVICIOS DE ALIMENTACION", "BAR", "BARES", "CANTINA", "CANTINAS", "PIZZERIA", "HELADERIA"] },
+    { "id": "supermercado", "categoria": "alimentacion-supermercado",
+      "patrones": ["SUPERMERCADO", "SUPERMERCADOS", "ABARROTES", "PULPERIA", "PULPERIAS", "MINI SUPER", "MINISUPER", "CARNICERIA", "CARNICERIAS", "VERDULERIA", "FRUTAS Y VERDURAS", "CANASTA BASICA"] },
+    { "id": "electricidad", "categoria": "electricidad", "patrones": ["ENERGIA ELECTRICA"] },
+    { "id": "agua", "categoria": "agua", "patrones": ["DISTRIBUCION DE AGUA", "ACUEDUCTO", "ACUEDUCTOS"] },
+    { "id": "telecomunicaciones", "compatibles": ["telefono", "internet"],
+      "patrones": ["TELEFONICOS", "TELEFONICAS", "TELECOMUNICACIONES", "TELEVISION POR CABLE", "PROVEEDOR DE INTERNET", "SERVICIOS DE INTERNET"] },
+    { "id": "gasolinera", "categoria": "combustible",
+      "patrones": ["COMBUSTIBLES", "COMBUSTIBLE", "GASOLINERAS", "GASOLINERA", "REFINERIAS DE PETROLEO", "REFINACION DEL PETROLEO"] },
+    { "id": "ferreteria", "categoria": "mantenimiento-local",
+      "patrones": ["FERRETERIA", "FERRETERIAS", "MATERIALES PARA LA CONSTRUCCION", "MATERIALES PARA LA CONTRUCCION", "MATERIALES DE CONSTRUCCION", "FONTANERIA"] },
+    { "id": "taller-vehiculos", "categoria": "mantenimiento-vehiculo",
+      "patrones": ["REPUESTOS", "PARTES PIEZAS Y ACCESORIOS DE VEHICULOS", "LAVA CAR", "TALLER MECANICO", "TALLERES MECANICOS", "LUBRICANTES", "LLANTAS"] },
+    { "id": "libreria", "categoria": "utiles-oficina",
+      "patrones": ["SUMINISTROS DE OFICINA", "LIBRERIA", "LIBRERIAS", "PAPELERIA"] },
+    { "id": "contador", "categoria": "honorarios-contables", "patrones": ["CONTABILIDAD", "CONTADORES"] },
+    { "id": "parqueo", "categoria": "peajes-parqueos", "patrones": ["PARQUEOS", "PARQUEO", "ESTACIONAMIENTO", "ESTACIONAMIENTOS", "PEAJES"] },
+    { "id": "transporte-carga", "categoria": "encomiendas",
+      "patrones": ["TRANSPORTE DE CARGA", "ACARREO", "CONSOLIDACION DE CARGA", "COURIER", "MENSAJERIA"] },
+    { "id": "banco", "categoria": "cargos-bancarios", "patrones": ["BANCOS", "ENTIDADES FINANCIERAS"] },
+    { "id": "hotel", "categoria": "hospedaje", "patrones": ["HOTELES", "HOTEL", "ALOJAMIENTO"] },
+    { "id": "taxi", "categoria": "taxis-transporte", "patrones": ["TAXI", "TAXIS", "TRANSPORTE DE PASAJEROS"] },
+    { "id": "personal", "personal": true,
+      "patrones": ["FARMACIA", "FARMACIAS", "COSMETICOS", "PERFUMERIA", "OPTICA", "OPTICAS", "BARBERIA", "PELUQUERIA", "SALON DE BELLEZA", "GIMNASIO", "GIMNASIOS", "ODONTOLOGO", "VETERINARIA", "VETERINARIAS", "PRENDAS DE VESTIR", "SERVICIOS PERSONALES"] }
+  ]
+}

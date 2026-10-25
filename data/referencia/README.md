@@ -6,6 +6,7 @@ Tres archivos que llevan al repositorio lo útil del histórico «Artículos por
 |---|---|---|
 | `naturaleza-del-gasto.json` | Palabras clave por **naturaleza del gasto** (restaurante, electricidad, ferretería…), la cuenta lógica a la que apuntan, tipos de proveedor y señales de **gasto personal** | 1 y 3 |
 | `consenso-articulos.json` | Para cada artículo que usan **3 o más clientes**: en qué cuentas lo registran, cuántos clientes y cuántas veces, y si hay **consenso**, está **dividido** o la mayoría lo manda a un **comodín** | 2 |
+| `actividad-proveedor.json` | El **tipo de proveedor** a partir de su actividad económica (la del emisor, que viene en el XML y Odoo guarda en la factura de compra): restaurante, supermercado, ferretería, gasolinera, farmacia… y a qué naturaleza apunta. Propuesta, igual que la naturaleza | 1 y 3 |
 | `cuentas-logicas.json` | Las cuentas de gasto usadas por 3 o más clientes, su nombre canónico, si el código significa **lo mismo en todos los clientes** y la lista de **comodines** prohibidos | 2 y 4 |
 
 ## Qué NO está aquí, y por qué
@@ -42,3 +43,12 @@ python3 scripts/generar-referencia.py Articulos_por_cuenta_de_gasto.xlsx data/re
 ```
 
 El mínimo de clientes (3) está en `MINIMO_CLIENTES` dentro del script. Bajarlo aumenta la cobertura y el riesgo de identificar a un cliente.
+
+## Quién usa estos archivos
+
+`src/clasificador.js` aplica la guía con ellos (lo usan el agente Cuentas y la herramienta `revisar_factura` del Director):
+regla propia → naturaleza (línea + tipo de proveedor) → historial (el del cliente, en `data/catalogo-cuentas.json`, y el consenso de aquí) → consulta → no identificado.
+Lo que no se cierra solo queda en **Aprobaciones → Consultas al contador**; desde ahí se resuelve con una regla (por artículo o por proveedor).
+
+El historial por cliente (`data/catalogo-cuentas.json`, fuera del repositorio) se arma de dos formas:
+`npm run catalogo` (desde Odoo) o, con el Excel, `python3 scripts/catalogo-desde-excel.py Articulos_por_cuenta_de_gasto.xlsx data/catalogo-cuentas.json`.

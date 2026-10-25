@@ -71,6 +71,9 @@ export class Corridas {
     }
     if (quien === "cuentas") {
       const s = this.db.registrarPropuestas(corridaId, r.propuestas || [], { companiaId: r.companiaId, compania: r.compania });
+      // Lo que no cierra solo va a consulta del contador. En modo escritura con --solo-lineas no se
+      // sincroniza: esa corrida no revisó todo.
+      if (r.modo !== "escritura") s.consultas = this.db.sincronizarConsultas(corridaId, r.revisionHumana || [], { companiaId: r.companiaId, compania: r.compania });
       // Las que se aplicaron en esta corrida (modo escritura) se marcan por línea.
       if (r.modo === "escritura") {
         const aplicadasFactura = new Set((r.aplicadas || []).map(a => a.facturaId));

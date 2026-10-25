@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { Catalogo, canon, norm } from "../catalogo.js";
+import { Clasificador, resolverEnPlan } from "../clasificador.js";
 
 export const meta = {
   id: "cuentas", nombre: "CUENTAS", puesto: "Revisa las cuentas de cada linea",
@@ -21,9 +22,8 @@ export const meta = {
 
 const LINEAS_REALES = ["product", "other"];
 
-// Cuentas "cajon de sastre": tenerlas ahi es un error evidente, sacarlas es siempre una mejora.
-// Solo por estas se despublica una factura ya confirmada.
-const CAJON_DE_SASTRE = ["5.04.999", "5.04.099", "5.04.99", "7.01.001", "7.01"];
+// Los comodines («cajón de sastre») vienen de data/referencia/cuentas-logicas.json: nunca son destino,
+// y son la única cuenta por la que se despublica una factura confirmada sin regla humana.
 
 export async function ejecutar({ odoo, cfg, log, raiz, args }){
   const t0 = Date.now();
@@ -53,15 +53,13 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   // --- plan de cuentas de esa compania
   const ctas = await odoo.leerTodo("account.account", [["company_ids", "in", [CID]]],
     ["code", "name", "account_type", "deprecated"], { context: ctx.context });
-  const porCodigo = new Map();
-  for (const c of ctas) if (!c.deprecated) porCodigo.set(canon(c.code), c);
-  const porNombre = new Map();
-  for (const c of ctas) if (!c.deprecated) porNombre.set(norm(c.name), c);
   const porId = new Map();
   for (const c of ctas) porId.set(c.id, c);
   log(`${ctas.length} cuentas en el plan de la compania`);
 
-  const resolverCuenta = d => porCodigo.get(d.codigo) || porNombre.get(norm(d.cuenta)) || null;
+  // La guía de Victor: regla → naturaleza → historial → consulta; nunca un comodín.
+  const clas = new Clasificador({ catalogo: cat });
+  const esComodin = cuenta => Boolean(cuenta) && clas.esComodin(cuenta.code);
 
   // --- memoria de lo ya revisado
   const rutaMem = join(raiz, "data", "revisadas.json");
@@ -73,16 +71,19 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   const soloLineas = soloArg ? new Set(soloArg.split(",").map(Number).filter(Boolean)) : null;
   if (soloLineas) log(`Aplicación restringida a ${soloLineas.size} líneas aprobadas`);
 
-  // --- facturas de proveedor
-  const facturas = await odoo.leerTodo("account.move",
+  // --- facturas de proveedor (con la actividad económica del emisor: el «tipo de proveedor»)
+  const camposFactura = ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "ref"];
+  const leerFacturas = campos => odoo.leerTodo("account.move",
     [["move_type", "in", ["in_invoice", "in_refund"]], ["company_id", "=", CID], ["state", "in", ["draft", "posted"]]],
-    ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "ref"],
-    { context: ctx.context, order: "invoice_date desc" });
+    campos, { context: ctx.context, order: "invoice_date desc" });
+  let facturas;
+  try { facturas = await leerFacturas([...camposFactura, "economic_activity_purchase_id"]); }
+  catch { facturas = await leerFacturas(camposFactura); log("Sin actividad económica del proveedor en esta instancia: la naturaleza sale solo de la línea"); }
   log(`${facturas.length} facturas de proveedor (borrador + publicadas)`);
 
   const propuestas = [], revisionHumana = [], aplicadas = [], fallos = [];
-  const censo = new Map(), segundaOpinion = new Map();
-  let nLineas = 0, nCorrectas = 0, nSaltadas = 0, nFacturasRevisadas = 0;
+  const censo = new Map(), segundaOpinion = new Map(), porDecision = { regla: 0, naturaleza: 0, historial: 0 };
+  let nLineas = 0, nCorrectas = 0, nSaltadas = 0, nFacturasRevisadas = 0, nSinCriterio = 0;
 
   for (const f of facturas){
     const memk = String(f.id);
@@ -95,31 +96,30 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
 
     nFacturasRevisadas++;
     const arreglos = [], dudas = [];
+    const proveedor = { id: f.partner_id ? f.partner_id[0] : null, nombre: f.partner_id ? f.partner_id[1] : null };
+    const actividad = Array.isArray(f.economic_activity_purchase_id) ? f.economic_activity_purchase_id[1] : null;
     for (const l of lineas){
       nLineas++;
       const texto = l.name || (l.product_id ? l.product_id[1] : "");
-      const d = cat.resolver(cia.name, texto, { proveedorId: f.partner_id ? f.partner_id[0] : null, proveedor: f.partner_id ? f.partner_id[1] : null });
-      if (!d){
-        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
-                     motivo: "el articulo no esta en el catalogo", cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
-        continue;
-      }
-      const destino = resolverCuenta(d);
-      if (!destino){
-        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
-                     motivo: `el catalogo pide ${d.codigo} ${d.cuenta}, pero esa cuenta no existe en el plan de ${cia.name}`,
-                     cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
-        continue;
-      }
       const actual = l.account_id ? l.account_id[0] : null;
       const nomActual = l.account_id ? l.account_id[1] : "(sin cuenta)";
+      const ctaActual = actual ? porId.get(actual) : null;
       censo.set(nomActual, (censo.get(nomActual) || 0) + 1);
-      if (actual === destino.id){
+      const d = clas.clasificar({ compania: cia.name, articulo: texto, proveedor, actividad });
+      const base = { lineaId: l.id, articulo: String(texto).slice(0, 70), cuentaActual: nomActual, proveedor: proveedor.nombre, proveedorId: proveedor.id,
+                     actividad, naturaleza: d.naturaleza?.id || null, pasos: d.pasos };
+
+      // ¿a qué cuenta del plan de ESTA compañía apunta la decisión?
+      const r = d.codigo || d.cuenta ? resolverEnPlan(clas, d, ctas) : { cuenta: null };
+      const destino = r.cuenta;
+      const sugerida = destino ? `${destino.code} ${destino.name}` : (d.codigo ? `${d.codigo} ${d.cuenta || ""}`.trim() : null);
+
+      // La línea ya está donde la decisión (o la sugerencia de la consulta) la pondría: nada que hacer.
+      if (destino && actual === destino.id && d.decision !== "no-identificado" && d.tipo !== "personal"){
         nCorrectas++;
         // Segunda opinion: que hacen las OTRAS companias con este mismo articulo.
-        // El historico del propio cliente puede estar repitiendo una mala costumbre.
         const g = cat.global[norm(texto)];
-        if (g && !nomActual.includes(g[1])){
+        if (g && !nomActual.includes(g[1]) && !clas.misma(g[0], destino.code)){
           const k = nomActual + " -> " + g[1];
           const e = segundaOpinion.get(k) || { de: nomActual, a: g[1], lineas: 0, monto: 0, ejemplos: [] };
           e.lineas++; e.monto += (l.balance || 0);
@@ -128,35 +128,41 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
         }
         continue;
       }
-      if (d.confianza < 0.9){
-        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
-                     motivo: `parecido no seguro (${d.confianza}) a "${d.parecidoA || ""}" -> ${d.cuenta}`,
-                     cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
+
+      if (d.decision === "proponer" && !destino){
+        dudas.push({ ...base, tipo: "plan", sugerida, motivo: r.motivo || `la cuenta ${sugerida} no existe en el plan de ${cia.name}` });
         continue;
       }
+      if (d.decision !== "proponer"){
+        // Consulta o no identificado. Para no convertir la revisión en línea por línea: si la línea
+        // está en una cuenta específica y no hay sugerencia distinta ni señal de gasto personal,
+        // no se levanta consulta (se cuenta como «sin criterio para objetar»).
+        const urgente = esComodin(ctaActual) || !actual || d.tipo === "personal" || (destino && destino.id !== actual);
+        if (!urgente){ nSinCriterio++; continue; }
+        dudas.push({ ...base, tipo: d.decision === "no-identificado" ? "no-identificado" : (d.tipo || "consulta"), sugerida,
+                     motivo: d.decision === "no-identificado" ? `no identificada: ${d.motivo}` : d.motivo });
+        continue;
+      }
+
       // Salvaguarda: una factura ya publicada solo se despublica cuando la cuenta actual
-      // es un cajon de sastre. Cambiar una cuenta especifica por otra en un asiento
-      // confirmado es un criterio contable, no una correccion mecanica.
-      const ctaActual = actual ? porId.get(actual) : null;
-      const esCajon = ctaActual && CAJON_DE_SASTRE.includes(canon(ctaActual.code));
-      if (f.state === "posted" && !esCajon && d.fuente !== "regla-humana"){
-        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
-                     motivo: `factura ya publicada y la cuenta actual no es un cajon de sastre; el catalogo sugiere ${d.cuenta}. Decision contable, no mecanica.`,
-                     cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
+      // es un comodín (cajón de sastre) o hay regla humana. Cambiar una cuenta específica por otra
+      // en un asiento confirmado es un criterio contable, no una corrección mecánica.
+      if (f.state === "posted" && !esComodin(ctaActual) && d.fuente !== "regla-humana"){
+        dudas.push({ ...base, tipo: "salvaguarda", sugerida,
+                     motivo: `factura ya publicada y la cuenta actual no es un comodín; la guía sugiere ${sugerida} (${d.fuente}). Decisión contable, no mecánica.` });
         continue;
       }
-      // Una factura pagada no se toca nunca: no vale la pena proponerla, va a revisión humana.
+      // Una factura pagada no se toca nunca: va a revisión humana.
       if (f.payment_state && f.payment_state !== "not_paid"){
-        dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
-                     motivo: `factura con estado de pago "${f.payment_state}": no se toca; el catalogo sugiere ${d.cuenta}`,
-                     cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });
+        dudas.push({ ...base, tipo: "pagada", sugerida, motivo: `factura con estado de pago "${f.payment_state}": no se toca; la guía sugiere ${sugerida}` });
         continue;
       }
+      porDecision[d.fuente === "regla-humana" ? "regla" : d.fuente.startsWith("naturaleza") ? "naturaleza" : "historial"]++;
       arreglos.push({ lineaId: l.id, cargoId: l.other_charge_id ? l.other_charge_id[0] : null,
                       articulo: String(texto).slice(0, 70),
-                      cuentaActualId: actual, cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)",
+                      cuentaActualId: actual, cuentaActual: nomActual,
                       cuentaNuevaId: destino.id, cuentaNueva: `${destino.code} ${destino.name}`,
-                      fuente: d.fuente, confianza: d.confianza });
+                      fuente: d.fuente, confianza: d.confianza, motivo: d.motivo || null, pasos: d.pasos, naturaleza: d.naturaleza?.id || null });
     }
 
     const etiqueta = `${f.name || "(sin numero)"} · ${f.partner_id ? f.partner_id[1] : ""}`;
@@ -248,7 +254,7 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
   });
   if (revisionHumana.length) alertas.push({
     nivel: "alto",
-    texto: `${revisionHumana.length} lineas que el agente no pudo cerrar solo. Necesitan que una persona diga la cuenta.`,
+    texto: `${revisionHumana.length} lineas van a consulta del contador (Aprobaciones → Consultas): historial dividido o que choca con la naturaleza, gasto que parece personal, o sin identificar en un comodín.`,
     detalle: revisionHumana.slice(0, 8).map(x => `${x.factura} — "${x.articulo}" (${x.motivo})`)
   });
   if (propuestas.length && !aplicar) alertas.push({
@@ -272,9 +278,9 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
     compania: cia.name, companiaId: CID,
     totales: {
       facturas: nFacturasRevisadas, lineas: nLineas, correctas: nCorrectas,
-      aCorregir: propuestas.length, sinCatalogo: revisionHumana.length, aplicadas: aplicadas.length
+      aCorregir: propuestas.length, aConsulta: revisionHumana.length, sinCriterio: nSinCriterio, aplicadas: aplicadas.length
     },
-    saltadasPorMemoria: nSaltadas, concentracion, segundaOpinion: opiniones.slice(0, 40),
+    saltadasPorMemoria: nSaltadas, porDecision, referencia: clas.referenciaEstado, concentracion, segundaOpinion: opiniones.slice(0, 40),
     propuestas, revisionHumana, aplicadas, fallos, alertas
   };
 }

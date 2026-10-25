@@ -124,7 +124,7 @@ test("Cuentas: propone sin tocar; aplica solo con --aplicar y PERMITIR_ESCRITURA
   assert.equal(r.modo, "solo lectura (propuesta)");
   assert.equal(odoo.escrituras, 0);
   assert.equal(r.totales.aCorregir, 2);     // bomberos (regla humana), eléctrico en cajón de sastre (publicada)
-  assert.equal(r.totales.sinCatalogo, 2);   // tornillos (sin catálogo) y eléctrico de la factura pagada (no se toca)
+  assert.equal(r.totales.aConsulta, 2);     // tornillos (ferretería: Mantenimiento de local no existe en el plan) y eléctrico de la factura pagada (no se toca)
   assert.ok(r.revisionHumana.some(x => /estado de pago "paid"/.test(x.motivo)));
   assert.equal(r.totales.aplicadas, 0);
   const bomberos = r.propuestas.find(p => /BOMBEROS/.test(p.articulo));

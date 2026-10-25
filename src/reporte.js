@@ -11,7 +11,7 @@ export const ETIQUETA = {
   sinAsiento:"SIN factura en los libros", pctCuadrado:"Cuadratura (%)",
   companiasAfectadas:"Compañías afectadas", facturas:"Facturas revisadas",
   lineas:"Líneas revisadas", correctas:"Cuentas correctas", aCorregir:"Cuentas a corregir",
-  sinCatalogo:"Artículos sin catálogo", aplicadas:"Correcciones aplicadas",
+  sinCatalogo:"Artículos sin catálogo", aConsulta:"Líneas a consulta del contador", sinCriterio:"Sin criterio para objetar", aplicadas:"Correcciones aplicadas",
   receptores:"Receptores distintos", porReclamarAfuera:"Por reclamarle al establecimiento",
   porRevisarAdentro:"Por revisar adentro", correos:"Correos redactados",
   correosAfuera:"Correos hacia afuera", correosAdentro:"Correos hacia adentro",
@@ -24,7 +24,7 @@ export const ETIQUETA = {
 function tablaTotales(t){
   return `<table style="width:100%;border-collapse:collapse;margin-bottom:24px">` +
     Object.entries(t).map(([k, v]) => {
-      const rojo = /sinAsiento|sinRegistrar|aCorregir|sinCatalogo|porReclamarAfuera|porRevisarAdentro/.test(k) && Number(v) > 0;
+      const rojo = /sinAsiento|sinRegistrar|aCorregir|sinCatalogo|aConsulta|porReclamarAfuera|porRevisarAdentro/.test(k) && Number(v) > 0;
       return `<tr><td style="padding:7px 0;border-bottom:1px solid #E1E8E5;color:#3C4B47;font-size:14px">${esc(ETIQUETA[k] || k)}</td>
         <td style="padding:7px 0;border-bottom:1px solid #E1E8E5;text-align:right;font-weight:700;font-size:16px;color:${rojo ? "#B3402E" : "#0E1614"}">${n(v)}</td></tr>`;
     }).join("") + `</table>`;

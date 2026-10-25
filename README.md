@@ -103,8 +103,11 @@ todo a `REPORTE_PARA` (prueba); con `--enviar --a-los-receptores` manda de verda
 Lista los que no.
 
 **CUENTAS** — escribe, con permiso. Para una compañía (`--empresa=<id o nombre>`), abre cada
-factura de proveedor en borrador o publicada, compara la cuenta de cada línea con el catálogo
-histórico y las reglas humanas, y propone correcciones. Con `--aplicar` y `PERMITIR_ESCRITURA=si`
+factura de proveedor en borrador o publicada y clasifica cada línea con la **guía de Victor**
+(`docs/guia-clasificacion-cuentas.md`, en código en `src/clasificador.js`): regla propia del cliente →
+naturaleza del gasto (qué dice la línea y qué tipo de proveedor es) → historial (el del cliente y el consenso
+entre clientes, `data/referencia/`) → consulta al contador. Nunca propone un comodín. Lo que cierra solo va a
+propuestas; lo dudoso, a **Aprobaciones → Consultas al contador**. Con `--aplicar` y `PERMITIR_ESCRITURA=si`
 las aplica: borrador → corrige → confirma; publicada → restablece → corrige → confirma, pero solo
 si la cuenta actual es un "cajón de sastre" o hay regla humana. Nunca toca facturas pagadas.
 Verifica después de escribir. Recuerda lo revisado en `data/revisadas.json` (`--revisar-todo` lo ignora).

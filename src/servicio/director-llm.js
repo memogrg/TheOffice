@@ -17,6 +17,8 @@ import { join } from "node:path";
 import { causasDominantes } from "../lib/correo.js";
 import { DirectorCore } from "../director.js";
 import { Catalogo, canon, norm } from "../catalogo.js";
+import { proponerRegla } from "./reglas.js";
+import { Clasificador, resolverEnPlan } from "../clasificador.js";
 
 const API = "https://api.anthropic.com/v1/messages";
 
@@ -52,6 +54,8 @@ export class DirectorLLM {
         input_schema: { type: "object", properties: { estado: { type: "string" } } } },
       { name: "causas_errores", description: "Agrupa los correos en estado error por causa (texto del error normalizado). Es el adelanto del agente Diagnóstico, que todavía no está construido.",
         input_schema: { type: "object", properties: { compania: { type: "integer" } } } },
+      { name: "consultas", description: "Consultas al contador que dejó el agente Cuentas (paso 3 y 4 de la guía de clasificación): líneas con historial dividido o que choca con la naturaleza, gasto que parece personal, o sin identificar en un comodín. Cada una trae cuenta actual, sugerida y motivo.",
+        input_schema: { type: "object", properties: { compania: { type: "integer" }, estado: { type: "string", enum: ["abierta", "resuelta", "descartada", "cerrada", "todas"] } } } },
       { name: "revisar_factura", description: "Revisa UNA factura de proveedor línea por línea con el criterio del agente Cuentas: para cada línea devuelve la cuenta actual y la cuenta que el catálogo histórico de esa compañía (o una regla humana) sugiere, con fuente y confianza, si esa cuenta existe en el plan de la compañía y qué hacen las demás compañías con el mismo artículo. Úsala cuando pregunten en qué cuenta debería ir una factura o sus ítems. Solo lee y propone; no cambia nada.",
         input_schema: { type: "object", properties: { factura: { type: "integer", description: "id de account.move" }, nombre: { type: "string", description: "número de la factura (name) o parte, si no se sabe el id" }, proveedor: { type: "string", description: "nombre del proveedor, para acotar la búsqueda por nombre" }, compania: { type: "integer", description: "id de compañía, para acotar la búsqueda" } } } },
       { name: "proponer_regla", description: "Deja PROPUESTA una regla contable que la persona dictó («todo lo de Rostipollos va a 5.04.17.01», «este artículo siempre a tal cuenta»). No escribe en Odoo: queda en Aprobaciones → Reglas; cuando un contable la aprueba se guarda como regla humana y el agente Cuentas vuelve a revisar esa compañía y propone el cambio de cada línea afectada. Alcance: por proveedor (todo lo que factura ese proveedor a esa compañía) o por artículo (una o varias descripciones exactas de línea). Validá antes que el código exista en el plan de esa compañía (la herramienta también lo valida).",
@@ -100,6 +104,8 @@ export class DirectorLLM {
         const casos = db.casos({ frente: "adentro", companiaId: args.compania || null, seguimiento: "todos", limite: 5000 }).filter(c => c.estado_buzon === "error");
         return { correosConError: casos.length, causas: causasDominantes(casos.map(c => ({ error: c.error, estado: "error" })), { max: 10 }) };
       }
+      case "consultas": return db.consultas({ estado: args.estado || "abierta", companiaId: args.compania || null, limite: 150 })
+        .map(c => ({ id: c.id, compania: c.compania, factura: c.factura, articulo: c.articulo, proveedor: c.proveedor, cuentaActual: c.cuenta_actual, sugerida: c.sugerida, tipo: c.tipo, motivo: c.motivo, nota: c.nota, estado: c.estado }));
       case "revisar_factura": return this.#revisarFactura(args);
       case "proponer_regla": return this.#proponerRegla(args, quien);
       case "leer_odoo": {
@@ -131,8 +137,10 @@ export class DirectorLLM {
       if (args.proveedor) dom.push(["partner_id.name", "ilike", args.proveedor]);
       if (args.compania) dom.push(["company_id", "=", Number(args.compania)]);
     } else return { error: "Indique la factura: id (factura), número (nombre) o proveedor." };
-    const facturas = await odoo.leer("account.move", "search_read",
-      [dom, ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "company_id", "move_type"]], { limit: 5, order: "invoice_date desc", ...ctxTodas });
+    const campos = ["name", "state", "payment_state", "partner_id", "invoice_date", "amount_total", "company_id", "move_type"];
+    let facturas;
+    try { facturas = await odoo.leer("account.move", "search_read", [dom, [...campos, "economic_activity_purchase_id"]], { limit: 5, order: "invoice_date desc", ...ctxTodas }); }
+    catch { facturas = await odoo.leer("account.move", "search_read", [dom, campos], { limit: 5, order: "invoice_date desc", ...ctxTodas }); }
     if (!facturas.length) return { error: "No encontré esa factura." };
     if (facturas.length > 1 && !args.factura) return { varias: facturas.map(f => ({ id: f.id, nombre: f.name, proveedor: f.partner_id?.[1], compania: f.company_id?.[1], fecha: f.invoice_date, total: f.amount_total })), nota: "Hay varias; vuelva a llamar con el id (factura)." };
     const f = facturas[0];
@@ -141,75 +149,38 @@ export class DirectorLLM {
     const lineas = await odoo.leer("account.move.line", "search_read",
       [[["move_id", "=", f.id], ["display_type", "in", ["product", "other"]]], ["name", "account_id", "product_id", "balance", "quantity", "price_unit"]], ctx);
     const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [CID]]], ["code", "name", "account_type", "deprecated"], { context: ctx.context });
-    const porCodigo = new Map(); const porNombre = new Map();
-    for (const c of plan) if (!c.deprecated) { porCodigo.set(canon(c.code), c); porNombre.set(norm(c.name), c); }
     const cat = new Catalogo(rutaCatalogo, join(this.raiz, "data", "reglas.json"));
-    const CAJON = ["5.04.999", "5.04.099", "5.04.99", "7.01.001", "7.01"];
+    // El mismo criterio que el agente Cuentas: la guía de Victor (src/clasificador.js).
+    const clas = new Clasificador({ catalogo: cat });
+    const proveedor = { id: f.partner_id?.[0] || null, nombre: f.partner_id?.[1] || null };
+    const actividad = Array.isArray(f.economic_activity_purchase_id) ? f.economic_activity_purchase_id[1] : null;
     const items = lineas.map(l => {
       const texto = l.name || (l.product_id ? l.product_id[1] : "");
       const actual = l.account_id ? l.account_id[1] : "(sin cuenta)";
-      const codigoActual = canon(actual.split(" ")[0]);
-      const d = cat.resolver(ciaNombre, texto, { proveedorId: f.partner_id?.[0] || null, proveedor: f.partner_id?.[1] || null });
-      const g = cat.global[norm(texto)];
-      const r = { lineaId: l.id, articulo: String(texto).slice(0, 80), monto: l.balance, cuentaActual: actual, esCajonDeSastre: CAJON.includes(codigoActual) };
-      if (!d) { r.sugerencia = null; r.veredicto = "sin referencia: el artículo no está en el catálogo histórico de esta compañía ni en el global; lo decide un contador"; }
-      else {
-        const destino = porCodigo.get(d.codigo) || porNombre.get(norm(d.cuenta)) || null;
-        r.sugerencia = { codigo: d.codigo, cuenta: d.cuenta, fuente: d.fuente, confianza: d.confianza, veces: d.veces, parecidoA: d.parecidoA, decidio: d.decidio, existeEnPlan: Boolean(destino) };
-        if (!destino) r.veredicto = `el catálogo pide ${d.codigo} ${d.cuenta} pero esa cuenta no existe en el plan de ${ciaNombre}`;
-        else if (l.account_id && l.account_id[0] === destino.id) r.veredicto = "correcta: coincide con el histórico";
-        else if (d.confianza < 0.9) r.veredicto = `parecido no seguro (${d.confianza}); Cuentas lo mandaría a revisión humana`;
-        else r.veredicto = `Cuentas propondría cambiarla a ${destino.code} ${destino.name}`;
-      }
-      if (g && !actual.includes(g[1])) r.otrasCompanias = { cuenta: `${g[0]} ${g[1]}`, veces: g[2] };
+      const cuentaActual = l.account_id ? plan.find(c => c.id === l.account_id[0]) : null;
+      const d = clas.clasificar({ compania: ciaNombre, articulo: texto, proveedor, actividad });
+      const r0 = d.codigo || d.cuenta ? resolverEnPlan(clas, d, plan) : { cuenta: null };
+      const destino = r0.cuenta;
+      const r = { lineaId: l.id, articulo: String(texto).slice(0, 80), monto: l.balance, cuentaActual: actual, esComodin: Boolean(cuentaActual && clas.esComodin(cuentaActual.code)),
+        decision: d.decision, sugerida: destino ? `${destino.code} ${destino.name}` : (d.codigo ? `${d.codigo} ${d.cuenta || ""}`.trim() : null),
+        fuente: d.fuente || null, confianza: d.confianza ?? null, naturaleza: d.naturaleza?.nombre || null, motivo: d.motivo || null, pasos: d.pasos };
+      if (destino && l.account_id && l.account_id[0] === destino.id && d.decision !== "no-identificado") r.veredicto = "correcta: ya está donde la guía la pondría";
+      else if (d.decision === "proponer" && !destino) r.veredicto = `iría a consulta: ${r0.motivo}`;
+      else if (d.decision === "proponer") r.veredicto = `Cuentas propondría cambiarla a ${r.sugerida}`;
+      else if (d.decision === "consulta") r.veredicto = `consulta al contador: ${d.motivo}`;
+      else r.veredicto = `no identificada: ${d.motivo}`;
       return r;
     });
     return { factura: { id: f.id, nombre: f.name, proveedor: f.partner_id?.[1], compania: ciaNombre, companiaId: CID, estado: f.state, pago: f.payment_state, fecha: f.invoice_date, total: f.amount_total },
       lineas: items, planCuentas: plan.length,
-      nota: "Nada se cambió. Para que quede como propuesta formal hay que correr el agente cuentas sobre la compañía (correr_agente) y aprobar en la pestaña Aprobaciones." };
+      proveedor: { ...proveedor, actividad }, referencia: clas.referenciaEstado,
+      nota: "Nada se cambió. Para que quede como propuesta formal hay que correr el agente cuentas sobre la compañía (correr_agente) y aprobar en la pestaña Aprobaciones; las consultas quedan en Aprobaciones → Consultas." };
   }
 
-  // Una regla dictada en el chat → queda propuesta (base de la app, no Odoo). Valida la cuenta en el
-  // plan de esa compañía y estima cuántas líneas tocaría hoy, para que quien aprueba sepa el alcance.
+  // Una regla dictada en el chat → queda propuesta (base de la app, no Odoo). Ver src/servicio/reglas.js.
   async #proponerRegla(args, quien) {
-    if (!this.db?.proponerRegla) return { error: "Esta instalación no guarda reglas propuestas." };
-    const CID = Number(args.compania);
-    const articulos = (args.articulos || []).map(s => String(s).trim()).filter(Boolean);
-    if (!CID) return { error: "Falta la compañía (compania = id)." };
-    if (!args.proveedor_id && !articulos.length) return { error: "Indique el alcance: proveedor_id (todo lo de ese proveedor) o articulos (descripciones de línea)." };
-    const odoo = this.corridas.crearCliente({ meta: { escribe: false } });
-    const ctx = { context: { allowed_company_ids: [CID] } };
-    const [cia] = await odoo.leer("res.company", "search_read", [[["id", "=", CID]], ["name"]]);
-    if (!cia) return { error: `No existe la compañía ${CID}.` };
-    const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [CID]]], ["code", "name", "deprecated"], { context: ctx.context });
-    const destino = plan.find(c => !c.deprecated && canon(c.code) === canon(args.codigo));
-    if (!destino) {
-      const cerca = plan.filter(c => c.code && canon(c.code).startsWith(canon(args.codigo).split(".").slice(0, 3).join("."))).slice(0, 8).map(c => `${c.code} ${c.name}`);
-      return { error: `La cuenta ${args.codigo} no existe (o está obsoleta) en el plan de ${cia.name}.`, parecidas: cerca };
-    }
-    let proveedor = null;
-    if (args.proveedor_id) {
-      const [p] = await odoo.leer("res.partner", "search_read", [[["id", "=", Number(args.proveedor_id)]], ["name", "vat"]]);
-      if (!p) return { error: `No existe el proveedor ${args.proveedor_id}.` };
-      proveedor = p;
-    }
-    // alcance de hoy: líneas de facturas de proveedor no pagadas de esa compañía que cambiarían
-    const dom = [["move_id.move_type", "in", ["in_invoice", "in_refund"]], ["company_id", "=", CID], ["display_type", "in", ["product", "other"]],
-      ["parent_state", "in", ["draft", "posted"]], ["account_id", "!=", destino.id]];
-    if (proveedor) dom.push(["partner_id", "=", proveedor.id]);
-    let lineas = null;
-    try {
-      const filas = await odoo.leerTodo("account.move.line", dom, ["name", "move_id"], { context: ctx.context });
-      lineas = proveedor ? filas.length : filas.filter(l => articulos.some(a => norm(a) === norm(l.name))).length;
-    } catch { /* el estimado es informativo */ }
-    let ejemplo = null;
-    if (args.factura) { const [f] = await odoo.leer("account.move", "search_read", [[["id", "=", Number(args.factura)]], ["name"]], ctx); ejemplo = f ? `${f.name} (id ${f.id})` : null; }
-    const creadas = (proveedor ? [{ proveedorId: proveedor.id, proveedor: proveedor.name }] : articulos.map(a => ({ articulo: a })))
-      .map(alc => this.db.proponerRegla({ companiaId: CID, compania: cia.name, ...alc, codigo: destino.code, cuenta: destino.name, cuentaId: destino.id,
-        motivo: String(args.motivo || "").slice(0, 500), ejemplo, lineas, propuso: `director:${quien}` }));
-    return { propuestas: creadas.map(r => ({ id: r.id, alcance: r.proveedor ? `todo lo de ${r.proveedor}` : `artículo «${r.articulo}»`, compania: r.compania, cuenta: `${r.codigo} ${r.cuenta}` })),
-      lineasAfectadasHoy: lineas,
-      siguiente: "Queda en la pestaña Aprobaciones → Reglas. Al aprobarla, Cuentas revisa de nuevo la compañía y cada línea afectada aparece como propuesta para aprobar; aplicar en Odoo sigue bloqueado hasta que se permita la escritura." };
+    return proponerRegla({ corridas: this.corridas, db: this.db, compania: args.compania, codigo: args.codigo, proveedorId: args.proveedor_id,
+      articulos: args.articulos, motivo: args.motivo, factura: args.factura, propuso: `director:${quien}` });
   }
 
   // --- Memoria ----------------------------------------------------------------------------
@@ -291,7 +262,7 @@ Reglas:
    - Si dicta una decisión contable que vale de ahora en adelante («este tipo de gasto siempre va a 5.04.17.01», «todo lo de este proveedor va a…»), llamá a "proponer_regla" en el mismo turno. Si dice «este tipo de gastos» refiriéndose a una factura, el alcance natural es el proveedor de esa factura en esa compañía; decí qué alcance usaste. Luego explicá: quedó en Aprobaciones → Reglas; al aprobarla, Cuentas propone cada línea afectada; aplicar en Odoo requiere que se habilite la escritura.
    - Si pide corregir, publicar, enviar o borrar algo puntual, explicá exactamente qué se cambiaría y terminá con: "Esto requiere aprobación humana en la pestaña Aprobaciones; no lo ejecuté."
 4. Respondé en español, breve, con las cifras y, cuando sea útil, el agente y la herramienta que usaste. Podés usar **negrita** y listas con "- "; la app las muestra formateadas.
-5. Si preguntan en qué cuenta contable debería ir una factura o sus ítems, usá "revisar_factura" (una sola llamada trae líneas, cuenta actual, sugerencia del catálogo y plan): no reconstruyas eso con leer_odoo. Si leés account.account con leer_odoo, pasá compania: sin ella el code viene vacío y NO significa que la cuenta no tenga código.
+5. Criterio contable (guía de Victor, docs/guia-clasificacion-cuentas.md): regla propia del cliente → naturaleza del gasto (qué se compró y a quién) → historial → consulta al contador. Nunca propongas 7.01.01 ni 5.04.99/5.04.999 como destino: lo no identificado se reporta. Gasto que parece personal: consulta. Relaciones públicas frente a Gastos no justificados afecta la deducibilidad: la confirma el contador. Si preguntan en qué cuenta contable debería ir una factura o sus ítems, usá "revisar_factura" (una sola llamada trae líneas, cuenta actual, sugerencia del catálogo y plan): no reconstruyas eso con leer_odoo. Si leés account.account con leer_odoo, pasá compania: sin ella el code viene vacío y NO significa que la cuenta no tenga código.
 6. Estados del buzón: done registrada; isticket tiquete (no deducible, se reclama al establecimiento); rejected rechazada (se reclama); duplicate, error, process, vatiderror (se revisan adentro). La clave de Hacienda son 50 dígitos; tipo de documento en posiciones 30-31 (04 = tiquete); cédula del emisor en 10-21.${congelada}
 7. Tenés memoria: la conversación en curso te llega completa y abajo va lo que esta persona habló con vos en otras conversaciones de los últimos ${this.retencionDias} días. Si se refiere a algo de antes («la factura que vimos ayer», «lo de Puuk»), usalo. Las cifras de antes pueden estar viejas: si pide un dato actual, volvé a consultar la herramienta.${memoria ? `\n\nConversaciones anteriores con esta persona:\n${memoria}` : ""}`;
   }
