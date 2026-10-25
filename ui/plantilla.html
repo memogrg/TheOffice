@@ -106,7 +106,7 @@ body{margin:0; background:var(--chrome2); color:var(--ink);
 .al.critico{border-left-color:var(--hold)} .al.alto{border-left-color:var(--wait)} .al.ok{border-left-color:var(--ok)}
 .al .t{font-weight:600; font-size:13px}
 .al .d{font-size:11.5px; color:var(--ink3); margin-top:4px; font-family:var(--m); line-height:1.6}
-.chat{display:flex; flex-direction:column; gap:8px; padding:13px 15px; max-height:260px; overflow:auto}
+.chat{display:flex; flex-direction:column; gap:8px; padding:13px 15px; max-height:440px; overflow:auto}
 .msg{max-width:88%; padding:8px 11px; border-radius:4px; font-size:13px; line-height:1.45}
 .msg.me{align-self:flex-end; background:var(--seal); color:var(--chrome)}
 .msg.ceo{align-self:flex-start; background:var(--chrome2); border:1px solid var(--edge)}
@@ -499,8 +499,10 @@ function panelAgente(){
   if(a.jefe){
     h+='<div class="blk"><div class="k">Hable con el jefe</div><p class="doing" style="font-size:12.5px;color:var(--ink2)">Dele la instrucción a él. Él decide qué agente la ejecuta.</p></div>'+
       '<div class="chat" id="chat">'+(CHAT.length?CHAT:[{w:"ceo",t:"Buenos días. Recepción ya corrió"+(corrida?" a las "+new Date(corrida.actualizado).toLocaleTimeString("es-CR",{hour:"2-digit",minute:"2-digit"}):"")+". ¿Qué necesita?"}])
-      .map(function(m){return '<div class="msg '+m.w+'" style="white-space:pre-wrap"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+esc(m.t)+"</div>";}).join("")+"</div>"+
-      '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: revisá el buzón de International Animal Rescue" aria-label="Instrucción"><button class="b" type="submit">Enviar</button></form>';
+      .map(function(m){return '<div class="msg '+m.w+'" style="white-space:pre-wrap"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+(m.w==="me"?esc(m.t):md(m.t))+"</div>";}).join("")+"</div>"+
+      '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: revisá el buzón de International Animal Rescue" aria-label="Instrucción"><button class="b" type="submit">Enviar</button>'+
+      (CONV?'<button class="b" type="button" id="cNueva" title="Cierra esta conversación y empieza otra; la anterior queda guardada">Nueva</button>':"")+'</form>'+
+      (/^https?:$/.test(location.protocol)?'<p class="doing" style="font-size:11.5px;color:var(--ink2);margin:6px 15px 0">Es la misma conversación que la pestaña Director de la app, con memoria de 30 días.</p>':"");
   }
   h+='<div class="blk"><div class="k">Qué está haciendo</div><p class="doing">'+
      esc(a.doing||PUESTOS[a.rl]||("Trabaja en: "+a.rl+"."))+"</p></div>";
@@ -584,6 +586,28 @@ function decidir(v){
   if(!window.DirectorCore) return {mensaje:"El Director no está cargado en esta copia de la oficina. Corra un agente para regenerarla."};
   return window.DirectorCore.decidir(v, D && D.roster, D && D.companias);
 }
+// Abierta desde el servicio (http://…/oficina), el jefe es el Director real de la app, con la MISMA
+// conversación que la pestaña Director (misma persona = mismo nombre «Soy» de la app, que vive en
+// localStorage del mismo origen). Abierta con doble clic (file://), es el Director de palabras.
+function md(t){ return esc(t).replace(/^#{1,4} +(.+)$/gm,"<b>$1</b>").replace(/\*\*([^*\n]+)\*\*/g,"<b>$1</b>").replace(/`([^`\n]+)`/g,"<code>$1</code>").replace(/^[-*] +/gm,"• ").replace(/\*\*/g,""); }
+function enServicio(){ return /^https?:$/.test(location.protocol); }
+var NUEVA=false;
+function quienSoy(){ try { return localStorage.getItem("iasima_quien") || "oficina"; } catch(e){ return "oficina"; } }
+function apiDirector(ruta, cuerpo){
+  return fetch(((D&&D.prefijo)||"")+ruta,{method:cuerpo!==undefined?"POST":"GET",headers:{"Content-Type":"application/json","X-Quien":quienSoy()},credentials:"same-origin",
+    body:cuerpo!==undefined?JSON.stringify(cuerpo):undefined})
+    .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); });
+}
+function conPasos(respuesta, pasos){ return respuesta+(pasos&&pasos.length?"\n("+pasos.map(function(p){return p.herramienta;}).join(" → ")+")":""); }
+function cargarConversacion(){
+  if(!enServicio()) return;
+  apiDirector("/api/director/actual").then(function(c){
+    if(!c||!c.id) return;
+    CONV=c.id; CHAT=[];
+    (c.resumen||[]).forEach(function(t){ CHAT.push({w:"me",t:t.pregunta}); CHAT.push({w:"ceo",t:conPasos(t.respuesta,t.pasos)}); });
+    pintar(); var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight;
+  }).catch(function(){});
+}
 
 /* ================= pintar ================= */
 function pintar(){
@@ -601,14 +625,12 @@ function cablear(){
     // Abierta desde el servicio (http://…/oficina), el jefe es el Director real de la app:
     // ejecuta los agentes y responde con cifras. Abierta con doble clic (file://), es el
     // Director de palabras, que solo dice a quién va cada cosa.
-    var enServicio = /^https?:$/.test(location.protocol);
-    if(enServicio){
+    if(enServicio()){
       CHAT.push({w:"ceo", t:"…", pensando:true}); pintar(); bajar();
-      fetch(((D&&D.prefijo)||"")+"/api/director",{method:"POST",headers:{"Content-Type":"application/json","X-Quien":"oficina"},
-        body:JSON.stringify({mensaje:v, conversacion:CONV})})
-      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; }); })
-      .then(function(j){ CONV=j.conversacion; CHAT.pop();
-        CHAT.push({w:"ceo", t:j.respuesta+(j.pasos&&j.pasos.length?"\n("+j.pasos.map(function(p){return p.herramienta;}).join(" → ")+")":"")}); pintar(); bajar(); })
+      // sin id sigue la conversación abierta de esta persona (la misma que la app); NUEVA solo tras «Nueva»
+      apiDirector("/api/director",{mensaje:v, conversacion:CONV, nueva:NUEVA})
+      .then(function(j){ CONV=j.conversacion; NUEVA=false; CHAT.pop();
+        CHAT.push({w:"ceo", t:conPasos(j.respuesta, j.pasos)}); pintar(); bajar(); })
       .catch(function(e){ CHAT.pop(); var r=decidir(v); CHAT.push({w:"ceo", t:r.mensaje+"  [sin servicio: "+e.message+"]"}); pintar(); bajar(); });
       return;
     }
@@ -616,6 +638,8 @@ function cablear(){
     CHAT.push({w:"ceo", t:r.mensaje});
     pintar(); bajar();
   });
+  var cn=document.getElementById("cNueva");
+  if(cn) cn.addEventListener("click",function(){ var id=CONV; CONV=null; NUEVA=true; CHAT=[]; pintar(); if(id) apiDirector("/api/director/"+id+"/cerrar",{}).catch(function(){}); });
   function bajar(){ var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight; var ni=document.getElementById("ci"); if(ni) ni.focus(); }
   var fx=document.getElementById("fx"); if(fx) fx.addEventListener("click",function(){ porId(sel).fire=true; pintar(); });
   var fn=document.getElementById("fn"); if(fn) fn.addEventListener("click",function(){ porId(sel).fire=false; pintar(); });
@@ -643,5 +667,6 @@ document.getElementById("pie").innerHTML = corrida
 
 if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) movimiento=false;
 sembrar(); pintar(); requestAnimationFrame(latido);
+cargarConversacion();
 })();
 </script>

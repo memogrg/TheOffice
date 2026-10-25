@@ -9,12 +9,13 @@
 import { createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
 import { enviarCorreo } from "../mailer.js";
 import { createServer } from "node:http";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, extname, normalize, sep } from "node:path";
 
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
 import { resolverInquilino, marcaDe } from "./inquilinos.js";
+import { generarOficina } from "../oficina.js";
 
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
 // Por compatibilidad también se acepta un solo contexto suelto (un inquilino "iasima").
@@ -48,7 +49,8 @@ export function crearApi(opciones) {
       propuestas: ctx.db.propuestas({ estado: "propuesta" }).length,
       aprobadas: ctx.db.propuestas({ estado: "aprobada" }).length,
       correos: ctx.db.correos({ estado: "borrador" }).length,
-      correosAprobados: ctx.db.correos({ estado: "aprobado" }).length
+      correosAprobados: ctx.db.correos({ estado: "aprobado" }).length,
+      reglas: ctx.db.reglas().length
     }
   }), AMBOS);
   function estadoReceptor(ctx) {
@@ -95,6 +97,35 @@ export function crearApi(opciones) {
     return ctx.corridas.aplicarAprobadas(Number(cuerpo.compania), { quienPide: quien });
   });
 
+  // --- reglas contables dictadas en el chat (propuestas por el Director, aprobadas por un contable)
+  ruta("GET", "/api/reglas", (q, p, c, quien, ctx) => ctx.db.reglas({ estado: q.estado || "propuesta" }));
+  ruta("POST", "/api/reglas/:id/rechazar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirRegla(Number(p.id), "rechazada", quien) }));
+  ruta("POST", "/api/reglas/:id/aprobar", async (q, p, cuerpo, quien, ctx) => {
+    const r = ctx.db.regla(Number(p.id));
+    if (!r) return error(404, "No existe esa regla.");
+    if (r.estado !== "propuesta") return error(409, `La regla ya está ${r.estado}.`);
+    // 1) se escribe en data/reglas.json del inquilino: desde aquí manda sobre el catálogo
+    const rutaReglas = join(ctx.raiz, "data", "reglas.json");
+    const archivo = existsSync(rutaReglas) ? JSON.parse(readFileSync(rutaReglas, "utf8")) : { reglas: [] };
+    archivo.reglas = archivo.reglas || [];
+    archivo.reglas.push({ ...(r.articulo ? { articulo: r.articulo } : { proveedorId: r.proveedor_id, proveedor: r.proveedor }),
+      codigo: r.codigo, cuenta: r.cuenta, alcance: r.compania || "todas", decidio: quien, fecha: new Date().toISOString().slice(0, 10),
+      motivo: r.motivo || "", origen: `regla propuesta #${r.id} (${r.propuso})` });
+    writeFileSync(rutaReglas, JSON.stringify(archivo, null, 2) + "\n");
+    ctx.db.decidirRegla(r.id, "aprobada", quien);
+    // 2) Cuentas revisa de nuevo esa compañía (todas sus facturas, no solo las nuevas) y deja las
+    //    líneas afectadas como propuestas. Si falla, la regla queda igual guardada.
+    if (!r.compania_id) return { ok: true, regla: r.id, mensaje: "Regla guardada para todas las compañías. Corra Cuentas en cada una para ver las líneas afectadas." };
+    try {
+      const { corridaId, resultado } = await ctx.corridas.correr("cuentas", [`--empresa=${r.compania_id}`, "--revisar-todo"], { quienPide: quien });
+      ctx.db.marcarCorridaRegla(r.id, corridaId);
+      const afectadas = (resultado.propuestas || []).filter(x => String(x.cuentaNueva || "").startsWith(r.codigo)).length;
+      return { ok: true, regla: r.id, corridaId, propuestas: afectadas, mensaje: `Regla guardada. Cuentas propuso ${afectadas} líneas a ${r.codigo}; están en Aprobaciones para decidir.` };
+    } catch (e) {
+      return { ok: true, regla: r.id, mensaje: `Regla guardada, pero Cuentas no pudo correr ahora: ${e.message}. Córralo desde el Tablero.` };
+    }
+  });
+
   // --- correos de Victor
   ruta("GET", "/api/correos", (q, p, c, quien, ctx) => esReceptor(ctx)
     ? ctx.db.correos({ estado: "todos" }).filter(x => x.para === ctx.usuario.correo && ["aprobado", "enviado"].includes(x.estado))
@@ -111,18 +142,39 @@ export function crearApi(opciones) {
     ctx.corridas.enviarAprobados({ quienPide: quien, prueba: cuerpo.real !== true, ids: Array.isArray(cuerpo.ids) ? cuerpo.ids.map(Number) : null }));
 
   // --- el Director (modelo de lenguaje con los agentes como herramientas; solo lee y propone)
+  // Cada persona tiene una conversación abierta que sigue entre visitas (app y oficina 2D comparten
+  // la misma); el historial se guarda DIRECTOR_RETENCION_DIAS días (30). Lo que se devuelve al
+  // navegador es el "resumen" (pregunta, respuesta, pasos), nunca los mensajes crudos del modelo.
+  const retencion = ctx => Number(ctx.cfg.DIRECTOR_RETENCION_DIAS || 30);
+  const vista = c => c && ({ id: c.id, quien: c.quien, inicio: c.inicio, ultimo: c.ultimo, modo: c.modo, abierta: c.abierta, titulo: c.titulo, resumen: c.resumen || [] });
   ruta("GET", "/api/director", (q, p, c, quien, ctx) => ({ disponible: Boolean(ctx.director?.disponible), modelo: ctx.director?.modelo || null, modo: ctx.director?.disponible ? "llm" : "palabras",
-    conversaciones: ctx.db.conversaciones(20) }));
-  ruta("GET", "/api/director/:id", (q, p, c, quien, ctx) => ctx.db.conversacion(Number(p.id)) || error(404, "No existe esa conversación."));
+    retencionDias: retencion(ctx), actual: vista(ctx.db.conversacionActual(quien)), conversaciones: ctx.db.conversaciones({ quien, limite: 30, dias: retencion(ctx) }).map(c => ({ ...vista(c), resumen: undefined, turnos: (c.resumen || []).length })) }));
+  ruta("GET", "/api/director/actual", (q, p, c, quien, ctx) => vista(ctx.db.conversacionActual(quien)) || { id: null, resumen: [] });
+  ruta("GET", "/api/director/:id", (q, p, c, quien, ctx) => {
+    const x = ctx.db.conversacion(Number(p.id));
+    if (!x) return error(404, "No existe esa conversación.");
+    if (x.quien !== quien) return error(403, "Esa conversación es de otra persona.");
+    return vista(x);
+  });
+  ruta("POST", "/api/director/:id/cerrar", (q, p, c, quien, ctx) => {
+    const x = ctx.db.conversacion(Number(p.id));
+    if (!x || x.quien !== quien) return error(404, "No existe esa conversación.");
+    return { ok: ctx.db.cerrarConversacion(x.id) };
+  });
+  ruta("POST", "/api/director/:id/reabrir", (q, p, c, quien, ctx) => ctx.db.reabrirConversacion(Number(p.id), quien) ? vista(ctx.db.conversacion(Number(p.id))) : error(404, "No existe esa conversación."));
   ruta("POST", "/api/director", async (q, p, cuerpo, quien, ctx) => {
     if (!ctx.director) return error(503, "El Director no está configurado.");
     const texto = String(cuerpo.mensaje || "").trim();
     if (!texto) return error(400, "Falta el mensaje.");
-    const previa = cuerpo.conversacion ? ctx.db.conversacion(Number(cuerpo.conversacion)) : null;
-    const r = await ctx.director.responder(texto, { conversacion: previa?.mensajes || [], quien });
-    const id = ctx.db.guardarConversacion(previa?.id || null, { quien, modo: r.modo, mensajes: r.conversacion, turno: { pregunta: texto, respuesta: r.respuesta, pasos: r.pasos, cuando: new Date().toISOString() } });
+    // Sin id: sigue la conversación abierta de esta persona (salvo nueva:true). Con id: esa, si es suya.
+    let previa = null;
+    if (cuerpo.conversacion) { previa = ctx.db.conversacion(Number(cuerpo.conversacion)); if (previa && previa.quien !== quien) previa = null; }
+    else if (!cuerpo.nueva) previa = ctx.db.conversacionActual(quien);
+    const r = await ctx.director.responder(texto, { conversacion: previa?.mensajes || [], conversacionId: previa?.id || null, quien });
+    const id = ctx.db.guardarConversacion(previa?.id || null, { quien, modo: r.modo, mensajes: r.conversacion, turno: { pregunta: texto, respuesta: r.respuesta, pasos: r.pasos, cuando: new Date().toISOString(), truncado: r.truncado || undefined } });
+    if (!previa) ctx.db.purgarConversaciones(retencion(ctx));
     ctx.db.auditar(quien, "preguntar", "conversacion", id, { pregunta: texto.slice(0, 200), pasos: r.pasos.map(x => x.herramienta) });
-    return { conversacion: id, respuesta: r.respuesta, pasos: r.pasos, modo: r.modo };
+    return { conversacion: id, respuesta: r.respuesta, pasos: r.pasos, modo: r.modo, truncado: r.truncado || false };
   });
 
   ruta("GET", "/api/auditoria", (q, p, c, quien, ctx) => ctx.db.auditoria(Number(q.limite || 100)));
@@ -254,13 +306,15 @@ export function crearApi(opciones) {
         if (out && out.__error) return responder(res, out.__error, { error: out.mensaje });
         return responder(res, 200, out ?? {});
       }
-      // la oficina 2D regenerada del inquilino
+      // la oficina 2D del inquilino, armada en cada visita con la plantilla ACTUAL y las cifras de la
+      // última corrida: así un despliegue nuevo se ve sin esperar a que corra Recepción.
       if (pathname === "/oficina") {
         if (esReceptor(ctx)) return redirigir(res, (r0.prefijo || "") + "/");
-        const of = join(ctx.raiz, "Oficina IASIMA.html");
-        if (!existsSync(of)) return responder(res, 404, { error: "Todavía no hay oficina: corra Recepción primero." });
-        res.writeHead(200, { "Content-Type": TIPOS[".html"] });
-        return res.end(readFileSync(of));
+        const rutaEstado = join(ctx.raiz, "data", "estado.json");
+        const estado = existsSync(rutaEstado) ? JSON.parse(readFileSync(rutaEstado, "utf8")) : { agentes: [] };
+        const html = generarOficina({ raizProyecto, raiz: ctx.raiz, cfg: ctx.cfg, estado, marca: ctx.corridas?.marca || ctx.inquilino, prefijo: ctx.corridas?.prefijo ?? (r0.prefijo || "") });
+        res.writeHead(200, { "Content-Type": TIPOS[".html"], "Cache-Control": "no-store" });
+        return res.end(html);
       }
       return estatico(res, raizProyecto, pathname);
     } catch (e) {

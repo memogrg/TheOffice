@@ -167,7 +167,61 @@ export class BaseDeDatos {
     this.db = new DatabaseSync(ruta);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
     this.db.exec(ESQUEMA);
+    this.#migrar();
   }
+
+  // Columnas que llegaron después del primer esquema. ALTER TABLE es idempotente aquí porque
+  // se mira primero si la columna existe (bases ya creadas en producción no se recrean).
+  #migrar() {
+    const columnas = t => new Set(this.todos(`PRAGMA table_info(${t})`).map(c => c.name));
+    const conv = columnas("conversaciones");
+    if (!conv.has("abierta")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN abierta INTEGER NOT NULL DEFAULT 1");
+    if (!conv.has("titulo")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN titulo TEXT");
+    this.db.exec("CREATE INDEX IF NOT EXISTS conversaciones_quien ON conversaciones(quien, abierta, ultimo)");
+    // Reglas contables que alguien dicta en el chat («esto siempre va a 5.04.17.01»). El Director
+    // las deja aquí; un contable las aprueba y recién entonces se escriben en data/reglas.json.
+    this.db.exec(`CREATE TABLE IF NOT EXISTS reglas_propuestas (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      compania_id INTEGER,
+      compania    TEXT,                 -- alcance: nombre de la compañía (o NULL = todas)
+      proveedor_id INTEGER,
+      proveedor   TEXT,
+      articulo    TEXT,                 -- o artículo, o proveedor
+      codigo      TEXT NOT NULL,
+      cuenta      TEXT NOT NULL,
+      cuenta_id   INTEGER,
+      motivo      TEXT,
+      ejemplo     TEXT,                 -- factura que la originó
+      lineas      INTEGER,              -- cuántas líneas tocaría hoy (estimado al proponer)
+      propuso     TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      estado      TEXT NOT NULL DEFAULT 'propuesta',   -- propuesta | aprobada | rechazada
+      decidio     TEXT,
+      decidido_en TEXT,
+      corrida_id  INTEGER
+    )`);
+  }
+
+  // --- reglas propuestas
+  proponerRegla(r) {
+    const x = this.correr(`INSERT INTO reglas_propuestas (compania_id, compania, proveedor_id, proveedor, articulo, codigo, cuenta, cuenta_id, motivo, ejemplo, lineas, propuso, creado_en)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, r.companiaId ?? null, r.compania ?? null, r.proveedorId ?? null, r.proveedor ?? null, r.articulo ?? null,
+      r.codigo, r.cuenta, r.cuentaId ?? null, r.motivo ?? null, r.ejemplo ?? null, r.lineas ?? null, r.propuso, this.#ahora());
+    const id = Number(x.lastInsertRowid);
+    this.auditar(r.propuso, "proponer", "regla", id, { codigo: r.codigo, proveedor: r.proveedor, articulo: r.articulo, compania: r.compania });
+    return this.regla(id);
+  }
+  regla(id) { return this.uno("SELECT * FROM reglas_propuestas WHERE id=?", id); }
+  reglas({ estado = "propuesta" } = {}) {
+    return estado === "todas" ? this.todos("SELECT * FROM reglas_propuestas ORDER BY id DESC LIMIT 200")
+      : this.todos("SELECT * FROM reglas_propuestas WHERE estado=? ORDER BY id DESC LIMIT 200", estado);
+  }
+  decidirRegla(id, decision, quien) {
+    const r = this.correr("UPDATE reglas_propuestas SET estado=?, decidio=?, decidido_en=? WHERE id=? AND estado='propuesta'", decision, quien, this.#ahora(), id);
+    if (r.changes) this.auditar(quien, decision === "aprobada" ? "aprobar" : "rechazar", "regla", id);
+    return r.changes > 0;
+  }
+  marcarCorridaRegla(id, corridaId) { this.correr("UPDATE reglas_propuestas SET corrida_id=? WHERE id=?", corridaId, id); }
 
   cerrar() { this.db.close(); }
 
@@ -346,7 +400,13 @@ export class BaseDeDatos {
   }
 
   // --- conversaciones con el Director
+  // Cada persona (quien) tiene a lo sumo UNA conversación abierta: es la que sigue al volver,
+  // desde la app o desde la oficina 2D. «Nueva conversación» la cierra. Se guardan 30 días
+  // (DIRECTOR_RETENCION_DIAS) y luego se purgan.
   conversacion(id) { return desempacar(this.uno("SELECT * FROM conversaciones WHERE id=?", id)); }
+  conversacionActual(quien) {
+    return desempacar(this.uno("SELECT * FROM conversaciones WHERE quien=? AND abierta=1 ORDER BY ultimo DESC LIMIT 1", quien));
+  }
   guardarConversacion(id, { quien, modo, mensajes, turno }) {
     const ahora = this.#ahora();
     if (id) {
@@ -355,12 +415,32 @@ export class BaseDeDatos {
       this.correr("UPDATE conversaciones SET ultimo=?, modo=?, mensajes=?, resumen=? WHERE id=?", ahora, modo, JSON.stringify(mensajes), JSON.stringify(resumen), id);
       return id;
     }
-    const r = this.correr("INSERT INTO conversaciones (quien, inicio, ultimo, modo, mensajes, resumen) VALUES (?,?,?,?,?,?)",
-      quien, ahora, ahora, modo, JSON.stringify(mensajes), JSON.stringify([turno]));
+    // una sola abierta por persona
+    this.correr("UPDATE conversaciones SET abierta=0 WHERE quien=? AND abierta=1", quien);
+    const titulo = String(turno?.pregunta || "").slice(0, 80) || null;
+    const r = this.correr("INSERT INTO conversaciones (quien, inicio, ultimo, modo, mensajes, resumen, abierta, titulo) VALUES (?,?,?,?,?,?,1,?)",
+      quien, ahora, ahora, modo, JSON.stringify(mensajes), JSON.stringify([turno]), titulo);
     return Number(r.lastInsertRowid);
   }
-  conversaciones(limite = 30) {
-    return this.todos("SELECT id, quien, inicio, ultimo, modo, resumen FROM conversaciones ORDER BY ultimo DESC LIMIT ?", limite).map(desempacar);
+  cerrarConversacion(id) { return this.correr("UPDATE conversaciones SET abierta=0 WHERE id=?", id).changes > 0; }
+  reabrirConversacion(id, quien) {
+    const c = this.conversacion(id);
+    if (!c || c.quien !== quien) return false;
+    this.correr("UPDATE conversaciones SET abierta=0 WHERE quien=? AND abierta=1", quien);
+    this.correr("UPDATE conversaciones SET abierta=1 WHERE id=?", id);
+    return true;
+  }
+  conversaciones({ quien = null, limite = 30, dias = null } = {}) {
+    const desde = dias ? new Date(Date.now() - dias * 86_400_000).toISOString() : null;
+    const cond = [], p = [];
+    if (quien) { cond.push("quien=?"); p.push(quien); }
+    if (desde) { cond.push("ultimo>=?"); p.push(desde); }
+    const sql = `SELECT id, quien, inicio, ultimo, modo, abierta, titulo, resumen FROM conversaciones${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY ultimo DESC LIMIT ?`;
+    return this.todos(sql, ...p, limite).map(desempacar);
+  }
+  purgarConversaciones(dias = 30) {
+    const limite = new Date(Date.now() - dias * 86_400_000).toISOString();
+    return this.correr("DELETE FROM conversaciones WHERE ultimo < ?", limite).changes;
   }
 
   // --- usuarios, invitaciones y sesiones

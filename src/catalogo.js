@@ -38,16 +38,29 @@ export class Catalogo {
     this.articulosGlobal = Object.keys(this.global).length;
 
     // Reglas humanas: mandan sobre el historico.
+    // Dos clases: por artículo (alcance|ARTICULO) y por proveedor (alcance|#id o alcance|@NOMBRE),
+    // para «todo lo de Rostipollos va a Relaciones públicas». La de artículo es más específica y gana.
     this.reglas = new Map();
+    this.reglasProveedor = new Map();
     if (rutaReglas && existsSync(rutaReglas)){
       const rr = JSON.parse(readFileSync(rutaReglas, "utf8")).reglas || [];
       for (const r of rr){
         const alc = (r.alcance && r.alcance !== "todas") ? norm(r.alcance) : "*";
-        this.reglas.set(alc + "|" + norm(r.articulo),
-          { codigo: canon(r.codigo), cuenta: r.cuenta, decidio: r.decidio, motivo: r.motivo });
+        const valor = { codigo: canon(r.codigo), cuenta: r.cuenta, decidio: r.decidio, motivo: r.motivo };
+        if (r.articulo) this.reglas.set(alc + "|" + norm(r.articulo), valor);
+        else if (r.proveedorId) this.reglasProveedor.set(alc + "|#" + Number(r.proveedorId), valor);
+        else if (r.proveedor) this.reglasProveedor.set(alc + "|@" + norm(r.proveedor), valor);
       }
     }
-    this.nReglas = this.reglas.size;
+    this.nReglas = this.reglas.size + this.reglasProveedor.size;
+  }
+
+  #reglaProveedor(c, { proveedorId = null, proveedor = null } = {}){
+    const claves = [];
+    if (proveedorId) claves.push(c + "|#" + Number(proveedorId), "*|#" + Number(proveedorId));
+    if (proveedor) claves.push(c + "|@" + norm(proveedor), "*|@" + norm(proveedor));
+    for (const k of claves) if (this.reglasProveedor.has(k)) return this.reglasProveedor.get(k);
+    return null;
   }
 
   #jaccard(a, b){
@@ -57,15 +70,19 @@ export class Catalogo {
   }
 
   // Devuelve { codigo, cuenta, fuente, confianza } o null
-  resolver(cliente, articulo){
+  // proveedor: { proveedorId, proveedor } de la factura, para las reglas por proveedor.
+  resolver(cliente, articulo, proveedor = {}){
     const a = norm(articulo);
     if (!a) return null;
     const c = norm(cliente);
 
-    // 0. una decision humana gana siempre
+    // 0. una decision humana gana siempre: primero por artículo, luego por proveedor
     const regla = this.reglas.get(c + "|" + a) || this.reglas.get("*|" + a);
     if (regla) return { codigo: regla.codigo, cuenta: regla.cuenta, fuente: "regla-humana",
                         confianza: 1, decidio: regla.decidio };
+    const rp = this.#reglaProveedor(c, proveedor);
+    if (rp) return { codigo: rp.codigo, cuenta: rp.cuenta, fuente: "regla-humana",
+                     confianza: 1, decidio: rp.decidio, porProveedor: true };
 
     const pc = this.porCliente[c];
     if (pc && pc[a]) return { codigo: pc[a][0], cuenta: pc[a][1], fuente: "cliente-exacto", confianza: 1, veces: pc[a][2] };

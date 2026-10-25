@@ -36,7 +36,7 @@ escribe en Odoo o manda por correo pasa antes por una persona:
 | **Casos** | Un caso por documento y receptor. Filtro por receptor, compañía, frente (afuera/adentro). «Resuelto» lo marca una persona; la corrida siguiente no lo pisa, y lo que deja de aparecer en Odoo se cierra solo. |
 | **Aprobaciones** | Las propuestas de Cuentas, línea por línea. Aprobar / rechazar; «Aplicar en Odoo» corre el agente en escritura **solo sobre lo aprobado** de esa compañía. |
 | **Correos** | Los borradores de Victor con vista previa. Aprobar / rechazar; enviar en prueba (todo a su correo) o de verdad. |
-| **Director** | Chat. Con `CLAUDE_API_KEY`, un modelo de lenguaje decide qué agente atiende, lo corre como herramienta y responde con cifras («¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk», «¿en qué cuenta debería ir la factura de Rostipollos?»: `revisar_factura` explica línea por línea lo que Cuentas haría). Sus herramientas son de solo lectura y propuesta: no puede escribir en Odoo ni enviar correos. Sin clave, es el Director de palabras clave. |
+| **Director** | Chat. Con `CLAUDE_API_KEY`, un modelo de lenguaje decide qué agente atiende, lo corre como herramienta y responde con cifras («¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk», «¿en qué cuenta debería ir la factura de Rostipollos?»: `revisar_factura` explica línea por línea lo que Cuentas haría). **Memoria**: cada persona retoma su conversación al volver (la misma en la app y en la oficina 2D), con 30 días de historial y un resumen de lo hablado antes. **Reglas dictadas**: «todo lo de este proveedor va a 5.04.17.01» queda como regla propuesta en Aprobaciones; al aprobarla se guarda en `data/reglas.json` y Cuentas propone cada línea afectada. Sus herramientas son de solo lectura y propuesta: no puede escribir en Odoo ni enviar correos. Sin clave, es el Director de palabras clave. |
 | **Usuarios** (contable) | Alta de receptores y contables, y **enlace de acceso** de un solo uso (3 días): se envía por correo si hay SMTP y siempre queda para copiarlo. Desactivar cierra sus sesiones. |
 | **Corridas** y **Auditoría** | Qué corrió, cuánto tardó, qué encontró; y quién aprobó, rechazó, aplicó o envió qué, y cuándo. |
 
@@ -127,7 +127,8 @@ agentes con las palabras del roster, pregunta si hay empate, pide la compañía 
 | `CATALOGO_CUENTAS` | Otro catálogo que no sea `data/catalogo-cuentas.json`. |
 | `PUERTO`, `BASE_DE_DATOS`, `SERVICIO_TOKEN` | Del servicio: puerto (4180), ruta de la base (`data/oficina.db`), token para las acciones. |
 | `CORRIDA_DIARIA`, `CONCILIACION_SEMANAL` | Calendario del servicio: hora local `HH:MM` y día de la semana (0 domingo … 6 sábado). |
-| `CLAUDE_API_KEY`, `DIRECTOR_MODELO`, `DIRECTOR_MAX_PASOS` | El Director por modelo de lenguaje. Sin clave, Director de palabras. |
+| `CLAUDE_API_KEY`, `CLAUDE_WORKSPACE_ID`, `DIRECTOR_MODELO`, `DIRECTOR_MAX_PASOS` | El Director por modelo de lenguaje. Sin clave, Director de palabras. |
+| `DIRECTOR_RETENCION_DIAS`, `DIRECTOR_TURNOS_COMPLETOS`, `DIRECTOR_MAX_CONTEXTO` | Memoria del Director: 30 días de historial por persona, cuántos turnos van completos al modelo y el tope de contexto. |
 
 Las variables de entorno pisan al `.env`, así que se puede correr en un contenedor o en CI sin el archivo.
 

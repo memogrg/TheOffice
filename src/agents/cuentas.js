@@ -98,7 +98,7 @@ export async function ejecutar({ odoo, cfg, log, raiz, args }){
     for (const l of lineas){
       nLineas++;
       const texto = l.name || (l.product_id ? l.product_id[1] : "");
-      const d = cat.resolver(cia.name, texto);
+      const d = cat.resolver(cia.name, texto, { proveedorId: f.partner_id ? f.partner_id[0] : null, proveedor: f.partner_id ? f.partner_id[1] : null });
       if (!d){
         dudas.push({ lineaId: l.id, articulo: String(texto).slice(0, 70),
                      motivo: "el articulo no esta en el catalogo", cuentaActual: l.account_id ? l.account_id[1] : "(sin cuenta)" });

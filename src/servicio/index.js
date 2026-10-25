@@ -26,6 +26,8 @@ const contextos = inquilinos.map(inq => {
   const c = inq.cfg;
   const logI = inquilinos.length > 1 ? (m => log(`[${inq.id}] ${m}`)) : log;
   const db = new BaseDeDatos(join(inq.raiz, c.BASE_DE_DATOS || "data/oficina.db"));
+  const purgadas = db.purgarConversaciones(Number(c.DIRECTOR_RETENCION_DIAS || 30));
+  if (purgadas) logI(`${purgadas} conversaciones del Director con más de ${c.DIRECTOR_RETENCION_DIAS || 30} días borradas`);
   const prefijo = inq.unico || inq.dominio ? "" : `/t/${inq.id}`;
   const corridas = new Corridas({ db, cfg: c, raiz: inq.raiz, raizProyecto: RAIZ, marca: inq, prefijo, log: logI });
   const programador = new Programador({ corridas, db, cfg: c, log: logI });

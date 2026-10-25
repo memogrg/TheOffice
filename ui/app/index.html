@@ -97,12 +97,14 @@ a{color:var(--sello)}
 <script>
 (function(){
 "use strict";
-var S = { vista:"tablero", estado:null, companias:[], filtros:{ receptor:"", compania:"", frente:"", seguimiento:"abierto" }, correoAbierto:null, chat:[], conversacion:null };
+var S = { vista:"tablero", estado:null, companias:[], filtros:{ receptor:"", compania:"", frente:"", seguimiento:"abierto" }, correoAbierto:null, chat:[], conversacion:null, conversaciones:[], directorCargado:false, retencionDias:30 };
 // Con varios inquilinos la app vive en /t/<id>/; todas las llamadas llevan ese prefijo.
 var PREFIJO = (location.pathname.match(/^\/t\/[a-z0-9_-]+/i)||[""])[0];
 var $ = function(s){ return document.querySelector(s); };
 var esc = function(s){ return String(s==null?"":s).replace(/[<>&"]/g,function(c){return {"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c];}); };
 var n = function(x){ return typeof x==="number" ? x.toLocaleString("es-CR") : (x==null?"—":String(x)); };
+// Markdown mínimo del Director (negrita, código, viñetas, títulos), siempre sobre texto ya escapado.
+var md = function(t){ return esc(t).replace(/^#{1,4} +(.+)$/gm,"<b>$1</b>").replace(/\*\*([^*\n]+)\*\*/g,"<b>$1</b>").replace(/`([^`\n]+)`/g,"<code>$1</code>").replace(/^[-*] +/gm,"• ").replace(/\*\*/g,""); };
 var fecha = function(s){ return s ? new Date(s).toLocaleString("es-CR",{dateStyle:"medium",timeStyle:"short"}) : "—"; };
 
 try { $("#quien").value = localStorage.getItem("iasima_quien")||""; $("#token").value = localStorage.getItem("iasima_token")||""; } catch(e){}
@@ -162,7 +164,7 @@ V.tablero = function(){
     tile("Compañías", t.companias, "con correos en el buzón")+
     tile("Por reclamar afuera", ab["afuera|abierto"]||0, "documentos abiertos")+
     tile("Por revisar adentro", ab["adentro|abierto"]||0, "documentos abiertos")+
-    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar")+
+    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas del chat":""))+
     tile("Correos por aprobar", e.pendientes.correos, e.pendientes.correosAprobados+" aprobados sin enviar")+
     '</div>';
   h += '<section><h2>Correr ahora</h2><div class="fila">'+
@@ -191,13 +193,30 @@ V.director = function(){
     '<div class="aviso">'+(d.modo==="llm"
       ? 'Modelo de lenguaje <b>'+esc(d.modelo)+'</b> con los agentes como herramientas. Solo lee y propone: no existe herramienta que escriba en Odoo ni que envíe correos. Pregunte como le preguntaría a una persona: «¿cómo está el buzón?», «¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk».'
       : 'Director de <b>palabras clave</b>: dice a qué agente va cada instrucción. Para que además ejecute y responda con cifras, configure <code>CLAUDE_API_KEY</code> en el .env y reinicie el servicio.')+'</div>'+
+    (S.directorCargado?'':'<div class="sub">Cargando la conversación…</div>')+
     '<div class="chat" id="chat">'+(S.chat.length?S.chat.map(function(m){
-      return '<div class="msg '+(m.w==="me"?"me":"dir")+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+'</span>'+esc(m.t)+
+      return '<div class="msg '+(m.w==="me"?"me":"dir")+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+(m.cuando?' <span style="font-weight:400;opacity:.6">· '+esc(fecha(m.cuando))+'</span>':"")+'</span>'+(m.w==="me"?esc(m.t):md(m.t))+
         (m.pasos&&m.pasos.length?'<div class="pasos">'+m.pasos.map(function(p){return '<div>→ '+esc(p.herramienta)+'('+esc(JSON.stringify(p.args||{}))+') · '+p.ms+' ms</div>';}).join("")+'</div>':"")+'</div>';
-    }).join(""):'<div class="sub">Sin conversación todavía.</div>')+'</div>'+
+    }).join(""):'<div class="sub">Sin conversación todavía. El Director recuerda lo que hablen: al volver, la conversación sigue donde quedó.</div>')+'</div>'+
     '<form class="row" id="cf"><input id="ci" placeholder="Escriba la instrucción…" autocomplete="off"><button class="b" type="submit" id="cEnviar">Enviar</button>'+
-    (S.chat.length?'<button class="b gh" type="button" id="cNueva">Nueva conversación</button>':"")+'</form></section>';
+    (S.chat.length?'<button class="b gh" type="button" id="cNueva">Nueva conversación</button>':"")+'</form></section>'+
+    '<section><h2>Conversaciones anteriores <span class="sub" style="font-weight:400">(se guardan '+S.retencionDias+' días; la oficina 2D usa la misma)</span></h2>'+
+    (S.conversaciones.length?tabla(["Cuándo","Tema",{t:"Turnos",n:1},""], S.conversaciones.map(function(c){
+      var actual = c.id===S.conversacion;
+      return [fecha(c.ultimo), esc(c.titulo||"(sin título)"), n(c.turnos), actual?'<span class="est ok">abierta</span>':'<button class="b gh" data-conv="'+c.id+'">Retomar</button>'];
+    })):'<div class="sub">Todavía no hay conversaciones guardadas.</div>')+'</section>';
 };
+function chatDe(resumen){
+  var out=[]; (resumen||[]).forEach(function(t){ out.push({w:"me", t:t.pregunta, cuando:t.cuando}); out.push({w:"dir", t:t.respuesta, pasos:t.pasos}); }); return out;
+}
+// La conversación abierta de esta persona y la lista de anteriores. Con retomar=false solo refresca la lista.
+function cargarDirector(retomar){
+  return api("/api/director").then(function(j){
+    S.retencionDias=j.retencionDias||30; S.conversaciones=j.conversaciones||[];
+    if (retomar){ S.conversacion=j.actual?j.actual.id:null; S.chat=chatDe(j.actual?j.actual.resumen:[]); }
+    S.directorCargado=true; if (S.vista==="director") { pintar(); var c=$("#chat"); if(c) c.scrollTop=c.scrollHeight; }
+  }).catch(function(e){ S.directorCargado=true; msg(e.message,true); });
+}
 V.tableroReceptor = function(){
   var e=S.estado, c=e.casos;
   return '<div class="tiles">'+tile("Por reclamar al establecimiento", c.afuera, "tiquetes y rechazados: pida la factura real")+tile("Por revisar adentro", c.adentro, "duplicados, errores, cédulas")+
@@ -249,7 +268,10 @@ function pintarCasos(lista){
   }));
 }
 V.aprobaciones = function(){
-  return '<section><h2>Propuestas de Cuentas — cuenta contable por línea</h2>'+
+  return '<section><h2>Reglas propuestas en el chat</h2>'+
+    '<div class="aviso">Decisiones contables que alguien le dictó al Director («todo lo de este proveedor va a 5.04.17.01»). Al <b>aprobar</b>, la regla se guarda (manda sobre el histórico) y Cuentas revisa de nuevo esa compañía: cada línea afectada aparece abajo como propuesta.</div>'+
+    '<div id="reglasTabla">Cargando…</div></section>'+
+    '<section><h2>Propuestas de Cuentas — cuenta contable por línea</h2>'+
     '<div class="aviso">Cada línea es una corrección que el agente propone. Apruebe o rechace una por una; luego «Aplicar aprobadas» corre el agente en modo escritura <b>solo sobre lo aprobado</b> de esa compañía. Requiere PERMITIR_ESCRITURA=si en el servicio.</div>'+
     '<div class="fila"><select id="pEstado"><option value="propuesta">por decidir</option><option value="aprobada">aprobadas</option><option value="rechazada">rechazadas</option><option value="aplicada">aplicadas</option><option value="fallo">con fallo</option><option value="todas">todas</option></select>'+
     '<select id="pCia"><option value="">todas las compañías</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
@@ -257,6 +279,16 @@ V.aprobaciones = function(){
     '<select id="pAplicarCia"><option value="">Aplicar aprobadas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b" id="pAplicar">Aplicar en Odoo</button></div><div id="propTabla">Cargando…</div></section>';
 };
+function pintarReglas(lista){
+  var el=$("#reglasTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">No hay reglas por decidir. Se proponen desde el Director: «todo lo de Rostipollos en Alfonso Llorca va a 5.04.17.01».</div>'; return; }
+  el.innerHTML = tabla(["Compañía","Alcance","Cuenta",{t:"Líneas hoy",n:1},"Motivo",""], lista.map(function(r){
+    return [esc(r.compania||"todas"), r.proveedor?'todo lo de <b>'+esc(r.proveedor)+'</b>':'artículo «'+esc(r.articulo)+'»',
+      '<b style="color:var(--ok)">'+esc(r.codigo)+' '+esc(r.cuenta)+'</b>', r.lineas==null?"—":n(r.lineas),
+      '<div>'+esc(r.motivo||"")+'</div><div class="sub">'+esc(r.propuso)+' · '+fecha(r.creado_en)+(r.ejemplo?' · '+esc(r.ejemplo):"")+'</div>',
+      '<button class="b" data-aprobar-regla="'+r.id+'">Aprobar</button> <button class="b rj" data-rechazar-regla="'+r.id+'">Rechazar</button>'];
+  }));
+}
 function pintarPropuestas(lista){
   var el=$("#propTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Revisar cuentas» en el tablero.</div>'; return; }
@@ -345,8 +377,9 @@ function pintar(){
   $("#token").style.display = receptor ? "none" : "";
   if (receptor) $("#quien").readOnly = true;
   $("#main").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
+  if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
   if (S.vista==="casos") cargarCasos();
-  if (S.vista==="aprobaciones") cargarPropuestas();
+  if (S.vista==="aprobaciones"){ cargarPropuestas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -366,11 +399,13 @@ $("#main").addEventListener("submit", function(ev){
     return; }
   if (ev.target.id!=="cf") return; ev.preventDefault();
   var i=$("#ci"), v=i.value.trim(); if(!v) return;
-  S.chat.push({w:"me", t:v}); S.chat.push({w:"dir", t:"…", pensando:true}); pintar();
+  S.chat.push({w:"me", t:v, cuando:new Date().toISOString()}); S.chat.push({w:"dir", t:"…", pensando:true}); pintar();
   var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight;
-  api("/api/director", {mensaje:v, conversacion:S.conversacion}).then(function(j){
-    S.conversacion=j.conversacion; S.chat.pop(); S.chat.push({w:"dir", t:j.respuesta, pasos:j.pasos}); pintar();
+  // sin id el servicio sigue la conversación abierta de esta persona; nueva:true solo tras «Nueva conversación»
+  api("/api/director", {mensaje:v, conversacion:S.conversacion, nueva:S.nueva===true}).then(function(j){
+    S.conversacion=j.conversacion; S.nueva=false; S.chat.pop(); S.chat.push({w:"dir", t:j.respuesta, pasos:j.pasos}); pintar();
     var c=$("#chat"); if(c) c.scrollTop=c.scrollHeight; var n=$("#ci"); if(n) n.focus();
+    cargarDirector(false);
   }).catch(function(e){ S.chat.pop(); S.chat.push({w:"dir", t:"Error: "+e.message}); pintar(); });
 });
 $("#main").addEventListener("click", function(ev){
@@ -389,8 +424,14 @@ $("#main").addEventListener("click", function(ev){
   else if (t.id==="pAplicar"){ var ca=$("#pAplicarCia").value; if(!ca) return msg("Elija la compañía.", true);
     if(!confirm("Esto ESCRIBE en Odoo las propuestas aprobadas de esa compañía. ¿Continuar?")) return;
     msg("Aplicando…"); api("/api/propuestas/aplicar",{compania:Number(ca)}).then(function(j){ msg((j.aplicadas||0)+" facturas corregidas"+(j.fallos&&j.fallos.length?", "+j.fallos.length+" con fallo":"")+"."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.aprobarRegla){ if(!confirm("La regla se guarda y Cuentas revisa de nuevo esa compañía (puede tardar hasta un minuto). No escribe en Odoo. ¿Continuar?")) return;
+    t.disabled=true; msg("Guardando la regla y corriendo Cuentas…");
+    api("/api/reglas/"+d.aprobarRegla+"/aprobar",{}).then(function(j){ msg(j.mensaje||"Regla aprobada."); api("/api/reglas").then(pintarReglas); cargarPropuestas(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
+  else if (d.rechazarRegla){ api("/api/reglas/"+d.rechazarRegla+"/rechazar",{}).then(function(){ msg("Regla rechazada."); api("/api/reglas").then(pintarReglas); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="cIr"){ cargarCorreos(); }
-  else if (t.id==="cNueva"){ S.chat=[]; S.conversacion=null; pintar(); }
+  else if (t.id==="cNueva"){ var cid=S.conversacion; S.chat=[]; S.conversacion=null; S.nueva=true; pintar();
+    if (cid) api("/api/director/"+cid+"/cerrar",{}).then(function(){ cargarDirector(false); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.conv){ api("/api/director/"+d.conv+"/reabrir",{}).then(function(c){ S.conversacion=c.id; S.nueva=false; S.chat=chatDe(c.resumen); cargarDirector(false); pintar(); var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight; }).catch(function(e){ msg(e.message,true); }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }
