@@ -27,3 +27,10 @@ data/oficina.db*
 
 # Carpeta temporal de limpieza
 _to_delete/
+
+# Restos de pruebas y sesiones: nunca bases de datos ni temporales en el repositorio
+tmp/
+*.db
+*.db-shm
+*.db-wal
+parches/

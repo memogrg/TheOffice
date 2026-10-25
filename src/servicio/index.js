@@ -6,7 +6,7 @@
 // IASIMA_ODOO_URL=…, SIMA_ODOO_URL=… (ver src/servicio/inquilinos.js). Cada uno tiene su base,
 // sus datos, su calendario, su Director y su marca; se entra por /t/<id>/ o por su dominio.
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cargarEnv } from "../odoo.js";
 import { BaseDeDatos } from "./db.js";
@@ -25,7 +25,8 @@ const inquilinos = cargarInquilinos(cfg, RAIZ);
 const contextos = inquilinos.map(inq => {
   const c = inq.cfg;
   const logI = inquilinos.length > 1 ? (m => log(`[${inq.id}] ${m}`)) : log;
-  const db = new BaseDeDatos(join(inq.raiz, c.BASE_DE_DATOS || "data/oficina.db"));
+  // resolve y no join: una ruta absoluta en BASE_DE_DATOS se respeta (join la colgaba dentro del repo)
+  const db = new BaseDeDatos(resolve(inq.raiz, c.BASE_DE_DATOS || "data/oficina.db"));
   const purgadas = db.purgarConversaciones(Number(c.DIRECTOR_RETENCION_DIAS || 30));
   if (purgadas) logI(`${purgadas} conversaciones del Director con más de ${c.DIRECTOR_RETENCION_DIAS || 30} días borradas`);
   const prefijo = inq.unico || inq.dominio ? "" : `/t/${inq.id}`;
