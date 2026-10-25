@@ -615,6 +615,8 @@ function pintar(){
   document.getElementById("tab-r").setAttribute("aria-selected", tab==="r"?"true":"false");
   document.getElementById("sbody").innerHTML = tab==="a" ? panelAgente() : panelReportes();
   planilla(); cablear();
+  // el chat abre siempre en el último mensaje, como cualquier chat
+  var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight;
 }
 function cablear(){
   var cf=document.getElementById("cf");

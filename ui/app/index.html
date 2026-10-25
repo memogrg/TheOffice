@@ -193,6 +193,7 @@ V.director = function(){
     '<div class="aviso">'+(d.modo==="llm"
       ? 'Modelo de lenguaje <b>'+esc(d.modelo)+'</b> con los agentes como herramientas. Solo lee y propone: no existe herramienta que escriba en Odoo ni que envíe correos. Pregunte como le preguntaría a una persona: «¿cómo está el buzón?», «¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk».'
       : 'Director de <b>palabras clave</b>: dice a qué agente va cada instrucción. Para que además ejecute y responda con cifras, configure <code>CLAUDE_API_KEY</code> en el .env y reinicie el servicio.')+'</div>'+
+    (!$("#quien").value || $("#quien").value==="anónimo" ? '<div class="aviso" style="border-color:var(--critico)">Escriba su nombre en <b>Soy</b> (arriba a la derecha) y recargue: la memoria del Director es por persona, y sin nombre todos comparten la conversación «anónimo».</div>' : '')+
     (S.directorCargado?'':'<div class="sub">Cargando la conversación…</div>')+
     '<div class="chat" id="chat">'+(S.chat.length?S.chat.map(function(m){
       return '<div class="msg '+(m.w==="me"?"me":"dir")+'"><span class="w">'+(m.w==="me"?"Usted":"Director")+(m.cuando?' <span style="font-weight:400;opacity:.6">· '+esc(fecha(m.cuando))+'</span>':"")+'</span>'+(m.w==="me"?esc(m.t):md(m.t))+
@@ -377,6 +378,8 @@ function pintar(){
   $("#token").style.display = receptor ? "none" : "";
   if (receptor) $("#quien").readOnly = true;
   $("#main").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
+  // el chat abre siempre en el último mensaje (al volver a la pestaña, al recargar, al responder)
+  if (S.vista==="director"){ var ch=$("#chat"); if(ch){ ch.scrollTop=ch.scrollHeight; requestAnimationFrame(function(){ ch.scrollTop=ch.scrollHeight; }); } }
   if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
   if (S.vista==="casos") cargarCasos();
   if (S.vista==="aprobaciones"){ cargarPropuestas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
