@@ -1,0 +1,620 @@
+{
+  "_comentario": "Paso 1 de la guía de clasificación: la naturaleza del gasto. Palabras clave (en mayúsculas, sin tildes, como las normaliza norm() de src/catalogo.js) que indican qué se compró, y la cuenta lógica a la que apunta. Derivadas del histórico (palabras que 4 o más clientes registran, con 75 % o más en una misma cuenta sin contar comodines) depuradas y ampliadas a mano con criterio contable (por ejemplo, plataformas de transporte o streaming que no aparecen en el histórico). Las palabras sueltas son señales, no reglas: una línea se clasifica sola solo si su naturaleza, el historial y el tipo de proveedor coinciden; si chocan, va a consulta.",
+  "version": "1.0 · propuesta",
+  "estado": "PROPUESTA — pendiente de revisión de Victor (contador). No usar para escribir en Odoo hasta que esté aprobada.",
+  "fecha": "2026-10-25",
+  "categorias": [
+    {
+      "id": "alimentacion-restaurante",
+      "naturaleza": "Comidas y bebidas servidas en restaurante, soda, cafetería o bar",
+      "cuenta": "5.04.17.01",
+      "palabras": [
+        "RESTAURANTE",
+        "SALONEROS",
+        "PROPINA",
+        "ALMUERZO",
+        "DESAYUNO",
+        "CENA",
+        "CASADO",
+        "GALLO PINTO",
+        "PINTO",
+        "CHIFRIJO",
+        "CEVICHE",
+        "SOPA",
+        "ENSALADA",
+        "HAMBURGUESA",
+        "WHOPPER",
+        "PIZZA",
+        "TACO",
+        "FAJITAS",
+        "LASAGNA",
+        "LOMITO",
+        "CHURRASCO",
+        "POLLO ROSTIZADO",
+        "PECHUGA",
+        "PESCADO",
+        "CORVINA",
+        "SALMON",
+        "CAMARONES",
+        "MARISCOS",
+        "PATACONES",
+        "PAPAS FRITAS",
+        "GUACAMOLE",
+        "CAPPUCCINO",
+        "CAPUCCINO",
+        "LATTE",
+        "ESPRESSO",
+        "AMERICANO",
+        "CAFE NEGRO",
+        "LIMONADA",
+        "BATIDO",
+        "NATURAL EN AGUA",
+        "REFRESCO",
+        "GASEOSA",
+        "SODA",
+        "MICHELADA",
+        "MARGARITA",
+        "SANGRIA",
+        "MIMOSA",
+        "PILSEN",
+        "IMPERIAL",
+        "BAVARIA",
+        "GIN TONIC",
+        "POSTRE",
+        "FLAN",
+        "TRES LECHES",
+        "HELADO",
+        "TORTA"
+      ],
+      "proveedor": [
+        "restaurante",
+        "soda",
+        "cafetería",
+        "bar",
+        "comida rápida",
+        "servicio de alimentación"
+      ],
+      "senal_fuerte": [
+        "SERVICIO 10",
+        "IMPUESTO DE SERVICIO",
+        "SERVICIO DE RESTAURANTE",
+        "SERVICIO DE SALON"
+      ],
+      "notas": [
+        "El cargo del 10 % de servicio («servicio», «saloneros», «propina») sigue a la comida: misma cuenta.",
+        "Relaciones públicas frente a Gastos no justificados tiene efecto en la deducibilidad: confirmar con el contador de cada compañía."
+      ]
+    },
+    {
+      "id": "alimentacion-supermercado",
+      "naturaleza": "Abarrotes, frutas, verduras, carnes y lácteos comprados en supermercado o feria",
+      "cuenta": null,
+      "accion": "consulta",
+      "palabras": [
+        "KG",
+        "ARROZ",
+        "FRIJOL",
+        "AZUCAR",
+        "SAL",
+        "HUEVO",
+        "HUEVOS",
+        "LECHE",
+        "QUESO",
+        "MANTEQUILLA",
+        "NATILLA",
+        "PAN",
+        "TORTILLA",
+        "TOMATE",
+        "CEBOLLA",
+        "CHILE DULCE",
+        "CULANTRO",
+        "PAPA",
+        "ZANAHORIA",
+        "PEPINO",
+        "LECHUGA",
+        "BROCOLI",
+        "AGUACATE",
+        "BANANO",
+        "PLATANO",
+        "PAPAYA",
+        "PINA",
+        "SANDIA",
+        "MANGO",
+        "FRESA",
+        "UVA",
+        "MANZANA",
+        "MANDARINA",
+        "LIMON",
+        "ATUN",
+        "BISTEC",
+        "CHULETA",
+        "POLLO"
+      ],
+      "proveedor": [
+        "supermercado",
+        "abastecedor",
+        "feria",
+        "carnicería",
+        "verdulería"
+      ],
+      "notas": [
+        "El historial está dividido entre Relaciones públicas, Gastos no justificados, Útiles para oficina y, en negocios de comida, Costo de ventas.",
+        "Si el cliente vende comida (restaurante, catering), es probablemente Costo de ventas. Si no, puede ser atención a clientes, consumo del personal o gasto personal: siempre consulta."
+      ]
+    },
+    {
+      "id": "electricidad",
+      "naturaleza": "Servicio eléctrico y cargos de la factura eléctrica",
+      "cuenta": "5.04.02.02",
+      "palabras": [
+        "ENERGIA",
+        "ALUMBRADO PUBLICO",
+        "TRIBUTO BOMBEROS",
+        "TRB",
+        "COSTO VARIABLE GENERACION",
+        "CVC",
+        "COBRO FIJO ENERGIA",
+        "CARGO POR RECONEXION",
+        "DESPLAZAMIENTO DE CUADRILLA"
+      ],
+      "proveedor": [
+        "distribuidora eléctrica (ICE, CNFL, cooperativas eléctricas, JASEC, ESPH)"
+      ],
+      "notas": [
+        "Regla humana vigente: TRB-TRIBUTO BOMBEROS va a Electricidad en todas las compañías (Memo, 09/09/2026).",
+        "Las líneas de «Otros cargos» viven en bdt.other.charge.line: corregir ahí también."
+      ]
+    },
+    {
+      "id": "agua",
+      "naturaleza": "Servicio de agua y alcantarillado",
+      "cuenta": "5.04.02.03",
+      "palabras": [
+        "CONSUMO DE AGUA",
+        "SERVICIO DE AGUA",
+        "CARGO FIJO AGUA",
+        "HIDRANTES",
+        "ALCANTARILLADO",
+        "PROTECCION DEL RECURSO HIDRICO",
+        "TARIFA HIDRICA",
+        "ACUEDUCTOS"
+      ],
+      "proveedor": [
+        "AyA",
+        "ASADA",
+        "municipalidad (agua)",
+        "ESPH"
+      ]
+    },
+    {
+      "id": "telefono",
+      "naturaleza": "Telefonía fija y móvil",
+      "cuenta": "5.04.02.01",
+      "palabras": [
+        "TELEFONO",
+        "TELEFONIA",
+        "PLAN POSPAGO",
+        "PLAN PREPAGO",
+        "MINUTOS",
+        "SMS",
+        "ROAMING",
+        "LLAMADAS",
+        "BUZON DE VOZ",
+        "IDENTIFICACION DE LLAMADAS",
+        "DESVIO DE LLAMADAS",
+        "LLAMADA EN ESPERA",
+        "CONFERENCIA TRIPARTITA",
+        "SERVICIO 911",
+        "CRUZ ROJA",
+        "KOLBI"
+      ],
+      "proveedor": [
+        "ICE / kölbi",
+        "Claro",
+        "Liberty"
+      ],
+      "notas": [
+        "Los cargos del 911 (0,75 %) y Cruz Roja (1 %) siguen a la factura telefónica: misma cuenta."
+      ]
+    },
+    {
+      "id": "internet",
+      "naturaleza": "Internet y datos",
+      "cuenta": "5.04.02.04",
+      "palabras": [
+        "INTERNET",
+        "INTERNET MOVIL",
+        "PAQUETE INTERNET",
+        "MBPS",
+        "CONSUMO DE DATOS",
+        "PAQUETE 1 GB",
+        "FIBRA"
+      ],
+      "proveedor": [
+        "ICE / kölbi",
+        "Claro",
+        "Liberty",
+        "Tigo",
+        "proveedor de internet"
+      ],
+      "notas": [
+        "Si la factura combina teléfono e internet, decide el renglón principal o se consulta."
+      ]
+    },
+    {
+      "id": "combustible",
+      "naturaleza": "Combustible para vehículos o equipo",
+      "cuenta": "5.04.06",
+      "palabras": [
+        "GASOLINA",
+        "SUPER",
+        "REGULAR",
+        "DIESEL",
+        "PLUS 91",
+        "CONSUMO DE COMBUSTIBLE"
+      ],
+      "proveedor": [
+        "estación de servicio / gasolinera"
+      ],
+      "notas": [
+        "«SUPER» y «REGULAR» solos solo cuentan como combustible si el proveedor es una estación de servicio.",
+        "En una gasolinera cliente (que vende combustible) es Costo de ventas, no gasto."
+      ]
+    },
+    {
+      "id": "mantenimiento-vehiculo",
+      "naturaleza": "Mantenimiento y reparación de vehículos",
+      "cuenta": "5.04.15.03",
+      "palabras": [
+        "CAMBIO DE ACEITE",
+        "FILTRO DE ACEITE",
+        "FILTRO ACEITE",
+        "FILTRO DE AIRE",
+        "FILTRO AIRE",
+        "LLANTA",
+        "ALINEADO",
+        "ALINEAMIENTO",
+        "BALANCEO",
+        "ROTACION",
+        "CARTER",
+        "TAPON CARTER",
+        "COOLANT",
+        "LIQUIDO DE FRENOS",
+        "ESCOBILLA",
+        "LIMPIAPARABRISAS",
+        "INSPECCION MULTIPUNTO",
+        "LAVADO Y ENCERADO",
+        "ITV",
+        "MOTOR OIL"
+      ],
+      "proveedor": [
+        "taller mecánico",
+        "agencia de vehículos",
+        "llantera",
+        "lubricentro",
+        "Riteve"
+      ],
+      "notas": [
+        "El marchamo es seguro e impuesto, no mantenimiento."
+      ]
+    },
+    {
+      "id": "mantenimiento-local",
+      "naturaleza": "Materiales y servicios de mantenimiento del local u oficina",
+      "cuenta": "5.04.15.01",
+      "palabras": [
+        "TORNILLO",
+        "CLAVO",
+        "BROCA",
+        "BROCHA",
+        "FELPA",
+        "PINTURA",
+        "THINNER",
+        "DILUYENTE",
+        "MASILLA",
+        "LIJA",
+        "PEGAMENTO",
+        "SILICON",
+        "TEFLON",
+        "GYPSUM",
+        "CONCRETO",
+        "CEMENTO",
+        "MORTERO",
+        "ARENA",
+        "CERRADURA",
+        "BISAGRA",
+        "LLAVE DE CHORRO",
+        "SIFON",
+        "DUCHA",
+        "PVC",
+        "CODO",
+        "TEE",
+        "UNION",
+        "CABLE",
+        "TAPE ELECTRICO",
+        "TOMACORRIENTE",
+        "INTERRUPTOR",
+        "PLAFON",
+        "MANO DE OBRA"
+      ],
+      "proveedor": [
+        "ferretería",
+        "depósito de materiales",
+        "contratista",
+        "fontanero",
+        "electricista"
+      ],
+      "notas": [
+        "Una mejora que alarga la vida útil o agrega valor al local puede ser activo, no gasto: consulta si el monto es alto."
+      ]
+    },
+    {
+      "id": "utiles-oficina",
+      "naturaleza": "Papelería y suministros de oficina",
+      "cuenta": "5.04.08.01",
+      "palabras": [
+        "PAPEL CARTA",
+        "RESMA",
+        "BOLIGRAFO",
+        "LAPICERO",
+        "MARCADOR",
+        "RESALTADOR",
+        "MARCATEXTO",
+        "CORRECTOR",
+        "BORRADOR",
+        "GRAPAS",
+        "ENGRAPADORA",
+        "TIJERA",
+        "FOLDER",
+        "AMPO",
+        "ARCHIVADOR",
+        "CARPETA",
+        "CUADERNO",
+        "LIBRETA",
+        "NOTAS ADHESIVAS",
+        "CARTULINA",
+        "SOBRE MANILA",
+        "IMPRESION",
+        "FOTOCOPIA",
+        "TONER",
+        "CARTUCHO",
+        "CALCULADORA",
+        "MOUSE",
+        "TECLADO",
+        "MEMORIA USB",
+        "PIZARRON"
+      ],
+      "proveedor": [
+        "librería",
+        "papelería",
+        "tienda de suministros de oficina"
+      ],
+      "notas": [
+        "Equipo de cómputo de valor relevante (computadora, impresora) es activo, no útiles: consulta."
+      ]
+    },
+    {
+      "id": "utiles-limpieza",
+      "naturaleza": "Artículos de limpieza e higiene del local",
+      "cuenta": "5.04.08.02",
+      "palabras": [
+        "CLORO",
+        "CLOROX",
+        "DESINFECTANTE",
+        "LYSOL",
+        "AJAX",
+        "DETERGENTE",
+        "JABON",
+        "LAVAPLATOS",
+        "AXION",
+        "SUAVITEL",
+        "SUAVIZANTE",
+        "ESPONJA",
+        "ESCOBA",
+        "PALA BASURA",
+        "TRAPEADOR",
+        "BOLSA BASURA",
+        "BOLSA JARDIN",
+        "PAPEL HIGIENICO",
+        "TOALLA DE MANOS",
+        "TOALLA DE COCINA",
+        "SERVILLETA",
+        "GUANTES",
+        "AMBIENTADOR",
+        "VANISH"
+      ],
+      "proveedor": [
+        "supermercado",
+        "distribuidora de limpieza"
+      ],
+      "notas": [
+        "Champú, desodorante, crema dental o productos de cuidado personal: señal de gasto personal (consulta)."
+      ]
+    },
+    {
+      "id": "honorarios-contables",
+      "naturaleza": "Servicios contables y de declaraciones",
+      "cuenta": "5.04.05.01",
+      "palabras": [
+        "CONTABILIDAD",
+        "SERVICIOS CONTABLES",
+        "DECLARACIONES",
+        "ESTADOS FINANCIEROS",
+        "EEFF",
+        "TRIMESTRE"
+      ],
+      "proveedor": [
+        "despacho contable",
+        "contador público"
+      ]
+    },
+    {
+      "id": "peajes-parqueos",
+      "naturaleza": "Parqueos y peajes",
+      "cuenta": "5.04.09",
+      "palabras": [
+        "PARQUEO",
+        "ESTACIONAMIENTO",
+        "PEAJE",
+        "QUICKPASS",
+        "COMPASS"
+      ],
+      "proveedor": [
+        "parqueo",
+        "concesionaria vial"
+      ]
+    },
+    {
+      "id": "taxis-transporte",
+      "naturaleza": "Taxis y transporte de personas",
+      "cuenta": "5.04.13.01",
+      "palabras": [
+        "TAXI",
+        "SERVICIO DE TRANSPORTE",
+        "TRANSPORTE",
+        "UBER",
+        "DIDI"
+      ],
+      "proveedor": [
+        "taxi",
+        "plataforma de transporte"
+      ],
+      "notas": [
+        "Código no consistente entre clientes: resolver por nombre de cuenta en el plan de la compañía."
+      ]
+    },
+    {
+      "id": "encomiendas",
+      "naturaleza": "Envíos, fletes y encomiendas",
+      "cuenta": "5.04.13.02",
+      "palabras": [
+        "ENCOMIENDA",
+        "FLETE",
+        "EMS",
+        "PAQ",
+        "CORREOS DE COSTA RICA",
+        "COURIER",
+        "ENVIO"
+      ],
+      "proveedor": [
+        "Correos de Costa Rica",
+        "courier",
+        "transportista"
+      ]
+    },
+    {
+      "id": "cargos-bancarios",
+      "naturaleza": "Comisiones y cargos bancarios",
+      "cuenta": "5.06.02",
+      "palabras": [
+        "COMISION",
+        "CARGO ADMINISTRATIVO",
+        "MANTENIMIENTO DE CUENTA",
+        "COBRO ADM"
+      ],
+      "proveedor": [
+        "banco",
+        "procesador de pagos"
+      ]
+    },
+    {
+      "id": "alquiler-local",
+      "naturaleza": "Alquiler del local u oficina",
+      "cuenta": "5.04.04.01",
+      "palabras": [
+        "ALQUILER",
+        "RENTA MENSUAL",
+        "ARRENDAMIENTO"
+      ],
+      "notas": [
+        "«Renta mensual» también aparece en planes telefónicos: decide el proveedor."
+      ]
+    },
+    {
+      "id": "hospedaje",
+      "naturaleza": "Hospedaje en viajes de trabajo",
+      "cuenta": "5.04.07.02",
+      "palabras": [
+        "HOSPEDAJE",
+        "ESTADIA",
+        "ALOJAMIENTO",
+        "HABITACION"
+      ],
+      "proveedor": [
+        "hotel",
+        "cabinas"
+      ],
+      "notas": [
+        "Viaje nacional (5.04.07.02) o internacional (5.04.07.01) según el destino."
+      ]
+    },
+    {
+      "id": "suscripciones",
+      "naturaleza": "Suscripciones y plataformas",
+      "cuenta": "5.04.14.01",
+      "palabras": [
+        "SUSCRIPCION",
+        "MENSUALIDAD",
+        "ANUALIDAD",
+        "LICENCIA",
+        "PLAN PREPAGO DOCUMENTOS",
+        "FACTURADOR"
+      ],
+      "notas": [
+        "Código no consistente entre clientes: resolver por nombre de cuenta en el plan de la compañía.",
+        "Entretenimiento (streaming) en una empresa: señal de gasto personal."
+      ]
+    }
+  ],
+  "senales_gasto_personal": {
+    "_regla": "Si aparece alguna, la línea va a consulta (paso 3), aunque el historial diga otra cosa.",
+    "palabras": [
+      "CORTE DE CABELLO",
+      "BARBERIA",
+      "SALON DE BELLEZA",
+      "CHAMPU",
+      "SHAMPOO",
+      "ACONDICIONADOR",
+      "DESODORANTE",
+      "CREMA DENTAL",
+      "COLGATE",
+      "CEPILLO DENTAL",
+      "RASURADORA",
+      "PERFUME",
+      "MAQUILLAJE",
+      "TOALLA FEMENINA",
+      "PANAL",
+      "MEDICAMENTO",
+      "ANALGESICO",
+      "ACETAMINOFEN",
+      "JARABE",
+      "LENTES",
+      "PROGRESIVO",
+      "ANTIRREFLEJO",
+      "EXAMEN DE LABORATORIO",
+      "MASCOTA",
+      "ALIMENTO PARA PERRO",
+      "ALIMENTO PARA GATO",
+      "JUGUETE",
+      "ROPA",
+      "CAMISA",
+      "PANTALON",
+      "CALZADO",
+      "STREAMING",
+      "NETFLIX",
+      "SPOTIFY"
+    ],
+    "proveedor": [
+      "farmacia",
+      "óptica",
+      "barbería o salón de belleza",
+      "tienda de ropa",
+      "veterinaria",
+      "laboratorio clínico"
+    ],
+    "notas": [
+      "Uniformes del personal con logotipo son gasto (5.04.01.06), no ropa personal.",
+      "En clínicas o veterinarias clientes, los medicamentos e insumos pueden ser Costo de ventas: decide la actividad del cliente."
+    ]
+  }
+}

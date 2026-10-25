@@ -9,6 +9,7 @@ node_modules/
 # Datos de Odoo y salidas de los agentes (se generan localmente)
 data/*
 !data/roster.json
+!data/referencia/
 !data/reglas.json
 reportes/
 # Oficina generada con cifras y correos reales de la ultima corrida (se regenera con 'Correr agente.command')
