@@ -17,6 +17,7 @@ const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
+import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
 // Por compatibilidad también se acepta un solo contexto suelto (un inquilino "iasima").
@@ -29,6 +30,9 @@ export function crearApi(opciones) {
   const AMBOS = ["contable", "receptor"];
   // Un receptor solo ve lo suyo: sus casos (por su correo) y los correos dirigidos a él.
   const esReceptor = ctx => ctx.usuario?.rol === "receptor";
+  // El buzón del receptor, con el dominio canónico si hubo cambio de dominio (RECEPTORES_DOMINIOS):
+  // quien entra con su correo nuevo ve también lo que llegó a la dirección vieja, y al revés.
+  const buzon = ctx => canonizarCorreo(ctx.usuario?.correo, dominiosEquivalentes(ctx.cfg.RECEPTORES_DOMINIOS));
 
   // --- estado general
   ruta("GET", "/api/estado", (q, p, c, quien, ctx) => esReceptor(ctx) ? estadoReceptor(ctx) : ({
@@ -57,7 +61,7 @@ export function crearApi(opciones) {
   }), AMBOS);
   function estadoReceptor(ctx) {
     const u = ctx.usuario;
-    const abiertos = ctx.db.casos({ receptor: u.correo, seguimiento: "abierto", limite: 5000 });
+    const abiertos = ctx.db.casos({ receptor: buzon(ctx), seguimiento: "abierto", limite: 5000 });
     const porCia = {};
     for (const c of abiertos) { const k = c.compania_id; porCia[k] = porCia[k] || { compania_id: k, compania: c.compania, afuera: 0, adentro: 0, total: 0 }; porCia[k][c.frente]++; porCia[k].total++; }
     const rec = ctx.db.ultimaCorrida("recepcion");
@@ -66,8 +70,8 @@ export function crearApi(opciones) {
       inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
       ultimaRecepcion: rec ? rec.fin : null,
       casos: { afuera: abiertos.filter(c => c.frente === "afuera").length, adentro: abiertos.filter(c => c.frente === "adentro").length,
-        resueltos: ctx.db.casos({ receptor: u.correo, seguimiento: "resuelto", limite: 5000 }).length, porCompania: Object.values(porCia).sort((a, b) => b.total - a.total) },
-      correos: ctx.db.correos({ estado: "todos" }).filter(c => c.para === u.correo && ["aprobado", "enviado"].includes(c.estado)).length
+        resueltos: ctx.db.casos({ receptor: buzon(ctx), seguimiento: "resuelto", limite: 5000 }).length, porCompania: Object.values(porCia).sort((a, b) => b.total - a.total) },
+      correos: ctx.db.correos({ estado: "todos" }).filter(c => c.para === buzon(ctx) && ["aprobado", "enviado"].includes(c.estado)).length
     };
   }
 
@@ -84,9 +88,9 @@ export function crearApi(opciones) {
   });
 
   // --- casos (lo que Recepción encontró, por receptor y compañía)
-  ruta("GET", "/api/casos", (q, p, c, quien, ctx) => ctx.db.casos({ receptor: esReceptor(ctx) ? ctx.usuario.correo : (q.receptor || null), companiaId: q.compania ? Number(q.compania) : null,
+  ruta("GET", "/api/casos", (q, p, c, quien, ctx) => ctx.db.casos({ receptor: esReceptor(ctx) ? buzon(ctx) : (q.receptor || null), companiaId: q.compania ? Number(q.compania) : null,
     frente: q.frente || null, seguimiento: q.seguimiento || "abierto", limite: Number(q.limite || 500) }), AMBOS);
-  const casoPropio = (ctx, id) => !esReceptor(ctx) || ctx.db.casos({ receptor: ctx.usuario.correo, seguimiento: "todos", limite: 10000 }).some(c => c.id === id);
+  const casoPropio = (ctx, id) => !esReceptor(ctx) || ctx.db.casos({ receptor: buzon(ctx), seguimiento: "todos", limite: 10000 }).some(c => c.id === id);
   ruta("POST", "/api/casos/:id/resolver", (q, p, cuerpo, quien, ctx) => casoPropio(ctx, Number(p.id)) ? ({ ok: ctx.db.resolverCaso(Number(p.id), quien, cuerpo.nota || null) }) : error(403, "Ese caso no es suyo."), AMBOS);
   ruta("POST", "/api/casos/:id/reabrir", (q, p, cuerpo, quien, ctx) => casoPropio(ctx, Number(p.id)) ? ({ ok: ctx.db.reabrirCaso(Number(p.id), quien) }) : error(403, "Ese caso no es suyo."), AMBOS);
 
@@ -107,12 +111,13 @@ export function crearApi(opciones) {
   ruta("POST", "/api/consultas/:id/regla", async (q, p, cuerpo, quien, ctx) => {
     const k = ctx.db.consulta(Number(p.id));
     if (!k) return error(404, "No existe esa consulta.");
-    const porProveedor = cuerpo.alcance === "proveedor";
+    const porProveedor = cuerpo.alcance === "proveedor", porNaturaleza = cuerpo.alcance === "naturaleza";
     if (porProveedor && !k.proveedor_id) return error(400, "Esa línea no tiene proveedor identificado; use una regla por artículo.");
+    if (porNaturaleza && !k.naturaleza) return error(400, "Esa línea no tiene una naturaleza reconocida; use una regla por artículo o por proveedor.");
     const codigo = String(cuerpo.codigo || "").trim() || String(k.sugerida || "").split(" ")[0];
     if (!codigo) return error(400, "Falta la cuenta (codigo).");
     const r = await proponerRegla({ corridas: ctx.corridas, db: ctx.db, compania: k.compania_id, codigo,
-      proveedorId: porProveedor ? k.proveedor_id : null, articulos: porProveedor ? [] : [k.articulo],
+      proveedorId: porProveedor ? k.proveedor_id : null, articulos: porProveedor || porNaturaleza ? [] : [k.articulo], naturaleza: porNaturaleza ? k.naturaleza : null,
       motivo: cuerpo.motivo || `Consulta #${k.id}: ${k.motivo || ""}`.slice(0, 300), factura: k.factura_id, propuso: quien });
     if (r.error) return error(400, r.error + (r.parecidas?.length ? ` Parecidas: ${r.parecidas.join(", ")}` : ""));
     ctx.db.anotarConsulta(k.id, `regla #${r.propuestas.map(x => x.id).join(", #")} propuesta por ${quien}`);
@@ -130,7 +135,7 @@ export function crearApi(opciones) {
     const rutaReglas = join(ctx.raiz, "data", "reglas.json");
     const archivo = existsSync(rutaReglas) ? JSON.parse(readFileSync(rutaReglas, "utf8")) : { reglas: [] };
     archivo.reglas = archivo.reglas || [];
-    archivo.reglas.push({ ...(r.articulo ? { articulo: r.articulo } : { proveedorId: r.proveedor_id, proveedor: r.proveedor }),
+    archivo.reglas.push({ ...(r.articulo ? { articulo: r.articulo } : r.naturaleza ? { naturaleza: r.naturaleza } : { proveedorId: r.proveedor_id, proveedor: r.proveedor }),
       codigo: r.codigo, cuenta: r.cuenta, alcance: r.compania || "todas", decidio: quien, fecha: new Date().toISOString().slice(0, 10),
       motivo: r.motivo || "", origen: `regla propuesta #${r.id} (${r.propuso})` });
     writeFileSync(rutaReglas, JSON.stringify(archivo, null, 2) + "\n");
@@ -150,12 +155,12 @@ export function crearApi(opciones) {
 
   // --- correos de Victor
   ruta("GET", "/api/correos", (q, p, c, quien, ctx) => esReceptor(ctx)
-    ? ctx.db.correos({ estado: "todos" }).filter(x => x.para === ctx.usuario.correo && ["aprobado", "enviado"].includes(x.estado))
+    ? ctx.db.correos({ estado: "todos" }).filter(x => x.para === buzon(ctx) && ["aprobado", "enviado"].includes(x.estado))
     : ctx.db.correos({ estado: q.estado || "borrador" }), AMBOS);
   ruta("GET", "/api/correos/:id", (q, p, c, quien, ctx) => {
     const x = ctx.db.correo(Number(p.id));
     if (!x) return error(404, "No existe ese correo.");
-    if (esReceptor(ctx) && (x.para !== ctx.usuario.correo || !["aprobado", "enviado"].includes(x.estado))) return error(403, "Ese correo no es suyo.");
+    if (esReceptor(ctx) && (x.para !== buzon(ctx) || !["aprobado", "enviado"].includes(x.estado))) return error(403, "Ese correo no es suyo.");
     return x;
   }, AMBOS);
   ruta("POST", "/api/correos/:id/aprobar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirCorreo(Number(p.id), "aprobado", quien) }));
@@ -204,7 +209,7 @@ export function crearApi(opciones) {
     const r = join(ctx.raiz, "data", "companias.json");
     const todas = existsSync(r) ? JSON.parse(readFileSync(r, "utf8")) : [];
     if (!esReceptor(ctx)) return todas;
-    const mias = new Set(ctx.db.casos({ receptor: ctx.usuario.correo, seguimiento: "todos", limite: 10000 }).map(x => x.compania_id));
+    const mias = new Set(ctx.db.casos({ receptor: buzon(ctx), seguimiento: "todos", limite: 10000 }).map(x => x.compania_id));
     return todas.filter(x => mias.has(x.id));
   }, AMBOS);
 

@@ -144,6 +144,16 @@ export class Clasificador {
       return salida("consulta", { motivo: `parece gasto personal (${por}): no se reclasifica a una cuenta deducible sin el contador`, naturaleza: natInfo, tipo: "personal" });
     }
 
+    // Paso 0 (bis) — regla por tipo de gasto: necesita la naturaleza, así que va después del paso 1.
+    // Solo con una naturaleza afirmada (ni ambigua ni cruzada con el proveedor).
+    if (nat.id && !nat.conflictoCon && !nat.ambigua) {
+      const rn = this.cat?.reglaNaturaleza?.(compania, nat.id);
+      if (rn) {
+        pasos.push(`0 · regla de ${rn.decidio || "una persona"} por tipo de gasto («${nat.nombre}»): ${rn.codigo} ${rn.cuenta}`);
+        return salida("proponer", { codigo: rn.codigo, cuenta: rn.cuenta, fuente: "regla-humana", confianza: 1, motivo: rn.motivo || "regla humana por tipo de gasto", decidio: rn.decidio, naturaleza: natInfo });
+      }
+    }
+
     // Paso 2 — historial
     const h = this.historial(compania, articulo);
     if (h.propio) pasos.push(`2 · historial de esta compañía: ${h.propio.codigo} ${h.propio.cuenta} (${h.propio.veces} veces)`);

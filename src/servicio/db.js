@@ -229,6 +229,7 @@ export class BaseDeDatos {
       decidido_en TEXT,
       corrida_id  INTEGER
     )`);
+    if (!columnas("reglas_propuestas").has("naturaleza")) this.db.exec("ALTER TABLE reglas_propuestas ADD COLUMN naturaleza TEXT");
   }
 
   // --- consultas al contador (paso 3 y 4 de la guía): lo que Cuentas no cierra solo
@@ -279,11 +280,11 @@ export class BaseDeDatos {
 
   // --- reglas propuestas
   proponerRegla(r) {
-    const x = this.correr(`INSERT INTO reglas_propuestas (compania_id, compania, proveedor_id, proveedor, articulo, codigo, cuenta, cuenta_id, motivo, ejemplo, lineas, propuso, creado_en)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, r.companiaId ?? null, r.compania ?? null, r.proveedorId ?? null, r.proveedor ?? null, r.articulo ?? null,
+    const x = this.correr(`INSERT INTO reglas_propuestas (compania_id, compania, proveedor_id, proveedor, articulo, naturaleza, codigo, cuenta, cuenta_id, motivo, ejemplo, lineas, propuso, creado_en)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, r.companiaId ?? null, r.compania ?? null, r.proveedorId ?? null, r.proveedor ?? null, r.articulo ?? null, r.naturaleza ?? null,
       r.codigo, r.cuenta, r.cuentaId ?? null, r.motivo ?? null, r.ejemplo ?? null, r.lineas ?? null, r.propuso, this.#ahora());
     const id = Number(x.lastInsertRowid);
-    this.auditar(r.propuso, "proponer", "regla", id, { codigo: r.codigo, proveedor: r.proveedor, articulo: r.articulo, compania: r.compania });
+    this.auditar(r.propuso, "proponer", "regla", id, { codigo: r.codigo, proveedor: r.proveedor, articulo: r.articulo, naturaleza: r.naturaleza, compania: r.compania });
     return this.regla(id);
   }
   regla(id) { return this.uno("SELECT * FROM reglas_propuestas WHERE id=?", id); }

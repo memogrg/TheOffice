@@ -125,6 +125,7 @@ agentes con las palabras del roster, pregunta si hay empate, pide la compañía 
 | `REPORTE_PARA`, `REPORTE_DE` | A quién llega el reporte diario y desde quién. |
 | `SMTP_*` | Vacío = no se envía correo. Para Gmail use una **contraseña de aplicación**. |
 | `ALERTA_HORAS_SIN_INGESTA`, `ALERTA_PCT_MINIMO` | Umbrales de alerta. |
+| `RECEPTORES_DOMINIOS` | Cambio de dominio de los receptores: `viejo.com=nuevo.cr`. La misma casilla en los dos dominios es un solo receptor (una carta, un usuario). Recepción avisa si ve la misma casilla en dos dominios sin declarar. |
 | `ALERTA_REFERENCIA` | `ultimo-correo` mide la ingesta contra el correo más reciente (para la copia de pruebas, que está congelada). |
 | `PERMITIR_ESCRITURA` | `si` habilita a CUENTAS a modificar Odoo (además de `--aplicar`). |
 | `CATALOGO_CUENTAS` | Otro catálogo que no sea `data/catalogo-cuentas.json`. |

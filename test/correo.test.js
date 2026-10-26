@@ -61,3 +61,19 @@ test("fechaOdoo() interpreta el datetime de Odoo como UTC", () => {
   assert.equal(horasEntre(d, new Date("2026-03-12T14:00:00Z")), 24);
   assert.equal(fechaOdoo(null), null);
 });
+
+test("cambio de dominio de los receptores (error 5 del log): un solo receptor, y alerta si no se declaró", async () => {
+  const { receptores, dominiosEquivalentes, canonizarCorreo, dominiosSospechosos } = await import("../src/lib/correo.js");
+  const eq = dominiosEquivalentes("moraasociados.com=nuevo.cr, @viejo.org=nuevo.cr");
+  assert.equal(eq.get("moraasociados.com"), "nuevo.cr");
+  assert.equal(eq.get("viejo.org"), "nuevo.cr");
+  assert.deepEqual(receptores("IAR <iar@moraasociados.com>, iar@nuevo.cr", eq), ["iar@nuevo.cr"], "los dos son uno");
+  assert.deepEqual(receptores("iar@moraasociados.com, iar@nuevo.cr"), ["iar@moraasociados.com", "iar@nuevo.cr"], "sin declarar, siguen siendo dos");
+  assert.equal(canonizarCorreo("FE@MoraAsociados.com", eq), "fe@nuevo.cr");
+  assert.equal(canonizarCorreo("otro@gmail.com", eq), "otro@gmail.com");
+  const sosp = dominiosSospechosos([
+    { receptor: "iar@moraasociados.com", companias: ["IAR"] }, { receptor: "iar@nuevo.cr", companias: ["IAR", "Puuk"] },
+    { receptor: "facturas@a.com", companias: ["X"] }, { receptor: "facturas@b.com", companias: ["Y"] }]);
+  assert.equal(sosp.length, 1, "misma casilla y mismas compañías; 'facturas@' de compañías distintas no cuenta");
+  assert.deepEqual(sosp[0].companias, ["IAR"]);
+});

@@ -129,7 +129,7 @@ function pedirEntrada(m, smtp){
     '<div class="sub" style="margin-bottom:10px">Si le mandaron un <b>enlace de acceso</b>, ábralo y entra directo. '+(smtp?'Si ya está registrado, pida uno nuevo con su correo.':'Si no lo tiene, pídaselo a su contador.')+'</div>'+
     (smtp?'<form id="pedir"><div class="fila"><input class="f" id="pCorreo" type="email" placeholder="su correo" style="flex:1" autofocus><button class="b" type="submit">Enviarme el enlace</button></div><div class="sub" id="pMsg"></div></form>':"")+
     '<details style="margin-top:14px"><summary class="sub" style="cursor:pointer">Soy del equipo contable: entrar con token</summary>'+
-    '<form id="entrar" style="margin-top:8px"><div class="fila"><input class="f" id="eQuien" placeholder="su nombre o correo" style="flex:1" value="'+esc($("#quien").value)+'"></div>'+
+    '<form id="entrar" style="margin-top:8px"><div class="fila"><input class="f" id="eQuien" placeholder="su nombre (queda en la auditoría y en su chat)" required style="flex:1" value="'+esc($("#quien").value)+'"></div>'+
     '<div class="fila"><input class="f" id="eToken" type="password" placeholder="token de acceso" style="flex:1"></div>'+
     '<div class="fila"><button class="b" type="submit">Entrar</button></div><div class="sub" id="eMsg"></div></form></details></section>';
   var pf=$("#pedir"); if(pf) pf.addEventListener("submit", function(ev){ ev.preventDefault();
@@ -290,12 +290,13 @@ function pintarReglas(lista){
   var el=$("#reglasTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">No hay reglas por decidir. Se proponen desde el Director: «todo lo de Rostipollos en Alfonso Llorca va a 5.04.17.01».</div>'; return; }
   el.innerHTML = tabla(["Compañía","Alcance","Cuenta",{t:"Líneas hoy",n:1},"Motivo",""], lista.map(function(r){
-    return [esc(r.compania||"todas"), r.proveedor?'todo lo de <b>'+esc(r.proveedor)+'</b>':'artículo «'+esc(r.articulo)+'»',
+    return [esc(r.compania||"todas"), r.naturaleza?'todo gasto tipo <b>'+esc(NATURALEZA[r.naturaleza]||r.naturaleza)+'</b>':r.proveedor?'todo lo de <b>'+esc(r.proveedor)+'</b>':'artículo «'+esc(r.articulo)+'»',
       '<b style="color:var(--ok)">'+esc(r.codigo)+' '+esc(r.cuenta)+'</b>', r.lineas==null?"—":n(r.lineas),
       '<div>'+esc(r.motivo||"")+'</div><div class="sub">'+esc(r.propuso)+' · '+fecha(r.creado_en)+(r.ejemplo?' · '+esc(r.ejemplo):"")+'</div>',
-      '<button class="b" data-aprobar-regla="'+r.id+'">Aprobar</button> <button class="b rj" data-rechazar-regla="'+r.id+'">Rechazar</button>'];
+      '<button class="b" data-aprobar-regla="'+r.id+'"'+(/^5\.0?4\.0?17\.0{0,2}1\b/.test(r.codigo)?' data-fiscal="1"':"")+'>Aprobar</button> <button class="b rj" data-rechazar-regla="'+r.id+'">Rechazar</button>'];
   }));
 }
+var NATURALEZA = { "alimentacion-restaurante":"comida de restaurante", "alimentacion-supermercado":"compras de supermercado", electricidad:"electricidad", agua:"agua", telefono:"teléfono", internet:"internet", combustible:"combustible", "mantenimiento-vehiculo":"mantenimiento de vehículo", "mantenimiento-local":"mantenimiento del local", "utiles-oficina":"útiles de oficina", "utiles-limpieza":"útiles de limpieza", "honorarios-contables":"honorarios contables", "peajes-parqueos":"peajes y parqueos", "taxis-transporte":"taxis y transporte", encomiendas:"encomiendas", "cargos-bancarios":"cargos bancarios", "alquiler-local":"alquiler", hospedaje:"hospedaje", suscripciones:"suscripciones" };
 var TIPO_CONSULTA = { personal:"parece personal", choque:"historial vs naturaleza", dividido:"historial dividido", naturaleza:"naturaleza dudosa", "no-identificado":"sin identificar", salvaguarda:"factura publicada", pagada:"factura pagada", plan:"cuenta no está en el plan", parecido:"solo parecido", "poco-historial":"poco historial", consulta:"consulta" };
 function pintarConsultas(lista){
   var el=$("#consultasTabla"); if(!el) return;
@@ -309,17 +310,20 @@ function pintarConsultas(lista){
         (k.nota?'<div class="sub" style="color:var(--ok)">'+esc(k.nota)+'</div>':""),
       '<button class="b" data-regla-art="'+k.id+'" data-sug="'+esc(k.sugerida||"")+'">Regla: este artículo</button> '+
         (k.proveedor_id?'<button class="b gh" data-regla-prov="'+k.id+'" data-sug="'+esc(k.sugerida||"")+'" data-prov="'+esc(k.proveedor||"")+'">Regla: todo lo de '+esc((k.proveedor||"").slice(0,24))+'</button> ':"")+
+        (k.naturaleza&&NATURALEZA[k.naturaleza]?'<button class="b gh" data-regla-nat="'+k.id+'" data-sug="'+esc(k.sugerida||"")+'" data-nat="'+esc(NATURALEZA[k.naturaleza])+'">Regla: todo «'+esc(NATURALEZA[k.naturaleza])+'» en '+esc((k.compania||"").slice(0,18))+'</button> ':"")+
         '<button class="b rj" data-descartar-consulta="'+k.id+'">Descartar</button>'];
   }));
 }
 function cargarConsultas(){ var c=$("#kCia"); api("/api/consultas"+(c&&c.value?"?compania="+c.value:"")).then(pintarConsultas).catch(function(e){ msg(e.message,true); }); }
 function reglaDesdeConsulta(id, alcance, sugerida, proveedor){
-  var codigo = prompt((alcance==="proveedor"?"Todo lo de "+proveedor+" en esta compañía va a la cuenta (código):":"Este artículo va siempre a la cuenta (código):"), (sugerida||"").split(" ")[0]);
+  var codigo = prompt((alcance==="proveedor"?"Todo lo de "+proveedor+" en esta compañía va a la cuenta (código):":alcance==="naturaleza"?"Todo «"+proveedor+"» en esta compañía, de cualquier proveedor, va a la cuenta (código):":"Este artículo va siempre a la cuenta (código):"), (sugerida||"").split(" ")[0]);
   if(!codigo) return;
   var motivo = prompt("¿Por qué? (queda en la regla)", "");
   if(motivo===null) return;
   api("/api/consultas/"+id+"/regla",{alcance:alcance, codigo:codigo.trim(), motivo:motivo}).then(function(j){ msg("Regla propuesta"+(j.lineasAfectadasHoy!=null?" ("+j.lineasAfectadasHoy+" líneas hoy)":"")+": apruébela arriba."); api("/api/reglas").then(pintarReglas); cargarConsultas(); }).catch(function(e){ msg(e.message,true); });
 }
+// Corrección 7 del log: comida a Relaciones públicas (o salir de Gastos no justificados) es tributario.
+function esFiscal(p){ var n=function(x){ return String(x||"").replace(/\b0+(\d)/g,"$1"); }; return /^5\.4\.17\.1\b/.test(n(p.cuenta_nueva)) || /^7\.1\.1\b/.test(n(p.cuenta_actual)); }
 function pintarPropuestas(lista){
   var el=$("#propTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Revisar cuentas» en el tablero.</div>'; return; }
@@ -328,7 +332,7 @@ function pintarPropuestas(lista){
       '<span style="color:var(--critico)">'+esc(p.cuenta_actual)+'</span>', '<b style="color:var(--ok)">'+esc(p.cuenta_nueva)+'</b>',
       '<span class="sub">'+esc(p.fuente)+(p.confianza!=null?" · "+p.confianza:"")+'</span>'+(p.razon?'<details><summary class="sub" style="cursor:pointer">por qué</summary><div class="sub">'+esc(p.razon)+'</div></details>':""),
       '<span class="est '+({propuesta:"neutro",aprobada:"ok",rechazada:"critico",aplicada:"ok",fallo:"critico"}[p.estado]||"neutro")+'">'+esc(p.estado)+'</span>'+(p.decidio?'<div class="sub">'+esc(p.decidio)+' · '+fecha(p.decidido_en)+'</div>':""),
-      p.estado==="propuesta" ? '<button class="b" data-aprobar="'+p.id+'">Aprobar</button> <button class="b rj" data-rechazar="'+p.id+'">Rechazar</button>' : ""];
+      p.estado==="propuesta" ? '<button class="b" data-aprobar="'+p.id+'"'+(esFiscal(p)?' data-fiscal="1" title="Afecta deducibilidad: confirmar con el contador"':"")+'>Aprobar'+(esFiscal(p)?' ⚑':"")+'</button> <button class="b rj" data-rechazar="'+p.id+'">Rechazar</button>' : ""];
   }));
 }
 V.correos = function(){
@@ -378,6 +382,8 @@ function tabla(cab, filas){
 function cargar(){
   return Promise.all([api("/api/estado"), api("/api/companias")]).then(function(r){
     S.estado=r[0]; S.companias=r[1];
+    // Mejora 3 del log: con sesión (enlace de acceso), «Soy» es la persona que entró; no se escribe a mano.
+    var u=S.estado.usuario; if (u && !u.porToken){ var nom=u.nombre||u.correo; if ($("#quien").value!==nom){ $("#quien").value=nom; try{ localStorage.setItem("iasima_quien", nom); }catch(e){} } $("#quien").readOnly=true; }
     marcar(S.estado.inquilino);
     pintar();
   }).catch(function(e){
@@ -455,7 +461,7 @@ $("#main").addEventListener("click", function(ev){
   else if (d.resolver){ var nota=prompt("Nota (opcional): qué se hizo"); if(nota===null) return; api("/api/casos/"+d.resolver+"/resolver",{nota:nota}).then(function(){ msg("Caso resuelto."); cargarCasos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.reabrir){ api("/api/casos/"+d.reabrir+"/reabrir",{}).then(function(){ msg("Caso reabierto."); cargarCasos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="pIr"){ cargarPropuestas(); }
-  else if (d.aprobar){ api("/api/propuestas/"+d.aprobar+"/aprobar",{}).then(function(){ msg("Aprobada."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.aprobar){ if (d.fiscal && !confirm("Esta línea va a Relaciones públicas o sale de Gastos no justificados: afecta la deducibilidad. ¿Lo confirmó el contador de la compañía?")) return; api("/api/propuestas/"+d.aprobar+"/aprobar",{}).then(function(){ msg("Aprobada."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.rechazar){ var m=prompt("Motivo del rechazo (opcional)"); if(m===null) return; api("/api/propuestas/"+d.rechazar+"/rechazar",{motivo:m}).then(function(){ msg("Rechazada."); cargarPropuestas(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="pAplicar"){ var ca=$("#pAplicarCia").value; if(!ca) return msg("Elija la compañía.", true);
     if(!confirm("Esto ESCRIBE en Odoo las propuestas aprobadas de esa compañía. ¿Continuar?")) return;
@@ -463,8 +469,9 @@ $("#main").addEventListener("click", function(ev){
   else if (t.id==="kIr"){ cargarConsultas(); }
   else if (d.reglaArt){ reglaDesdeConsulta(d.reglaArt, "articulo", d.sug); }
   else if (d.reglaProv){ reglaDesdeConsulta(d.reglaProv, "proveedor", d.sug, d.prov); }
+  else if (d.reglaNat){ reglaDesdeConsulta(d.reglaNat, "naturaleza", d.sug, d.nat); }
   else if (d.descartarConsulta){ var nota=prompt("¿Por qué se descarta? (queda en la auditoría)", ""); if(nota===null) return; api("/api/consultas/"+d.descartarConsulta+"/descartar",{nota:nota}).then(function(){ msg("Consulta descartada."); cargarConsultas(); }).catch(function(e){ msg(e.message,true); }); }
-  else if (d.aprobarRegla){ if(!confirm("La regla se guarda y Cuentas revisa de nuevo esa compañía (puede tardar hasta un minuto). No escribe en Odoo. ¿Continuar?")) return;
+  else if (d.aprobarRegla){ if(!confirm("La regla se guarda y Cuentas revisa de nuevo esa compañía (puede tardar hasta un minuto). No escribe en Odoo."+(d.fiscal?"\n\nVa a Relaciones públicas: afecta la deducibilidad. Confírmelo con el contador de la compañía.":"")+" ¿Continuar?")) return;
     t.disabled=true; msg("Guardando la regla y corriendo Cuentas…");
     api("/api/reglas/"+d.aprobarRegla+"/aprobar",{}).then(function(j){ msg(j.mensaje||"Regla aprobada."); api("/api/reglas").then(pintarReglas); cargarPropuestas(); cargarConsultas(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
   else if (d.rechazarRegla){ api("/api/reglas/"+d.rechazarRegla+"/rechazar",{}).then(function(){ msg("Regla rechazada."); api("/api/reglas").then(pintarReglas); }).catch(function(e){ msg(e.message,true); }); }

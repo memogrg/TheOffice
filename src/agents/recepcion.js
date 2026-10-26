@@ -21,7 +21,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { clave, tipoDeClave, cedulaEmisor, consecutivoDoc, fechaDeClave, TIPO_DOC } from "../lib/clave.js";
-import { receptores, remitenteVisible, unificarDocumentos, causasDominantes,
+import { receptores, dominiosEquivalentes, dominiosSospechosos, remitenteVisible, unificarDocumentos, causasDominantes,
          DOMINIO_HACIENDA, REMITENTE_AUTOMATICO, horasEntre, fechaOdoo } from "../lib/correo.js";
 
 export const meta = {
@@ -136,6 +136,10 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
   for (const p of socios) if (!establecimiento[p.vat]) establecimiento[p.vat] = p.name;
   log(`${cedulas.length} emisores distintos; ${Object.keys(establecimiento).length} identificados por cédula`);
 
+  // Cambio de dominio de los receptores (RECEPTORES_DOMINIOS=viejo.com=nuevo.com): un solo receptor.
+  const equivalencias = dominiosEquivalentes(cfg.RECEPTORES_DOMINIOS);
+  if (equivalencias.size) log(`Dominios equivalentes: ${[...equivalencias].map(([v, n]) => `${v} → ${n}`).join(", ")}`);
+
   // 7. Normalizar cada correo pendiente a un "caso" reclamable.
   const casos = pendientes.map(f => {
     const k = clave(f.e_invoice_name, f.name);
@@ -144,7 +148,7 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
       id: f.id,
       compania: f.company_id ? f.company_id[1] : "(sin compañía)",
       companiaId: f.company_id ? f.company_id[0] : null,
-      receptores: receptores(f.to_mail),
+      receptores: receptores(f.to_mail, equivalencias),
       remitente: f.from_mail || "",
       asunto: f.name || "",
       archivo: f.e_invoice_name || "",
@@ -360,6 +364,14 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
     texto: `Clasificación de tiquetes inconsistente: ${inconsistentes.length} mal marcados, ${coladosComoFactura.length} colados como factura.`,
     detalle: [...inconsistentes, ...coladosComoFactura].slice(0, 10).map(x => `id ${x.id} — ${x.compania}`)
   });
+  // La misma casilla en dos dominios para las mismas compañías: casi seguro un cambio de dominio
+  // sin declarar. Sin RECEPTORES_DOMINIOS, Victor le escribiría dos veces a la misma persona.
+  const sospechosos = dominiosSospechosos(listaReceptores.map(r => ({ receptor: r.receptor, companias: r.companias.map(c => c.compania) })));
+  if (sospechosos.length) alertas.push({
+    nivel: "alto",
+    texto: `${sospechosos.length} receptores aparecen con dos dominios para las mismas compañías: probable cambio de dominio. Declárelo en RECEPTORES_DOMINIOS (viejo=nuevo) para que no reciban dos cartas.`,
+    detalle: sospechosos.slice(0, 8).map(x => `${x.a} y ${x.b} — ${x.companias.slice(0, 3).join(", ")}`)
+  });
   if (sinReceptor.length) alertas.push({
     nivel: "alto",
     texto: `${sinReceptor.length} correos sin registrar no traen receptor legible: nadie a quién avisarle.`,
@@ -386,6 +398,7 @@ export async function ejecutar({ odoo, cfg, log, raiz }) {
       avisosAfuera: totalExterno,
       avisosAdentro: totalInterno
     },
+    dominiosEquivalentes: Object.fromEntries(equivalencias), dominiosSospechosos: sospechosos,
     porEstado: Object.entries(porEstado).sort((a, b) => b[1] - a[1])
       .map(([st, n]) => ({ estado: st, descripcion: ESTADOS[st] || "—", correos: n })),
     verificacionTiquetes: {

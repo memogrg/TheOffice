@@ -301,3 +301,12 @@ test("memoria: retención de 30 días, poda del historial y migración de bases 
   assert.equal(migrada.conversacionActual("memo").resumen.length, 1, "lo guardado antes sigue abierto y se retoma");
   migrada.cerrar();
 });
+
+test("corrección 2 del log: el Director nunca manda a editar a mano en Odoo; ante una decisión «de ahora en adelante» propone regla", () => {
+  const { director } = armar({ CLAUDE_API_KEY: "x" });
+  const s = director.sistema();
+  assert.match(s, /Nunca le digas a la persona que lo cambie a mano en Odoo/);
+  assert.match(s, /proponer_regla/);
+  assert.match(s, /naturaleza/);
+  assert.match(s, /Nunca propongas 7\.01\.01 ni 5\.04\.99\/5\.04\.999/);
+});

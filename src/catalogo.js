@@ -42,17 +42,19 @@ export class Catalogo {
     // para «todo lo de Rostipollos va a Relaciones públicas». La de artículo es más específica y gana.
     this.reglas = new Map();
     this.reglasProveedor = new Map();
+    this.reglasNaturaleza = new Map();   // por tipo de gasto: «toda comida de restaurante en X va a…»
     if (rutaReglas && existsSync(rutaReglas)){
       const rr = JSON.parse(readFileSync(rutaReglas, "utf8")).reglas || [];
       for (const r of rr){
         const alc = (r.alcance && r.alcance !== "todas") ? norm(r.alcance) : "*";
         const valor = { codigo: canon(r.codigo), cuenta: r.cuenta, decidio: r.decidio, motivo: r.motivo };
         if (r.articulo) this.reglas.set(alc + "|" + norm(r.articulo), valor);
+        else if (r.naturaleza) this.reglasNaturaleza.set(alc + "|" + r.naturaleza, valor);
         else if (r.proveedorId) this.reglasProveedor.set(alc + "|#" + Number(r.proveedorId), valor);
         else if (r.proveedor) this.reglasProveedor.set(alc + "|@" + norm(r.proveedor), valor);
       }
     }
-    this.nReglas = this.reglas.size + this.reglasProveedor.size;
+    this.nReglas = this.reglas.size + this.reglasProveedor.size + this.reglasNaturaleza.size;
   }
 
   #reglaProveedor(c, { proveedorId = null, proveedor = null } = {}){
@@ -75,6 +77,10 @@ export class Catalogo {
     const a = norm(articulo), c = norm(cliente);
     const r = (a && (this.reglas.get(c + "|" + a) || this.reglas.get("*|" + a))) || this.#reglaProveedor(c, proveedor);
     return r ? { ...r, porProveedor: !this.reglas.get(c + "|" + a) && !this.reglas.get("*|" + a) } : null;
+  }
+  reglaNaturaleza(cliente, naturalezaId){
+    if (!naturalezaId) return null;
+    return this.reglasNaturaleza.get(norm(cliente) + "|" + naturalezaId) || this.reglasNaturaleza.get("*|" + naturalezaId) || null;
   }
   propio(cliente, articulo){
     const pc = this.porCliente[norm(cliente)], a = norm(articulo);

@@ -120,3 +120,21 @@ test("palabras completas con plural, sin falsos positivos por pedazos de palabra
   assert.equal(cl.tipoDeProveedor("BARBERIA Y ESTETICA").personal, true);
   assert.equal(cl.tipoDeProveedor("BARRAS DE ACERO"), null, "BAR no casa con BARRAS");
 });
+
+test("regla por tipo de gasto (corrección 9 del log): toda comida de restaurante de una compañía, de cualquier proveedor", () => {
+  const cl = new Clasificador({ catalogo: catalogo({
+    porCliente: { [ALFONSO]: { "CASADO": ["7.01.01", "Gastos no justificados", 5] } },
+    reglas: [{ naturaleza: "alimentacion-restaurante", codigo: "5.04.17.01", cuenta: "Relaciones publicas", alcance: "Alfonso Llorca Castro", decidio: "Victor" },
+             { naturaleza: "alimentacion-supermercado", codigo: "5.01.01", cuenta: "Costo de ventas", alcance: "Alfonso Llorca Castro", decidio: "Victor" }] }) });
+  const r = cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "CASADO", actividad: "SODA" });
+  assert.equal(r.fuente, "regla-humana");
+  assert.ok(cl.misma(r.codigo, "5.04.17.01"));
+  assert.ok(r.pasos.some(p => /tipo de gasto/.test(p)));
+  // la consulta de supermercado se resuelve con su propia regla…
+  assert.ok(cl.misma(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "ARROZ 1KG", actividad: "SUPERMERCADOS" }).codigo, "5.01.01"));
+  // …pero no arrastra lo que la línea dice que es otra cosa (cloro en el súper), ni lo personal
+  assert.equal(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "CLORO 1L", actividad: "SUPERMERCADOS" }).decision, "consulta");
+  assert.equal(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "SHAMPOO", actividad: "SUPERMERCADOS" }).tipo, "personal");
+  // otra compañía: no aplica
+  assert.notEqual(cl.clasificar({ compania: "Puuk", articulo: "CASADO", actividad: "SODA" }).fuente, "regla-humana");
+});
