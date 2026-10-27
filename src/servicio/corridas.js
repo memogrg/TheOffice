@@ -17,11 +17,12 @@ import * as documentos from "../agents/documentos.js";
 import * as cierre from "../agents/cierre.js";
 import * as estados from "../agents/estados.js";
 import * as cambiario from "../agents/cambiario.js";
+import * as diferidos from "../agents/diferidos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -56,7 +57,7 @@ export class Corridas {
     let r;
     try {
       const odoo = this.crearCliente(agente);
-      r = await agente.ejecutar({ odoo, cfg: this.cfg, log, raiz: this.raiz, args });
+      r = await agente.ejecutar({ odoo, cfg: this.cfg, log, raiz: this.raiz, args, db: this.db });
       r.bitacora = bitacora;
       r.corridaId = corridaId;
       const resumen = this.#persistir(quien, corridaId, r, args);
@@ -107,6 +108,10 @@ export class Corridas {
     // El diferencial se recalcula entero cada mes: el nuevo reemplaza a los anteriores sin aplicar.
     if (quien === "cambiario" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "cambiario", reemplazarAnteriores: true }) };
+    }
+    // Diferidos: el asiento del mes incluye las cuotas atrasadas, así que también reemplaza a los anteriores.
+    if (quien === "diferidos" && Array.isArray(r.asientosSugeridos)) {
+      return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "diferidos", reemplazarAnteriores: true }) };
     }
     return {};
   }

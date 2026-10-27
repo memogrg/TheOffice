@@ -32,6 +32,8 @@ export const ETIQUETA = {
   descuadres:"Balances que no cuadran", conPerdidaEnElAnio:"Con pérdida en el año",
   conAjuste:"Compañías con ajuste", ganancia:"Ganancia cambiaria", perdida:"Pérdida cambiaria", sinConfiguracion:"Sin cuentas de diferencial configuradas",
   sinTasa:"Sin tipo de cambio", cuentasSinMoneda:"Cuentas en dólares sin moneda", asientosSugeridos:"Asientos sugeridos",
+  diferidos:"Diferidos activos", cuotaDelMes:"Con cuota del mes", atrasados:"Con cuotas atrasadas", terminados:"Terminados", porEmpezar:"Por empezar",
+  cuentaInvalida:"Con cuenta inválida", montoDelMes:"Monto a amortizar",
   documentosAfuera:"Documentos distintos a reclamar", documentosAdentro:"Documentos distintos a revisar"
 };
 

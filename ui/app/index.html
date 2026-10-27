@@ -82,6 +82,7 @@ a{color:var(--sello)}
     <button data-v="casos">Casos</button>
     <button data-v="hallazgos">Hallazgos</button>
     <button data-v="aprobaciones">Aprobaciones</button>
+    <button data-v="diferidos">Diferidos</button>
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
     <button data-v="auditoria">Auditoría</button>
@@ -182,6 +183,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="cierre">Cierre</button>'+
     '<button class="b gh" data-correr="estados">Estados financieros</button>'+
     '<button class="b gh" data-correr="cambiario">Diferencial cambiario</button>'+
+    '<button class="b gh" data-correr="diferidos">Diferidos</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -427,12 +429,12 @@ function pintarAsientos(lista){
   if(!lista.length){ el.innerHTML='<div class="sub">Nada aquí. Los propone Cierre al correr (Hallazgos) o se dictan al Director: «registrá el pago de la CCSS de enero de [compañía] contra el BNCR».</div>'; return; }
   el.innerHTML = lista.map(function(a){ var e=EST_ASIENTO[a.estado]||[a.estado,"neutro"];
     var faltaBanco = a.lineas.some(function(l){ return !l.cuentaId && l.rol==="contrapartida"; }) && a.origen!=="cambiario";
-    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?(faltaBanco?"Elegir banco":"Completar"):"Cambiar banco o fecha")+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
+    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?(faltaBanco?"Elegir banco":"Completar"):(a.origen==="cierre"?"Cambiar banco o fecha":"Cambiar fecha o diario"))+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
       : a.estado==="aprobada" ? (S.estado.escrituraAsientos?'<button class="b" data-aplicar-asiento="'+a.id+'">Crear en Odoo</button>':'<span class="sub">Aprobado. Crear en Odoo requiere PERMITIR_ESCRITURA_ASIENTOS=si.</span>')
       : a.move_name ? '<span class="sub">Asiento '+esc(a.move_name)+(a.resultado&&a.resultado.estadoOdoo?' ('+esc(a.resultado.estadoOdoo==="posted"?"publicado":"borrador")+')':'')+'</span>'
       : a.resultado&&a.resultado.error ? '<span class="sub" style="color:var(--critico)">'+esc(a.resultado.error)+'</span>' : (a.nota?'<span class="sub">'+esc(a.nota)+'</span>':'');
     return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
-      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
+      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.origen==="diferidos"?"Diferidos":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
       '<div style="font-size:13px">'+esc(a.referencia||"")+'</div><div class="sub" style="margin-bottom:6px">'+esc(a.motivo||"")+'</div>'+
       tabla(["Cuenta","Descripción",{t:"Débito",n:1},{t:"Crédito",n:1}], a.lineas.map(function(l){
         return [(l.cuentaId?esc(l.cuenta):'<span class="est alto">'+esc(l.cuenta)+'</span>')+(l.fuente?'<div class="sub">'+esc(l.fuente)+'</div>':''), '<span class="sub">'+esc(l.descripcion||"")+'</span>', l.debito?n(l.debito):"", l.credito?n(l.credito):""]; }))+
@@ -534,6 +536,45 @@ function pintarCorreos(lista){
       c.estado==="borrador" ? '<button class="b" data-aprobar-correo="'+c.id+'">Aprobar</button> <button class="b rj" data-rechazar-correo="'+c.id+'">Rechazar</button>' : ""];
   }));
 }
+/* ---------- Diferidos (ítem 15): registro en la app, cuotas a la cola de asientos ---------- */
+var EST_DIF = { "cuota-del-mes":["cuota del mes","ok"], atrasado:["atrasado","alto"], terminado:["terminado","neutro"], "por-empezar":["por empezar","neutro"], "al-dia":["al día","ok"], "cuenta-invalida":["cuenta inválida","critico"] };
+function opcionesCia(id){ return S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join(""); }
+V.diferidos = function(){
+  return '<section><h2>Gastos diferidos</h2><div class="aviso">Pólizas, alquileres, licencias o mantenimientos pagados por adelantado. Registre cada uno con su cuenta del activo diferido, su cuenta de gasto, el monto, los meses y el mes de la primera cuota. Cada mes el agente <b>Diferidos</b> arma, por compañía, el asiento con las cuotas (y las atrasadas) y lo deja en <b>Aprobaciones → Asientos</b>. Lo que ya se creó en Odoo no se vuelve a proponer.</div>'+
+    '<form class="fila" id="dfForm"><select id="dfCia" required><option value="">compañía…</option>'+opcionesCia()+'</select>'+
+    '<input class="f" id="dfDesc" placeholder="descripción (p. ej. Póliza INS vehículos)" style="flex:1;min-width:200px" required>'+
+    '<input class="f" id="dfAct" placeholder="cuenta del activo (código)" style="width:170px" required><input class="f" id="dfGas" placeholder="cuenta de gasto (código)" style="width:170px" required>'+
+    '<input class="f" id="dfMonto" placeholder="monto total" style="width:120px" required><input class="f" id="dfMeses" type="number" min="1" placeholder="meses" style="width:80px" required>'+
+    '<input class="f" id="dfIni" type="month" title="mes de la primera cuota" required><input class="f" id="dfRef" placeholder="factura o contrato (opcional)" style="width:170px">'+
+    '<button class="b" type="submit">Registrar</button></form>'+
+    '<div class="fila" style="margin-top:4px"><span class="sub">O suba la hoja del cliente guardada como <b>CSV</b> con columnas: compañía, descripción, cuenta activo, cuenta gasto, monto, meses, inicio (y opcional referencia).</span></div>'+
+    '<div class="fila"><input type="file" id="dfArchivo" accept=".csv,text/csv,text/plain"><select id="dfCiaDef"><option value="">compañía (si la hoja no la trae)…</option>'+opcionesCia()+'</select>'+
+    '<button class="b gh" id="dfProbar">Revisar el archivo</button><button class="b" id="dfImportar">Importar</button></div><div id="dfImport"></div></section>'+
+    '<section><h2>Registrados</h2><div class="fila"><select id="dfFiltro"><option value="">todas las compañías</option>'+opcionesCia()+'</select><button class="b gh" id="dfIr">Ver</button>'+
+    '<span style="flex:1"></span><button class="b gh" data-correr="diferidos">Proponer cuotas ahora</button></div><div id="dfTabla">Cargando…</div></section>';
+};
+function cargarDiferidos(){ var f=$("#dfFiltro"); api("/api/diferidos"+(f&&f.value?"?compania="+f.value:"")).then(pintarDiferidos).catch(function(e){ msg(e.message,true); }); }
+function pintarDiferidos(lista){
+  var el=$("#dfTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Todavía no hay diferidos registrados.</div>'; return; }
+  el.innerHTML = tabla(["Compañía","Diferido","Cuentas",{t:"Monto",n:1},{t:"Cuota",n:1},"Plazo","Avance",{t:"Saldo",n:1},""], lista.map(function(d){
+    return [esc(d.compania), esc(d.descripcion)+(d.referencia?'<div class="sub">'+esc(d.referencia)+'</div>':''), '<span class="sub">'+esc(d.cuenta_activo)+'<br>→ '+esc(d.cuenta_gasto)+'</span>',
+      mon(d.monto), mon(d.cuota), '<span class="sub">'+esc(d.inicio)+' a '+esc(d.fin)+'</span>', n(d.registradas)+' de '+n(d.cuotas)+' cuotas', mon(d.saldo),
+      '<button class="b rj" data-anular-diferido="'+d.id+'">Anular</button>']; }));
+}
+function importarDiferidos(probar){
+  var f=$("#dfArchivo").files[0]; if(!f) return msg("Elija el archivo CSV.", true);
+  var rd=new FileReader(); rd.onload=function(){
+    msg(probar?"Revisando…":"Importando…");
+    api("/api/diferidos/importar",{texto:rd.result, probar:probar, compania:$("#dfCiaDef").value?Number($("#dfCiaDef").value):null}).then(function(j){
+      $("#dfImport").innerHTML='<div class="aviso">'+j.filas+' filas: <b>'+j.validos+' válidas</b>'+(probar?' (no se guardó nada; pulse Importar)':', '+j.creados+' registradas')+(j.errores.length?', <b style="color:var(--critico)">'+j.errores.length+' con error</b>':'')+'.</div>'+
+        (j.errores.length?tabla(["Fila","Qué falta"], j.errores.map(function(e){ return [n(e.fila), '<span class="sub">'+esc(e.errores.join(" "))+'</span>']; })):'')+
+        (probar&&j.vista.length?tabla(["Fila","Compañía","Diferido","Activo → gasto",{t:"Monto",n:1},"Meses","Inicio"], j.vista.slice(0,30).map(function(v){ return [n(v.fila), esc(v.compania), esc(v.descripcion), '<span class="sub">'+esc(v.cuentaActivo)+' → '+esc(v.cuentaGasto)+'</span>', mon(v.monto), n(v.meses), esc(v.inicio)]; })):'');
+      msg(probar?"Revisión lista.":"Importados.");
+      if(!probar) cargarDiferidos();
+    }).catch(function(e){ msg(e.message,true); });
+  }; rd.readAsText(f);
+}
 V.corridas = function(){ return '<section><h2>Corridas</h2><div id="corrdTabla">Cargando…</div></section>'; };
 function pintarCorridas(lista){
   var el=$("#corrdTabla"); if(!el) return;
@@ -604,6 +645,7 @@ function pintar(){
   if (S.vista==="casos") cargarCasos();
   if (S.vista==="aprobaciones"){ cargarAsientos(); cargarCambios(); mostrarCamposCambio(); cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
+  if (S.vista==="diferidos") cargarDiferidos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
   if (S.vista==="usuarios") api("/api/usuarios").then(pintarUsuarios);
@@ -640,6 +682,11 @@ $("#main").addEventListener("change", function(ev){
   var d=ev.target.dataset; if (d && d.incluirCambio) api("/api/cambios/"+d.incluirCambio+"/incluir",{compania:Number(d.cia), incluido:ev.target.checked}).then(cargarCambios).catch(function(e){ msg(e.message,true); });
 });
 $("#main").addEventListener("submit", function(ev){
+  if (ev.target.id==="dfForm"){ ev.preventDefault();
+    var b={ compania:Number($("#dfCia").value), descripcion:$("#dfDesc").value.trim(), cuentaActivo:$("#dfAct").value.trim(), cuentaGasto:$("#dfGas").value.trim(),
+      monto:$("#dfMonto").value.trim(), meses:Number($("#dfMeses").value), inicio:$("#dfIni").value, referencia:$("#dfRef").value.trim()||null };
+    api("/api/diferidos", b).then(function(j){ msg("Registrado: cuota de "+mon(j.cuota)+" hasta "+j.fin+"."); ev.target.reset(); cargarDiferidos(); }).catch(function(e){ msg(e.message,true); });
+    return; }
   if (ev.target.id!=="cmForm") return; ev.preventDefault();
   var cias=[].slice.call($("#cmCias").selectedOptions).map(function(o){ return Number(o.value); });
   var b={ tipo:$("#cmTipo").value, codigo:$("#cmCodigo").value.trim(), nombreActual:$("#cmActual").value.trim()||null, nuevoCodigo:$("#cmNuevoCod").value.trim()||null,
@@ -681,6 +728,10 @@ $("#main").addEventListener("click", function(ev){
   else if (d.imprimirEstado){ var ci=(S.estados.companias||[]).find(function(x){ return String(x.companiaId)===d.imprimirEstado; }); var w=window.open("","_blank"); if(!w) return msg("El navegador bloqueó la ventana de impresión.", true);
     w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
   else if (t.id==="aIr"){ cargarAsientos(); }
+  else if (t.id==="dfIr"){ cargarDiferidos(); }
+  else if (t.id==="dfProbar"){ importarDiferidos(true); }
+  else if (t.id==="dfImportar"){ if(confirm("¿Registrar las filas válidas del archivo?")) importarDiferidos(false); }
+  else if (d.anularDiferido){ var nd=prompt("¿Por qué se anula? (se deja de proponer; lo ya registrado en Odoo no se toca)", ""); if(nd===null) return; api("/api/diferidos/"+d.anularDiferido+"/anular",{nota:nd}).then(function(){ msg("Anulado."); cargarDiferidos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aprobarCambio){ if(!confirm("¿Aprobar el cambio en las compañías incluidas? No se ejecuta en Odoo hasta pulsar «Ejecutar».")) return; api("/api/cambios/"+d.aprobarCambio+"/aprobar",{}).then(function(j){ msg(j.mensaje); cargarCambios(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.rechazarCambio){ var mc=prompt("¿Por qué se rechaza?", ""); if(mc===null) return; api("/api/cambios/"+d.rechazarCambio+"/rechazar",{motivo:mc}).then(function(){ msg("Rechazado."); cargarCambios(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aplicarCambio){ if(!confirm("Esto CAMBIA el plan de cuentas en Odoo en cada compañía incluida. ¿Continuar?")) return; t.disabled=true; msg("Ejecutando…");

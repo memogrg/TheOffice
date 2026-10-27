@@ -155,9 +155,13 @@ export async function opciones({ corridas, companiaId }) {
 }
 
 // Código → cuenta del plan de una compañía (para completar líneas por definir).
-export async function cuentasPorCodigo({ corridas, companiaId, codigos }) {
-  const odoo = corridas.crearCliente({ meta: { escribe: false } });
-  const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [companiaId]]], ["code", "name", "deprecated"], { context: { allowed_company_ids: [companiaId] } });
+export async function cuentasPorCodigo({ corridas, companiaId, codigos, cache = null }) {
+  let plan = cache?.get(companiaId);
+  if (!plan) {
+    const odoo = corridas.crearCliente({ meta: { escribe: false } });
+    plan = await odoo.leerTodo("account.account", [["company_ids", "in", [companiaId]]], ["code", "name", "deprecated"], { context: { allowed_company_ids: [companiaId] } });
+    cache?.set(companiaId, plan);
+  }
   const out = new Map();
   for (const cod of codigos) { const c = plan.find(x => !x.deprecated && x.code && canon(x.code) === canon(cod)); if (c) out.set(String(cod).trim(), c); }
   return out;

@@ -262,6 +262,7 @@ export class BaseDeDatos {
     this.db.exec("CREATE INDEX IF NOT EXISTS asientos_estado ON asientos(estado, compania_id)");
     // fecha en que se revierte solo (revaluaciones de fin de mes: se revierten el día 1)
     if (!columnas("asientos").has("reversa")) this.db.exec("ALTER TABLE asientos ADD COLUMN reversa TEXT");
+    this.#tablaDiferidos();
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,6 +278,60 @@ export class BaseDeDatos {
       nota        TEXT,
       aplicado_en TEXT
     )`);
+  }
+
+  // --- gastos diferidos (ítem 15): el registro vive aquí; las cuotas, en la cola de asientos
+  #tablaDiferidos() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS diferidos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      descripcion TEXT NOT NULL,
+      cuenta_activo_id INTEGER NOT NULL,
+      cuenta_activo TEXT,
+      cuenta_gasto_id INTEGER NOT NULL,
+      cuenta_gasto TEXT,
+      monto       REAL NOT NULL,
+      meses       INTEGER NOT NULL,
+      inicio      TEXT NOT NULL,        -- AAAA-MM de la primera cuota
+      referencia  TEXT,                 -- factura o contrato de origen
+      estado      TEXT NOT NULL DEFAULT 'activo',   -- activo | anulado
+      creado_por  TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      nota        TEXT
+    )`);
+  }
+  registrarDiferido(d, quien) {
+    const x = this.correr(`INSERT INTO diferidos (compania_id, compania, descripcion, cuenta_activo_id, cuenta_activo, cuenta_gasto_id, cuenta_gasto, monto, meses, inicio, referencia, creado_por, creado_en)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, d.companiaId, d.compania ?? null, d.descripcion, d.cuentaActivoId, d.cuentaActivo ?? null, d.cuentaGastoId, d.cuentaGasto ?? null,
+      Math.round(Number(d.monto) * 100) / 100, Number(d.meses), d.inicio, d.referencia ?? null, quien, this.#ahora());
+    const id = Number(x.lastInsertRowid);
+    this.auditar(quien, "registrar", "diferido", id, { compania: d.compania, descripcion: d.descripcion, monto: d.monto, meses: d.meses, inicio: d.inicio });
+    return this.diferido(id);
+  }
+  diferido(id) { return this.uno("SELECT * FROM diferidos WHERE id=?", id); }
+  diferidos({ estado = "activo", companiaId = null } = {}) {
+    const cond = [], p = [];
+    if (estado !== "todos") { cond.push("estado=?"); p.push(estado); }
+    if (companiaId) { cond.push("compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT * FROM diferidos${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY compania, inicio, id`, ...p);
+  }
+  anularDiferido(id, quien, nota = null) {
+    const r = this.correr("UPDATE diferidos SET estado='anulado', nota=? WHERE id=? AND estado='activo'", nota, id);
+    if (r.changes) this.auditar(quien, "anular", "diferido", id, nota ? { nota } : null);
+    return r.changes > 0;
+  }
+  // Meses ya registrados en Odoo por diferido: las líneas de asientos aplicados (origen diferidos)
+  // llevan diferidoId y los meses que cubren.
+  mesesAplicadosDiferidos() {
+    const out = new Map();
+    for (const a of this.todos("SELECT lineas FROM asientos WHERE origen='diferidos' AND estado='aplicada'"))
+      for (const l of JSON.parse(a.lineas || "[]")) if (l.diferidoId) {
+        const s = out.get(l.diferidoId) || new Set();
+        for (const m of l.meses || []) s.add(m);
+        out.set(l.diferidoId, s);
+      }
+    return out;
   }
 
   // --- cambios masivos al plan de cuentas

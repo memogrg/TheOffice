@@ -56,7 +56,7 @@ test("ninguna herramienta escribe: nombres, y correr_agente nunca pasa --aplicar
   const { director, corridas, db } = armar({ CLAUDE_API_KEY: "x", PERMITIR_ESCRITURA: "si" });
   const nombres = director.herramientas().map(h => h.name);
   for (const n of nombres) assert.ok(!/escrib|aplicar|enviar|write|unlink|create|post/i.test(n), n);
-  assert.deepEqual(nombres.sort(), ["agrupar_odoo", "asientos", "cambios_masivos", "casos", "causas_errores", "companias", "consultas", "correos", "correr_agente", "estado", "hallazgos", "leer_odoo", "proponer_asiento", "proponer_cambio_masivo", "proponer_regla", "propuestas", "revisar_factura"]);
+  assert.deepEqual(nombres.sort(), ["agrupar_odoo", "asientos", "cambios_masivos", "casos", "causas_errores", "companias", "consultas", "correos", "correr_agente", "diferidos", "estado", "hallazgos", "leer_odoo", "proponer_asiento", "proponer_cambio_masivo", "proponer_regla", "propuestas", "registrar_diferido", "revisar_factura"]);
 
   await director.ejecutarHerramienta("correr_agente", { agente: "cuentas", empresa: 144 }, "memo");
   const c = db.corridas({ agente: "cuentas" })[0];
@@ -97,7 +97,7 @@ test("bucle de herramientas: el modelo pide estado, luego casos, y responde con 
   assert.match(r.respuesta, /4 documentos por reclamar afuera/);
   assert.deepEqual(r.pasos.map(p => p.herramienta), ["correr_agente", "casos"]);
   assert.equal(api.llamadas.length, 3);
-  assert.equal(api.llamadas[0].tools.length, 17);
+  assert.equal(api.llamadas[0].tools.length, 19);
   assert.match(api.llamadas[0].system, /Director de la Oficina IASIMA/);
   assert.match(api.llamadas[0].system, /copia de pruebas congelada/);
   assert.equal(db.corridas({ agente: "recepcion" }).length, 1, "la herramienta corrió a Marta de verdad");
@@ -112,7 +112,7 @@ test("límite de pasos: una última llamada sin herramientas responde con lo que
   const pide = usar("leer_odoo", { modelo: "no.existe", dominio: [], campos: [] }, "z");   // siempre pide lo mismo
   const api = apiFalsa([pide, pide, pide, b => {
     assert.deepEqual(b.tool_choice, { type: "none" }, "el cierre no permite más herramientas");
-    assert.equal(b.tools.length, 17, "pero las herramientas siguen declaradas: la conversación trae tool_use");
+    assert.equal(b.tools.length, 19, "pero las herramientas siguen declaradas: la conversación trae tool_use");
     assert.match(b.messages[b.messages.length - 1].content, /Se agotó el límite de 3/);
     return textoFinal("Con lo que tengo: nada; faltó leer el modelo.");
   }]);

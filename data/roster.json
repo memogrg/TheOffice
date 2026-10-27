@@ -318,6 +318,31 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "diferidos",
+      "nombre": "DIFERIDOS",
+      "rol": "DIFERIDOS",
+      "modo": "lectura",
+      "hace": "Con los gastos diferidos registrados en la app (pólizas, alquileres y licencias pagados por adelantado), arma cada mes por compañía el asiento con la cuota de cada uno y las cuotas atrasadas, y lo deja en Aprobaciones → Asientos.",
+      "noHace": "No crea el asiento en Odoo ni registra diferidos por su cuenta.",
+      "responde": [
+        "qué diferidos tienen cuota este mes",
+        "cuánto falta por amortizar",
+        "qué diferidos están atrasados"
+      ],
+      "palabras": {
+        "diferido": 6,
+        "diferidos": 6,
+        "amortizacion": 5,
+        "amortizar": 5,
+        "poliza": 4,
+        "pagado por adelantado": 5,
+        "prepagado": 4,
+        "cuota": 2
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [
