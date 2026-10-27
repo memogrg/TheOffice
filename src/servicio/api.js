@@ -22,6 +22,7 @@ import { esRemota, ipDe, Limitador, cabeceras, origenAjeno, esJSON, RUTAS_CON_SE
 import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
 import * as activosSrv from "./activos.js";
+import * as cierreMes from "./cierreMes.js";
 import { avance, calendario } from "../lib/diferidos.js";
 import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 
@@ -284,6 +285,34 @@ export function crearApi(opciones) {
   ruta("POST", "/api/activos/:id/baja", (q, p, cuerpo, quien, ctx) => {
     if (!/^\d{4}-\d{2}$/.test(String(cuerpo.mes || ""))) return error(400, "Indique el mes de la baja (AAAA-MM).");
     return { ok: ctx.db.darDeBajaActivo(Number(p.id), cuerpo.mes, quien, cuerpo.nota || null) };
+  });
+
+  // --- cierre de mes por compañía (junta lo de todos los agentes y la cola)
+  const companiasDe = ctx => { const r = join(ctx.raiz, "data", "companias.json"); return existsSync(r) ? JSON.parse(readFileSync(r, "utf8")) : []; };
+  const mesValido = m => /^\d{4}-\d{2}$/.test(String(m || ""));
+  ruta("GET", "/api/cierre-mes", (q, p, c, quien, ctx) => {
+    const mes = q.mes || cierreMes.mesPorOmision(ctx.db);
+    if (!mesValido(mes)) return error(400, "Mes inválido (AAAA-MM).");
+    return cierreMes.lista(ctx.db, { mes, companias: companiasDe(ctx), companiaId: q.compania || null });
+  });
+  ruta("POST", "/api/cierre-mes/:compania/:mes/revisar", (q, p, cuerpo, quien, ctx) => {
+    if (!mesValido(p.mes)) return error(400, "Mes inválido.");
+    if (!cierreMes.ITEMS.some(i => i.id === cuerpo.item)) return error(400, "Ítem inválido.");
+    if (cuerpo.nota != null && !String(cuerpo.nota).trim()) return error(400, "Escriba por qué se da por bueno.");
+    const cia = companiasDe(ctx).find(c => c.id === Number(p.compania));
+    return { ok: ctx.db.revisarItemCierre(Number(p.compania), cia?.name, p.mes, cuerpo.item, quien, cuerpo.nota ?? null) };
+  });
+  ruta("POST", "/api/cierre-mes/:compania/:mes/cerrar", (q, p, cuerpo, quien, ctx) => {
+    if (!mesValido(p.mes)) return error(400, "Mes inválido.");
+    const l = cierreMes.lista(ctx.db, { mes: p.mes, companias: companiasDe(ctx), companiaId: Number(p.compania) });
+    const fila = l.companias[0];
+    if (!fila) return error(404, "No existe esa compañía.");
+    if (fila.pendientes) return error(409, `Quedan ${fila.pendientes} ítems pendientes: resuélvalos o dé por bueno cada uno con una nota.`);
+    return { ok: ctx.db.cerrarMes(fila.companiaId, fila.compania, p.mes, quien, cuerpo.nota || null, fila.items) };
+  });
+  ruta("POST", "/api/cierre-mes/:compania/:mes/reabrir", (q, p, cuerpo, quien, ctx) => {
+    if (!String(cuerpo.nota || "").trim()) return error(400, "Diga por qué se reabre.");
+    return { ok: ctx.db.reabrirMes(Number(p.compania), p.mes, quien, cuerpo.nota) };
   });
 
   // --- correos de Victor

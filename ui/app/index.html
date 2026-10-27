@@ -81,6 +81,7 @@ a{color:var(--sello)}
     <button data-v="director">Director</button>
     <button data-v="casos">Casos</button>
     <button data-v="hallazgos">Hallazgos</button>
+    <button data-v="cierremes">Cierre de mes</button>
     <button data-v="aprobaciones">Aprobaciones</button>
     <button data-v="diferidos">Diferidos</button>
     <button data-v="activos">Activos fijos</button>
@@ -617,6 +618,43 @@ function importarActivos(probar){
     }).catch(function(e){ msg(e.message,true); });
   }; rd.readAsText(f);
 }
+/* ---------- Cierre de mes por cliente ---------- */
+var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
+var EST_ITEM_CM = { ok:["✓","ok","al día"], pendiente:["!","alto","pendiente"], "sin-datos":["?","critico","sin corrida del mes"], na:["–","neutro","no aplica"], revisado:["✓","neutro","dado por bueno"] };
+var EST_CM = { abierto:["con pendientes","alto"], listo:["listo para cerrar","ok"], cerrado:["cerrado","neutro"] };
+var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","cierre","estados","cambiario","diferidos","depreciacion"];
+V.cierremes = function(){
+  return '<section><h2>Cierre de mes por cliente</h2><div class="aviso">Junta lo que encontraron los agentes en su última corrida y lo que espera en Aprobaciones. Cada ítem pendiente se resuelve en su pestaña o se <b>da por bueno</b> con una nota (queda en la auditoría). Sin pendientes, el mes del cliente se <b>cierra</b> y queda una foto de la lista. «?» quiere decir que el agente no ha corrido para ese mes.</div>'+
+    '<div class="fila"><input class="f" type="month" id="cmMes" value="'+esc(S.cmMes||"")+'"><button class="b gh" id="cmVer">Ver</button>'+
+    '<span style="flex:1"></span><button class="b gh" id="cmActualizar">Correr los agentes del mes</button></div><div id="cmTabla">Cargando…</div><div id="cmDetalle"></div></section>';
+};
+function cargarCierreMes(){ var m=$("#cmMes"); api("/api/cierre-mes"+(m&&m.value?"?mes="+m.value:"")).then(function(r){ S.cm=r; S.cmMes=r.mes; if($("#cmMes")) $("#cmMes").value=r.mes; pintarCierreMes(r); if(S.cmCia) verCierreMes(S.cmCia); }).catch(function(e){ msg(e.message,true); }); }
+function pintarCierreMes(r){
+  var el=$("#cmTabla"); if(!el) return; var t=r.totales;
+  var h='<div class="tiles">'+tile("Compañías", t.companias, "mes "+r.mes)+tile("Cerradas", t.cerradas, "con su foto")+tile("Listas para cerrar", t.listas, "sin pendientes")+tile("Con pendientes", t.abiertas, "ver detalle")+'</div>';
+  h+=tabla(["Compañía"].concat(r.items.map(function(i){ return CORTO[i.id]||i.id; })).concat(["Estado",""]), r.companias.map(function(c){
+    var celdas=c.items.map(function(i){ var e=EST_ITEM_CM[i.estado]||["·","neutro",i.estado]; return '<span class="est '+e[1]+'" title="'+esc(i.titulo+": "+e[2]+(i.detalle?" — "+i.detalle:"")+(i.revisado?" — "+i.revisado.nota:""))+'">'+e[0]+'</span>'; });
+    var ec=EST_CM[c.estado]||[c.estado,"neutro"];
+    return [esc(c.compania)].concat(celdas).concat(['<span class="est '+ec[1]+'">'+esc(ec[0])+'</span>'+(c.pendientes?'<div class="sub">'+c.pendientes+' pendientes</div>':''), '<a href="#" data-cm-cia="'+c.companiaId+'">ver</a>']); }));
+  el.innerHTML=h;
+}
+function verCierreMes(id){
+  S.cmCia=id; var c=(S.cm.companias||[]).find(function(x){ return String(x.companiaId)===String(id); }); var de=$("#cmDetalle"); if(!c||!de) return;
+  var ec=EST_CM[c.estado]||[c.estado,"neutro"];
+  de.innerHTML='<div style="margin-top:14px;padding:14px;border:1px solid var(--borde);border-radius:6px"><div class="fila"><b>'+esc(c.compania)+' · '+esc(c.mes)+'</b><span class="est '+ec[1]+'">'+esc(ec[0])+'</span>'+
+    (c.cerradoPor?'<span class="sub">cerrado por '+esc(c.cerradoPor)+' · '+fecha(c.cerradoEn)+(c.nota?' · '+esc(c.nota):'')+'</span>':'')+'<span style="flex:1"></span>'+
+    (c.estado==="cerrado"?'<button class="b rj" data-cm-reabrir="'+c.companiaId+'">Reabrir</button>':'<button class="b" data-cm-cerrar="'+c.companiaId+'"'+(c.pendientes?' disabled title="Quedan pendientes"':'')+'>Cerrar el mes</button>')+'</div>'+
+    tabla(["","Ítem","Detalle",""], c.items.map(function(i){ var e=EST_ITEM_CM[i.estado]||["·","neutro",i.estado];
+      var acc = c.estado==="cerrado" ? '' : (i.estado==="pendiente"||i.estado==="sin-datos" ? '<a href="#" data-cm-ir="'+esc(i.vista)+'">ir</a> · <a href="#" data-cm-bueno="'+esc(i.id)+'">dar por bueno</a>' : i.estado==="revisado" ? '<a href="#" data-cm-quitar="'+esc(i.id)+'">quitar</a>' : '');
+      return ['<span class="est '+e[1]+'" title="'+esc(e[2])+'">'+e[0]+'</span>', esc(i.titulo), '<span class="sub">'+esc(i.detalle||e[2])+(i.revisado?'<br>Dado por bueno por '+esc(i.revisado.quien)+': '+esc(i.revisado.nota):'')+'</span>', acc]; }))+'</div>';
+  de.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+function correrAgentesMes(){
+  var lista=AGENTES_MES.slice(), b=$("#cmActualizar"); if(b) b.disabled=true;
+  (function sig(){ var a=lista.shift(); if(!a){ msg("Agentes del mes corridos."); if(b) b.disabled=false; return cargarCierreMes(); }
+    msg("Corriendo "+a+"… ("+(AGENTES_MES.length-lista.length)+"/"+AGENTES_MES.length+")");
+    api("/api/corridas/"+a,{}).then(sig).catch(function(e){ msg(a+": "+e.message,true); sig(); }); })();
+}
 V.corridas = function(){ return '<section><h2>Corridas</h2><div id="corrdTabla">Cargando…</div></section>'; };
 function pintarCorridas(lista){
   var el=$("#corrdTabla"); if(!el) return;
@@ -689,6 +727,7 @@ function pintar(){
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="diferidos") cargarDiferidos();
   if (S.vista==="activos") cargarActivos();
+  if (S.vista==="cierremes") cargarCierreMes();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
   if (S.vista==="usuarios") api("/api/usuarios").then(pintarUsuarios);
@@ -777,6 +816,15 @@ $("#main").addEventListener("click", function(ev){
     w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
   else if (t.id==="aIr"){ cargarAsientos(); }
   else if (t.id==="dfIr"){ cargarDiferidos(); }
+  else if (t.id==="cmVer"){ S.cmCia=null; $("#cmDetalle").innerHTML=""; cargarCierreMes(); }
+  else if (t.id==="cmActualizar"){ if(confirm("Corre "+AGENTES_MES.length+" agentes de solo lectura, uno tras otro (puede tardar unos minutos). ¿Seguir?")) correrAgentesMes(); }
+  else if (d.cmCia){ ev.preventDefault(); verCierreMes(d.cmCia); }
+  else if (d.cmIr){ ev.preventDefault(); S.vista=d.cmIr; pintar(); }
+  else if (d.cmBueno){ ev.preventDefault(); var nb2=prompt("¿Por qué se da por bueno? (queda en la auditoría)", ""); if(!nb2||!nb2.trim()) return;
+    api("/api/cierre-mes/"+S.cmCia+"/"+S.cm.mes+"/revisar",{item:d.cmBueno, nota:nb2}).then(cargarCierreMes).catch(function(e){ msg(e.message,true); }); }
+  else if (d.cmQuitar){ ev.preventDefault(); api("/api/cierre-mes/"+S.cmCia+"/"+S.cm.mes+"/revisar",{item:d.cmQuitar, nota:null}).then(cargarCierreMes).catch(function(e){ msg(e.message,true); }); }
+  else if (d.cmCerrar){ var nc2=prompt("Nota del cierre (opcional)", ""); if(nc2===null) return; api("/api/cierre-mes/"+d.cmCerrar+"/"+S.cm.mes+"/cerrar",{nota:nc2}).then(function(){ msg("Mes cerrado."); cargarCierreMes(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.cmReabrir){ var nr=prompt("¿Por qué se reabre?", ""); if(!nr||!nr.trim()) return; api("/api/cierre-mes/"+d.cmReabrir+"/"+S.cm.mes+"/reabrir",{nota:nr}).then(function(){ msg("Reabierto."); cargarCierreMes(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="afIr"){ cargarActivos(); }
   else if (t.id==="afProbar"){ importarActivos(true); }
   else if (t.id==="afImportar"){ if(confirm("¿Registrar las filas válidas del archivo?")) importarActivos(false); }

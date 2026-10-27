@@ -22,6 +22,7 @@ import * as asientosSrv from "./asientos.js";
 import * as cambiosSrv from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
 import * as activosSrv from "./activos.js";
+import * as cierreMesSrv from "./cierreMes.js";
 import { Clasificador, resolverEnPlan } from "../clasificador.js";
 
 const API = "https://api.anthropic.com/v1/messages";
@@ -91,6 +92,8 @@ export class DirectorLLM {
           inicio: { type: "string" }, depreciado_hasta: { type: "string" }, referencia: { type: "string" } }, required: ["compania", "descripcion", "cuenta_acumulada", "cuenta_gasto", "costo", "inicio"] } },
       { name: "activos", description: "Activos fijos registrados con su depreciación acumulada, valor en libros y meses que faltan.",
         input_schema: { type: "object", properties: { compania: { type: "integer" } } } },
+      { name: "cierre_mes", description: "Lista de cierre de mes por compañía: junta lo que encontraron los agentes (buzón, periodos, recurrentes, notas de crédito, cuentas, borradores, bancos, cuentas puente, IVA, diferencial, diferidos, depreciación, asientos, estados) y dice qué falta para cerrar cada cliente y qué ya está cerrado. Sin compania: resumen de todas.",
+        input_schema: { type: "object", properties: { compania: { type: "integer" }, mes: { type: "string", description: "AAAA-MM; vacío = el del último Cierre" } } } },
       { name: "leer_odoo", description: "Lectura directa de Odoo (search_read) con un dominio. SOLO LECTURA. Modelos útiles: bdt.invoice.email (buzón), account.move (asientos; e_key es la clave de Hacienda), account.move.line, res.partner (vat = cédula), res.company, account.account. OJO: en account.account el campo code depende de la compañía; pasá siempre compania o vendrá code=false. Máximo 200 filas; para conteos usa agrupar_odoo.",
         input_schema: { type: "object", properties: { modelo: { type: "string" }, dominio: { type: "array", description: "dominio Odoo, p. ej. [[\"state\",\"=\",\"done\"],[\"company_id\",\"=\",126]]" }, campos: { type: "array", items: { type: "string" } }, limite: { type: "integer" }, orden: { type: "string" }, compania: { type: "integer", description: "id de compañía para leer en su contexto (códigos de cuenta, campos por compañía)" } }, required: ["modelo", "dominio", "campos"] } },
       { name: "agrupar_odoo", description: "Conteos y agregados en Odoo (read_group). SOLO LECTURA. Ej.: correos por estado y compañía: modelo bdt.invoice.email, agrupar [\"company_id\",\"state\"].",
@@ -180,6 +183,13 @@ export class DirectorLLM {
       case "activos": { const ap = db.mesesAplicadosActivos(); const { avance } = await import("../lib/diferidos.js");
         return db.activos({ companiaId: args.compania || null }).slice(0, 80).map(a => { const av = avance({ monto: a.costo - a.residual, meses: a.vida_meses, inicio: a.inicio }, ap.get(a.id) || new Set(), { hechoHasta: a.hecho_hasta });
           return { id: a.id, compania: a.compania, descripcion: a.descripcion, costo: a.costo, vidaMeses: a.vida_meses, inicio: a.inicio, depreciado: av.amortizado, valorEnLibros: Math.round((a.costo - av.amortizado) * 100) / 100, fin: av.fin }; }); }
+      case "cierre_mes": {
+        const lista = leerJSON(join(this.raiz, "data", "companias.json"), []);
+        const l = cierreMesSrv.lista(db, { mes: args.mes || cierreMesSrv.mesPorOmision(db), companias: lista, companiaId: args.compania || null });
+        if (args.compania) return l.companias[0] ? { mes: l.mes, ...l.companias[0], items: l.companias[0].items.map(i => ({ item: i.titulo, estado: i.estado, detalle: i.detalle, revisado: i.revisado?.nota })) } : { error: "No existe esa compañía." };
+        return { mes: l.mes, totales: l.totales, companias: l.companias.slice(0, 80).map(c => ({ companiaId: c.companiaId, compania: c.compania, estado: c.estado, pendientes: c.pendientes,
+          falta: c.items.filter(i => i.estado === "pendiente" || i.estado === "sin-datos").map(i => i.titulo) })) };
+      }
       case "proponer_asiento": return asientosSrv.proponer({ corridas: this.corridas, db, compania: args.compania, fecha: args.fecha, diario: args.diario || null,
         referencia: args.referencia || "", motivo: args.motivo || "", lineas: args.lineas || [], propuso: `director:${quien}` });
       case "leer_odoo": {
@@ -337,6 +347,7 @@ Reglas:
    - Si pide un cambio al plan de cuentas en varias compañías (renombrar, recodificar, crear u obsoletar una cuenta), llamá a "proponer_cambio_masivo" y contá el resumen (cuántas listas, cuántas a revisar y por qué).
    - Si dicta un gasto diferido («la póliza del INS de X, 1.200.000 a 12 meses desde enero»), llamá a "registrar_diferido" (buscá antes los códigos de cuenta si no los dieron).
    - Si dicta un activo fijo («compramos un vehículo de 18 millones, 10 años, desde marzo»), llamá a "registrar_activo"; si ya se venía depreciando a mano, preguntá hasta qué mes.
+   - Si pregunta qué falta para cerrar el mes de un cliente, o cómo va el cierre, usá "cierre_mes".
    - Si dicta un asiento puntual (un pago, una reclasificación, una provisión), llamá a "proponer_asiento": queda en Aprobaciones → Asientos. Si pregunta qué asientos hay pendientes o qué propuso Cierre, usá "asientos".
    - Si pide corregir, publicar, enviar o borrar algo puntual, explicá exactamente qué se cambiaría y terminá con: "Esto requiere aprobación humana en la pestaña Aprobaciones; no lo ejecuté."
 4. Respondé en español, breve, con las cifras y, cuando sea útil, el agente y la herramienta que usaste. Podés usar **negrita** y listas con "- "; la app las muestra formateadas.

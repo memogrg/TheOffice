@@ -264,6 +264,7 @@ export class BaseDeDatos {
     if (!columnas("asientos").has("reversa")) this.db.exec("ALTER TABLE asientos ADD COLUMN reversa TEXT");
     this.#tablaDiferidos();
     this.#tablaActivos();
+    this.#tablaCierres();
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -391,6 +392,55 @@ export class BaseDeDatos {
         out.set(l.activoId, s);
       }
     return out;
+  }
+
+  // --- cierre de mes por compañía: lo que se dio por bueno y si el mes quedó cerrado
+  #tablaCierres() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS cierres_mes (
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      mes         TEXT NOT NULL,
+      estado      TEXT NOT NULL DEFAULT 'abierto',   -- abierto | cerrado
+      revisados   TEXT NOT NULL DEFAULT '{}',        -- JSON { item: { quien, nota, cuando } }
+      cerrado_por TEXT,
+      cerrado_en  TEXT,
+      nota        TEXT,
+      foto        TEXT,                              -- JSON: la lista al cerrar
+      PRIMARY KEY (compania_id, mes)
+    )`);
+  }
+  #cierreMes(ciaId, compania, mes) {
+    this.correr("INSERT OR IGNORE INTO cierres_mes (compania_id, compania, mes) VALUES (?,?,?)", ciaId, compania ?? null, mes);
+    const r = this.uno("SELECT * FROM cierres_mes WHERE compania_id=? AND mes=?", ciaId, mes);
+    return { ...r, revisados: JSON.parse(r.revisados || "{}"), foto: r.foto ? JSON.parse(r.foto) : null };
+  }
+  cierresMes(mes) {
+    return this.todos("SELECT * FROM cierres_mes WHERE mes=?", mes).map(r => ({ ...r, revisados: JSON.parse(r.revisados || "{}"), foto: undefined }));
+  }
+  cierreMes(ciaId, mes) {
+    const r = this.uno("SELECT * FROM cierres_mes WHERE compania_id=? AND mes=?", ciaId, mes);
+    return r ? { ...r, revisados: JSON.parse(r.revisados || "{}"), foto: r.foto ? JSON.parse(r.foto) : null } : null;
+  }
+  // Dar por bueno un ítem pendiente (o quitarlo con nota=null), mientras el mes no esté cerrado.
+  revisarItemCierre(ciaId, compania, mes, item, quien, nota) {
+    const c = this.#cierreMes(ciaId, compania, mes);
+    if (c.estado === "cerrado") return false;
+    if (nota == null) delete c.revisados[item]; else c.revisados[item] = { quien, nota: String(nota).slice(0, 500), cuando: this.#ahora() };
+    this.correr("UPDATE cierres_mes SET revisados=? WHERE compania_id=? AND mes=?", JSON.stringify(c.revisados), ciaId, mes);
+    this.auditar(quien, nota == null ? "quitar-revision" : "dar-por-bueno", "cierre", ciaId, { mes, item, nota });
+    return true;
+  }
+  cerrarMes(ciaId, compania, mes, quien, nota, foto) {
+    this.#cierreMes(ciaId, compania, mes);
+    const r = this.correr("UPDATE cierres_mes SET estado='cerrado', cerrado_por=?, cerrado_en=?, nota=?, foto=? WHERE compania_id=? AND mes=? AND estado='abierto'",
+      quien, this.#ahora(), nota ?? null, JSON.stringify(foto ?? null), ciaId, mes);
+    if (r.changes) this.auditar(quien, "cerrar", "cierre", ciaId, { mes, nota });
+    return r.changes > 0;
+  }
+  reabrirMes(ciaId, mes, quien, nota) {
+    const r = this.correr("UPDATE cierres_mes SET estado='abierto', nota=? WHERE compania_id=? AND mes=? AND estado='cerrado'", nota ?? null, ciaId, mes);
+    if (r.changes) this.auditar(quien, "reabrir", "cierre", ciaId, { mes, nota });
+    return r.changes > 0;
   }
 
   // --- cambios masivos al plan de cuentas
