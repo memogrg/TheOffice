@@ -293,6 +293,31 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "cambiario",
+      "nombre": "CAMBIARIO",
+      "rol": "CAMBIARIO",
+      "modo": "lectura",
+      "hace": "Revalúa al cierre de cada mes los saldos en moneda extranjera de cada compañía (bancos en dólares y documentos abiertos de clientes y proveedores) con el tipo de cambio de Odoo y propone el asiento de diferencial cambiario, que se revierte solo el día 1 del mes siguiente.",
+      "noHace": "No crea el asiento: lo deja en Aprobaciones → Asientos.",
+      "responde": [
+        "cuánto es el diferencial cambiario del mes",
+        "qué compañías tienen saldos en dólares",
+        "qué cuentas en dólares no tienen moneda configurada"
+      ],
+      "palabras": {
+        "diferencial": 6,
+        "cambiario": 6,
+        "tipo de cambio": 5,
+        "revaluacion": 5,
+        "revaluar": 5,
+        "dolares": 3,
+        "moneda extranjera": 5,
+        "usd": 3
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

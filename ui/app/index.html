@@ -181,6 +181,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="documentos">Documentos</button>'+
     '<button class="b gh" data-correr="cierre">Cierre</button>'+
     '<button class="b gh" data-correr="estados">Estados financieros</button>'+
+    '<button class="b gh" data-correr="cambiario">Diferencial cambiario</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -263,6 +264,7 @@ var HALLAZGOS = [
   { id:"bancos", titulo:"Bancos — conciliaciones bancarias", ayuda:"Hasta qué mes está conciliada cada cuenta de banco (módulo de TecnoDEM), qué quedó en borrador y qué cuentas con movimiento nunca se concilian." },
   { id:"cierre", titulo:"Cierre — cuentas puente e IVA del mes", ayuda:"Salarios, CCSS, IVA, retenciones y transitorias que no quedaron liquidados (lo más viejo que el plazo), y el IVA del mes por compañía: débito, crédito, neto, IVA en cuentas equivocadas y facturas en borrador." },
   { id:"estados", titulo:"Estados financieros — balance y resultados", ayuda:"Balance de situación y estado de resultados de cada compañía al cierre del mes, con los últimos meses. Pulse «ver» para el detalle e «Imprimir» para entregarlo." },
+  { id:"cambiario", titulo:"Diferencial cambiario — saldos en dólares", ayuda:"Revalúa a fin de mes los bancos en dólares y los documentos abiertos de clientes y proveedores con el tipo de cambio de Odoo, y propone el asiento (se revierte solo el día 1). Los asientos quedan en Aprobaciones." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
 ];
 V.hallazgos = function(){
@@ -301,6 +303,13 @@ function pintarHallazgo(id, r){
   }
   if (id==="cierre") h += pintarCierre(r);
   if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
+  if (id==="cambiario"){
+    h += '<div class="sub" style="margin:6px 0">Revaluación al <b>'+esc(r.fecha||"")+'</b>, reversión el '+esc(r.reversa||"")+'.</div>'+((r.companias||[]).length?tabla(["Compañía","Tipo de cambio",{t:"Saldos",n:1},{t:"Ganancia",n:1},{t:"Pérdida",n:1},{t:"Neto",n:1},"Avisos"], r.companias.map(function(c){
+      var av=[]; if(c.sinConfiguracion) av.push("sin cuentas o diario de diferencial"); if(c.sinTasa) av.push("sin tipo de cambio");
+      return [esc(c.compania), '<span class="sub">'+Object.keys(c.monedas||{}).map(function(m){ return esc(m)+' '+c.monedas[m].tipoCambio+' ('+esc(c.monedas[m].fechaTasa)+')'; }).join("<br>")+'</span>',
+        n(c.partidas), mon(c.ganancia), mon(c.perdida), '<b>'+mon(c.neto)+'</b>', '<span class="sub">'+esc(av.join(" · "))+'</span>']; })):'<div class="sub">Sin saldos en moneda extranjera.</div>');
+    if ((r.sinMoneda||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+r.sinMoneda.length+' cuentas con dólares sin moneda configurada (no se revalúan)</summary>'+tabla(["Compañía","Cuenta",{t:"Moneda extranjera",n:1},{t:"En libros",n:1}], r.sinMoneda.slice(0,60).map(function(x){ return [esc(x.compania), esc(x.cuenta), esc(x.moneda)+' '+mon(x.enMoneda), mon(x.libros)]; }))+'</details>';
+  }
   el.innerHTML = h;
 }
 var PUENTE_EST = { "arrastra":["sin liquidar","alto"], "al-reves":["al revés","critico"], "con-saldo":["con saldo","alto"], "sin-registro":["sin asientos en el mes","neutro"], "ok":["al día","ok"] };
@@ -417,12 +426,13 @@ function pintarAsientos(lista){
   var el=$("#asientosTabla"); if(!el) return; S.asientos=lista;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada aquí. Los propone Cierre al correr (Hallazgos) o se dictan al Director: «registrá el pago de la CCSS de enero de [compañía] contra el BNCR».</div>'; return; }
   el.innerHTML = lista.map(function(a){ var e=EST_ASIENTO[a.estado]||[a.estado,"neutro"];
-    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?"Elegir banco":"Cambiar banco o fecha")+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
+    var faltaBanco = a.lineas.some(function(l){ return !l.cuentaId && l.rol==="contrapartida"; }) && a.origen!=="cambiario";
+    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?(faltaBanco?"Elegir banco":"Completar"):"Cambiar banco o fecha")+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
       : a.estado==="aprobada" ? (S.estado.escrituraAsientos?'<button class="b" data-aplicar-asiento="'+a.id+'">Crear en Odoo</button>':'<span class="sub">Aprobado. Crear en Odoo requiere PERMITIR_ESCRITURA_ASIENTOS=si.</span>')
       : a.move_name ? '<span class="sub">Asiento '+esc(a.move_name)+(a.resultado&&a.resultado.estadoOdoo?' ('+esc(a.resultado.estadoOdoo==="posted"?"publicado":"borrador")+')':'')+'</span>'
       : a.resultado&&a.resultado.error ? '<span class="sub" style="color:var(--critico)">'+esc(a.resultado.error)+'</span>' : (a.nota?'<span class="sub">'+esc(a.nota)+'</span>':'');
     return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
-      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
+      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
       '<div style="font-size:13px">'+esc(a.referencia||"")+'</div><div class="sub" style="margin-bottom:6px">'+esc(a.motivo||"")+'</div>'+
       tabla(["Cuenta","Descripción",{t:"Débito",n:1},{t:"Crédito",n:1}], a.lineas.map(function(l){
         return [(l.cuentaId?esc(l.cuenta):'<span class="est alto">'+esc(l.cuenta)+'</span>')+(l.fuente?'<div class="sub">'+esc(l.fuente)+'</div>':''), '<span class="sub">'+esc(l.descripcion||"")+'</span>', l.debito?n(l.debito):"", l.credito?n(l.credito):""]; }))+
@@ -677,10 +687,13 @@ $("#main").addEventListener("click", function(ev){
     api("/api/cambios/"+d.aplicarCambio+"/aplicar",{}).then(function(j){ msg(j.mensaje); cargarCambios(); }).catch(function(e){ t.disabled=false; msg(e.message,true); cargarCambios(); }); }
   else if (d.elegirBanco){ var ed=$("#ed-"+d.elegirBanco), as=(S.asientos||[]).find(function(x){ return String(x.id)===d.elegirBanco; }); ed.innerHTML='<div class="sub">Cargando bancos…</div>';
     api("/api/asientos/"+d.elegirBanco+"/opciones").then(function(ops){
-      ed.innerHTML='<div class="fila" style="margin-top:8px"><select id="edD-'+as.id+'">'+ops.map(function(o){ return '<option value="'+o.id+'"'+(o.id===as.diario_id?" selected":"")+'>'+esc(o.nombre)+' ('+esc(o.tipo==="bank"?"banco":o.tipo==="cash"?"caja":"general")+(o.cuenta?" · "+esc(o.cuenta):"")+')</option>'; }).join("")+'</select>'+
-        '<input class="f" type="date" id="edF-'+as.id+'" value="'+esc(as.fecha)+'"><button class="b" data-guardar-asiento="'+as.id+'">Guardar</button></div><div class="sub">El banco elegido pasa a la línea de contrapartida y su diario al asiento.</div>';
+      var faltan = as.lineas.map(function(l,i){ return [l,i]; }).filter(function(x){ return !x[0].cuentaId || (/^contrapartida-perdida|^contrapartida$/.test(x[0].rol||"") && as.origen==="cambiario"); });
+      var inputs = faltan.map(function(x){ return '<input class="f" data-ed-cuenta="'+x[1]+'" placeholder="código para «'+esc(x[0].descripcion||x[0].cuenta)+'»" style="width:230px"'+(x[0].cuentaId?' value=""':'')+'>'; }).join("");
+      ed.innerHTML='<div class="fila" style="margin-top:8px">'+inputs+'<select id="edD-'+as.id+'">'+ops.map(function(o){ return '<option value="'+o.id+'"'+(o.id===as.diario_id?" selected":"")+'>'+esc(o.nombre)+' ('+esc(o.tipo==="bank"?"banco":o.tipo==="cash"?"caja":"general")+(o.cuenta?" · "+esc(o.cuenta):"")+')</option>'; }).join("")+'</select>'+
+        '<input class="f" type="date" id="edF-'+as.id+'" value="'+esc(as.fecha)+'"><button class="b" data-guardar-asiento="'+as.id+'">Guardar</button></div><div class="sub">'+(as.origen==="cambiario"?'Escriba el código de la cuenta de ganancia o pérdida cambiaria de esta compañía y elija el diario. Mejor aún: configúrelas en Odoo (Ajustes de contabilidad → diferencias de cambio) y el agente las tomará solo.':'Un banco elegido pasa a la línea de contrapartida y su diario al asiento.')+'</div>';
     }).catch(function(e){ ed.innerHTML=''; msg(e.message,true); }); }
-  else if (d.guardarAsiento){ var id=d.guardarAsiento; api("/api/asientos/"+id+"/editar",{diarioId:Number($("#edD-"+id).value), fecha:$("#edF-"+id).value}).then(function(){ msg("Guardado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.guardarAsiento){ var id=d.guardarAsiento; var cs=[].slice.call(document.querySelectorAll("#ed-"+id+" [data-ed-cuenta]")).filter(function(i){ return i.value.trim(); }).map(function(i){ return {indice:Number(i.dataset.edCuenta), codigo:i.value.trim()}; });
+    api("/api/asientos/"+id+"/editar",{diarioId:Number($("#edD-"+id).value), fecha:$("#edF-"+id).value, cuentas:cs}).then(function(){ msg("Guardado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aprobarAsiento){ t.disabled=true; api("/api/asientos/"+d.aprobarAsiento+"/aprobar",{}).then(function(j){ msg(j.mensaje+(j.avisos&&j.avisos.length?" "+j.avisos.join(" "):"")); cargarAsientos(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
   else if (d.rechazarAsiento){ var mo=prompt("¿Por qué se rechaza? (queda en la auditoría; si el pago se registró contra otra cuenta, dígalo)", ""); if(mo===null) return; api("/api/asientos/"+d.rechazarAsiento+"/rechazar",{motivo:mo}).then(function(){ msg("Rechazado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aplicarAsiento){ if(!confirm("Esto CREA el asiento en Odoo"+(S.estado.publicarAsientos?" y lo publica":" en borrador")+". ¿Continuar?")) return; t.disabled=true; msg("Creando en Odoo…");

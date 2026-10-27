@@ -260,6 +260,8 @@ export class BaseDeDatos {
       resultado   TEXT                  -- JSON: verificación o error al aplicar
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS asientos_estado ON asientos(estado, compania_id)");
+    // fecha en que se revierte solo (revaluaciones de fin de mes: se revierten el día 1)
+    if (!columnas("asientos").has("reversa")) this.db.exec("ALTER TABLE asientos ADD COLUMN reversa TEXT");
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,9 +324,9 @@ export class BaseDeDatos {
   #total(lineas) { return Math.round(lineas.reduce((t, l) => t + (Number(l.debito) || 0), 0) * 100) / 100; }
   proponerAsiento(a, quien) {
     const ahora = this.#ahora();
-    const x = this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave ?? null, a.origen || "manual", a.corridaId ?? null, a.mes ?? null, a.companiaId, a.compania ?? null, a.fecha,
-      a.diarioId ?? null, a.diario ?? null, a.referencia ?? null, a.motivo ?? null, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), quien, ahora);
+    const x = this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en, reversa)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave ?? null, a.origen || "manual", a.corridaId ?? null, a.mes ?? null, a.companiaId, a.compania ?? null, a.fecha,
+      a.diarioId ?? null, a.diario ?? null, a.referencia ?? null, a.motivo ?? null, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), quien, ahora, a.reversa ?? null);
     const id = Number(x.lastInsertRowid);
     this.auditar(quien, "proponer", "asiento", id, { compania: a.compania, referencia: a.referencia, total: this.#total(a.lineas) });
     return this.asiento(id);
@@ -332,7 +334,10 @@ export class BaseDeDatos {
   // Lo que deja Cierre: uno abierto por clave. Si ya hay uno propuesto se actualiza (mes y montos
   // nuevos); si alguien lo rechazó para ese mismo mes no se repite; los propuestos que ya no salen
   // (la cuenta quedó liquidada) pasan a obsoletos.
-  sincronizarAsientos(corridaId, sugeridos, { origen = "cierre" } = {}) {
+  // reemplazarAnteriores: para lo que se recalcula entero cada mes (diferencial cambiario): al
+  // proponer el de un mes, los de meses anteriores sin aplicar (aun aprobados) quedan obsoletos,
+  // porque el nuevo ya incluye ese movimiento.
+  sincronizarAsientos(corridaId, sugeridos, { origen = "cierre", reemplazarAnteriores = false } = {}) {
     const ahora = this.#ahora();
     let nuevos = 0, actualizados = 0, obsoletos = 0;
     this.transaccion(() => {
@@ -346,20 +351,22 @@ export class BaseDeDatos {
           const previas = JSON.parse(abierto.lineas);
           const lineas = a.lineas.map(l => { const p = previas.find(x => x.rol === l.rol && x.editada); return p && !l.cuentaId ? { ...l, cuentaId: p.cuentaId, cuenta: p.cuenta, editada: true, fuente: p.fuente } : l; });
           const diarioEditado = abierto.diario_id && previas.some(x => x.editada);
-          this.correr(`UPDATE asientos SET corrida_id=?, mes=?, fecha=?, referencia=?, motivo=?, aviso=?, lineas=?, total=?, actualizado_en=?${diarioEditado ? "" : ", diario_id=?, diario=?"} WHERE id=?`,
-            corridaId, a.mes, a.fecha, a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(lineas), this.#total(lineas), ahora,
+          this.correr(`UPDATE asientos SET corrida_id=?, mes=?, fecha=?, reversa=?, referencia=?, motivo=?, aviso=?, lineas=?, total=?, actualizado_en=?${diarioEditado ? "" : ", diario_id=?, diario=?"} WHERE id=?`,
+            corridaId, a.mes, a.fecha, a.reversa ?? null, a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(lineas), this.#total(lineas), ahora,
             ...(diarioEditado ? [] : [a.diarioId ?? null, a.diario ?? null]), abierto.id);
           actualizados++;
           continue;
         }
         if (this.uno("SELECT id FROM asientos WHERE clave=? AND mes=? AND estado IN ('rechazada','aplicada')", a.clave, a.mes)) continue;
-        this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave, origen, corridaId, a.mes, a.companiaId, a.compania, a.fecha, a.diarioId ?? null, a.diario ?? null,
-          a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), `agente:${origen}`, ahora);
+        this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en, reversa)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave, origen, corridaId, a.mes, a.companiaId, a.compania, a.fecha, a.diarioId ?? null, a.diario ?? null,
+          a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), `agente:${origen}`, ahora, a.reversa ?? null);
         nuevos++;
       }
-      for (const v of this.todos("SELECT id, clave FROM asientos WHERE origen=? AND estado='propuesta'", origen))
-        if (!vistas.has(v.clave)) { this.correr("UPDATE asientos SET estado='obsoleta', actualizado_en=? WHERE id=?", ahora, v.id); obsoletos++; }
+      for (const v of this.todos("SELECT id, clave, compania_id, mes, estado FROM asientos WHERE origen=? AND estado IN ('propuesta','aprobada')", origen)) {
+        const reemplazado = reemplazarAnteriores && sugeridos.some(a => a.companiaId === v.compania_id && a.mes > (v.mes || ""));
+        if ((v.estado === "propuesta" && !vistas.has(v.clave)) || reemplazado) { this.correr("UPDATE asientos SET estado='obsoleta', actualizado_en=? WHERE id=?", ahora, v.id); obsoletos++; }
+      }
     });
     return { nuevos, actualizados, obsoletos };
   }

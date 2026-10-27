@@ -21,13 +21,14 @@ import * as bancos from "./agents/bancos.js";
 import * as documentos from "./agents/documentos.js";
 import * as cierre from "./agents/cierre.js";
 import * as estados from "./agents/estados.js";
+import * as cambiario from "./agents/cambiario.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "./reporte.js";
 import { enviar } from "./mailer.js";
 import { Director } from "./director.js";
 import { escribirOficina } from "./oficina.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
-const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados };
+const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario };
 
 const hhmmss = () => new Date().toLocaleTimeString("es-CR", { hour12: false });
 const bitacora = [];

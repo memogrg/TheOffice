@@ -48,7 +48,7 @@ export function crearApi(opciones) {
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -111,7 +111,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente);
     return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
   });
@@ -184,10 +184,24 @@ export function crearApi(opciones) {
       const d = (await asientos.opciones({ corridas: ctx.corridas, companiaId: a.compania_id })).find(x => x.id === Number(cuerpo.diarioId));
       if (!d) return error(400, "Ese diario no es de la compañía.");
       cambios.diarioId = d.id; cambios.diario = d.nombre;
-      if (d.cuentaId && a.lineas.some(l => l.rol === "contrapartida"))
+      // un pago: el banco del diario elegido pasa a la contrapartida
+      if (d.cuentaId && ["bank", "cash"].includes(d.tipo) && a.lineas.some(l => l.rol === "contrapartida"))
         cambios.lineas = a.lineas.map(l => l.rol === "contrapartida" ? { ...l, cuentaId: d.cuentaId, cuenta: d.cuenta, editada: true, fuente: `elegido por ${quien}` } : l);
     }
-    if (!Object.keys(cambios).length) return error(400, "Nada que cambiar (fecha o diarioId).");
+    // cuentas por código para las líneas que no la tienen (o las de contrapartida), en el plan de esa compañía
+    if (Array.isArray(cuerpo.cuentas) && cuerpo.cuentas.length) {
+      const r = await asientos.cuentasPorCodigo({ corridas: ctx.corridas, companiaId: a.compania_id, codigos: cuerpo.cuentas.map(c => c.codigo) });
+      const lineas = (cambios.lineas || a.lineas).map(l => ({ ...l }));
+      for (const c of cuerpo.cuentas) {
+        const l = lineas[Number(c.indice)];
+        if (!l || (l.cuentaId && !/^contrapartida/.test(l.rol || ""))) return error(400, `La línea ${Number(c.indice) + 1} no se puede cambiar aquí.`);
+        const cta = r.get(String(c.codigo).trim());
+        if (!cta) return error(400, `La cuenta ${c.codigo} no existe (o está obsoleta) en el plan de ${a.compania}.`);
+        Object.assign(l, { cuentaId: cta.id, cuenta: `${cta.code} ${cta.name}`, editada: true, fuente: `elegida por ${quien}` });
+      }
+      cambios.lineas = lineas;
+    }
+    if (!Object.keys(cambios).length) return error(400, "Nada que cambiar (fecha, diarioId o cuentas).");
     ctx.db.editarAsiento(a.id, cambios, quien);
     return ctx.db.asiento(a.id);
   });

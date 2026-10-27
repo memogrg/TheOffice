@@ -30,6 +30,8 @@ export const ETIQUETA = {
   ivaMalUbicado:"IVA en cuentas equivocadas", conBorradores:"Compañías con borradores del mes", difDeclaracion:"Diferencias con el Reporte IVA",
   cajasNegativas:"Cajas o bancos en negativo", ladoContrario:"Proveedores o clientes del lado contrario", anioSinCerrar:"Años anteriores sin cerrar",
   descuadres:"Balances que no cuadran", conPerdidaEnElAnio:"Con pérdida en el año",
+  conAjuste:"Compañías con ajuste", ganancia:"Ganancia cambiaria", perdida:"Pérdida cambiaria", sinConfiguracion:"Sin cuentas de diferencial configuradas",
+  sinTasa:"Sin tipo de cambio", cuentasSinMoneda:"Cuentas en dólares sin moneda", asientosSugeridos:"Asientos sugeridos",
   documentosAfuera:"Documentos distintos a reclamar", documentosAdentro:"Documentos distintos a revisar"
 };
 

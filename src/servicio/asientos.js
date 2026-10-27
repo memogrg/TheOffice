@@ -30,6 +30,7 @@ export function revisarForma(a) {
   if (Math.abs(deb - cre) > 0.009) errores.push(`No cuadra: débitos ${deb} y créditos ${cre}.`);
   if (!a.diario_id && !a.diarioId) errores.push("Falta el diario.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.fecha || ""))) errores.push("Fecha inválida (AAAA-MM-DD).");
+  if (a.reversa && !(String(a.reversa) > String(a.fecha))) errores.push("La fecha de reversión tiene que ser posterior a la del asiento.");
   return { errores, debitos: deb, creditos: cre };
 }
 
@@ -53,13 +54,15 @@ export async function validar(odoo, a) {
     if (!d) errores.push(`El diario ${diarioId} no existe.`);
     else if (idDe(d.company_id) !== CID) errores.push(`El diario «${d.name}» es de otra compañía.`);
   }
-  // Periodo fiscal de TecnoDEM: si el módulo está, la fecha tiene que caer en uno abierto.
-  try {
-    const periodos = await odoo.leer("taerp.fiscal.period", "search_read",
-      [[["company_id", "=", CID], ["date_from", "<=", a.fecha], ["date_to", ">=", a.fecha]], ["name", "state"]], ctx);
-    if (!periodos.length) errores.push(`No hay periodo fiscal para ${a.fecha} en la compañía: hay que crearlo antes.`);
-    else if (!periodos.some(p => p.state === "open")) errores.push(`El periodo fiscal de ${a.fecha} está ${periodos[0].state === "close" ? "cerrado" : "en borrador"}.`);
-  } catch { avisos.push("No se pudo revisar el periodo fiscal (módulo de TecnoDEM no disponible)."); }
+  // Periodo fiscal de TecnoDEM: si el módulo está, la fecha (y la de la reversión) tiene que caer en uno abierto.
+  for (const f of [a.fecha, a.reversa].filter(Boolean)) {
+    try {
+      const periodos = await odoo.leer("taerp.fiscal.period", "search_read",
+        [[["company_id", "=", CID], ["date_from", "<=", f], ["date_to", ">=", f]], ["name", "state"]], ctx);
+      if (!periodos.length) errores.push(`No hay periodo fiscal para ${f} en la compañía: hay que crearlo antes.`);
+      else if (!periodos.some(p => p.state === "open")) errores.push(`El periodo fiscal de ${f} está ${periodos[0].state === "close" ? "cerrado" : "en borrador"}.`);
+    } catch { avisos.push("No se pudo revisar el periodo fiscal (módulo de TecnoDEM no disponible)."); break; }
+  }
   return { ok: !errores.length, errores, avisos };
 }
 
@@ -105,24 +108,37 @@ export async function aplicar({ corridas, db, id, quien }) {
   const CID = a.compania_id, ctx = { context: { allowed_company_ids: [CID] } };
   const publicar = String(corridas.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si";
   let moveId = null;
-  try {
+  // Crea un asiento (las líneas, o las mismas con débito y crédito cambiados para la reversión), lo
+  // publica si corresponde y lo verifica al releerlo.
+  const crear = async ({ fecha, ref, invertir }) => {
+    const lin = a.lineas.map(l => ({ ...l, debito: invertir ? l.credito : l.debito, credito: invertir ? l.debito : l.credito }));
     const creado = await odoo.escribir("account.move", "create", [{
-      move_type: "entry", company_id: CID, journal_id: a.diario_id, date: a.fecha, ref: `${a.referencia || "Asiento propuesto"} · Oficina #${a.id}`,
-      line_ids: a.lineas.map(l => [0, 0, { account_id: l.cuentaId, name: l.descripcion || a.referencia || "", debit: r2(l.debito), credit: r2(l.credito) }])
+      move_type: "entry", company_id: CID, journal_id: a.diario_id, date: fecha, ref,
+      line_ids: lin.map(l => [0, 0, { account_id: l.cuentaId, name: l.descripcion || a.referencia || "", debit: r2(l.debito), credit: r2(l.credito),
+        ...(l.partnerId ? { partner_id: l.partnerId } : {}), ...(l.monedaId ? { currency_id: l.monedaId, amount_currency: 0 } : {}) }])
     }], ctx);
-    moveId = Array.isArray(creado) ? creado[0] : creado;
-    if (publicar) await odoo.escribir("account.move", "action_post", [[moveId]], ctx);
-    // verificación: releer el asiento y sus líneas
-    const [m] = await odoo.leer("account.move", "search_read", [[["id", "=", moveId]], ["name", "state", "date", "journal_id"]], ctx);
-    const ls = await odoo.leer("account.move.line", "search_read", [[["move_id", "=", moveId]], ["account_id", "debit", "credit"]], ctx);
-    const esperado = a.lineas.map(l => `${l.cuentaId}|${r2(l.debito)}|${r2(l.credito)}`).sort().join(";");
+    const id = Array.isArray(creado) ? creado[0] : creado;
+    if (!invertir) moveId = id;
+    if (publicar) await odoo.escribir("account.move", "action_post", [[id]], ctx);
+    const [m] = await odoo.leer("account.move", "search_read", [[["id", "=", id]], ["name", "state", "date", "journal_id"]], ctx);
+    const ls = await odoo.leer("account.move.line", "search_read", [[["move_id", "=", id]], ["account_id", "debit", "credit"]], ctx);
+    const esperado = lin.map(l => `${l.cuentaId}|${r2(l.debito)}|${r2(l.credito)}`).sort().join(";");
     const leido = ls.map(l => `${idDe(l.account_id)}|${r2(l.debit)}|${r2(l.credit)}`).sort().join(";");
     const ok = Boolean(m) && esperado === leido && m.state === (publicar ? "posted" : "draft");
-    const resultado = { ok, estadoOdoo: m?.state, publicado: publicar, lineasLeidas: ls.length, ...(ok ? {} : { esperado, leido }) };
-    db.marcarAsiento(a.id, ok ? "aplicada" : "fallo", { moveId, moveName: m?.name || null, resultado });
-    db.auditar(quien, "aplicar", "asiento", a.id, { moveId, publicado: publicar, ok });
-    return { ok, moveId, asiento: m?.name || null, estadoOdoo: m?.state, publicado: publicar,
-      mensaje: ok ? `Asiento ${m.name || moveId} creado${publicar ? " y publicado" : " en borrador (ASIENTOS_PUBLICAR no es 'si': publíquelo en Odoo)"}.` : "Se creó pero la verificación no calza: revíselo en Odoo." };
+    return { id, nombre: m?.name || null, estado: m?.state, ok, lineasLeidas: ls.length, ...(ok ? {} : { esperado, leido }) };
+  };
+  try {
+    const base = `${a.referencia || "Asiento propuesto"} · Oficina #${a.id}`;
+    const m = await crear({ fecha: a.fecha, ref: base, invertir: false });
+    const rev = a.reversa && m.ok ? await crear({ fecha: a.reversa, ref: `Reversión de ${m.nombre || m.id}: ${base}`, invertir: true }) : null;
+    const ok = m.ok && (!a.reversa || Boolean(rev?.ok));
+    const resultado = { ok, estadoOdoo: m.estado, publicado: publicar, lineasLeidas: m.lineasLeidas, ...(m.ok ? {} : { esperado: m.esperado, leido: m.leido }),
+      ...(rev ? { reversion: { moveId: rev.id, nombre: rev.nombre, fecha: a.reversa, estado: rev.estado, ok: rev.ok } } : {}) };
+    db.marcarAsiento(a.id, ok ? "aplicada" : "fallo", { moveId, moveName: m.nombre, resultado });
+    db.auditar(quien, "aplicar", "asiento", a.id, { moveId, reversion: rev?.id ?? null, publicado: publicar, ok });
+    return { ok, moveId, asiento: m.nombre, estadoOdoo: m.estado, publicado: publicar, reversion: rev ? rev.nombre || rev.id : null,
+      mensaje: ok ? `Asiento ${m.nombre || moveId} creado${rev ? ` con su reversión ${rev.nombre || rev.id} al ${a.reversa}` : ""}${publicar ? " y publicado" : " en borrador (ASIENTOS_PUBLICAR no es 'si': publíquelo en Odoo)"}.`
+        : "Se creó pero la verificación no calza: revíselo en Odoo." };
   } catch (e) {
     db.marcarAsiento(a.id, "fallo", { moveId, resultado: { error: e.message } });
     db.auditar(quien, "aplicar", "asiento", a.id, { error: e.message });
@@ -136,4 +152,13 @@ export async function opciones({ corridas, companiaId }) {
   const ds = await odoo.leer("account.journal", "search_read", [[["company_id", "=", companiaId], ["type", "in", ["bank", "cash", "general"]]], ["name", "type", "default_account_id"]],
     { context: { allowed_company_ids: [companiaId] } });
   return ds.map(d => ({ id: d.id, nombre: d.name, tipo: d.type, cuentaId: idDe(d.default_account_id) || null, cuenta: Array.isArray(d.default_account_id) ? d.default_account_id[1] : null }));
+}
+
+// Código → cuenta del plan de una compañía (para completar líneas por definir).
+export async function cuentasPorCodigo({ corridas, companiaId, codigos }) {
+  const odoo = corridas.crearCliente({ meta: { escribe: false } });
+  const plan = await odoo.leerTodo("account.account", [["company_ids", "in", [companiaId]]], ["code", "name", "deprecated"], { context: { allowed_company_ids: [companiaId] } });
+  const out = new Map();
+  for (const cod of codigos) { const c = plan.find(x => !x.deprecated && x.code && canon(x.code) === canon(cod)); if (c) out.set(String(cod).trim(), c); }
+  return out;
 }

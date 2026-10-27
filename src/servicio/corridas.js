@@ -16,11 +16,12 @@ import * as bancos from "../agents/bancos.js";
 import * as documentos from "../agents/documentos.js";
 import * as cierre from "../agents/cierre.js";
 import * as estados from "../agents/estados.js";
+import * as cambiario from "../agents/cambiario.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -102,6 +103,10 @@ export class Corridas {
     // (sin diarios, sin historial), no se tocan los que ya estaban.
     if (quien === "cierre" && Array.isArray(r.asientosSugeridos) && !r.errorAsientos) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "cierre" }) };
+    }
+    // El diferencial se recalcula entero cada mes: el nuevo reemplaza a los anteriores sin aplicar.
+    if (quien === "cambiario" && Array.isArray(r.asientosSugeridos)) {
+      return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "cambiario", reemplazarAnteriores: true }) };
     }
     return {};
   }
