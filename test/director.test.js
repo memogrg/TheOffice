@@ -39,6 +39,10 @@ test("pide la compañía cuando falta, avisa de puestos no construidos, y dice c
   const diag = DirectorCore.decidir("qué causa tienen los errores", roster, companias);
   assert.equal(diag.accion, "ejecutar");
   assert.equal(diag.agente.id, "diagnostico", "Diagnóstico ya existe");
+  assert.equal(DirectorCore.decidir("qué cuentas puente no quedaron en cero", roster, companias).agente.id, "cierre");
+  assert.equal(DirectorCore.decidir("cuánto IVA hay que pagar este mes", roster, companias).agente.id, "cierre");
+  assert.equal(DirectorCore.decidir("dame el balance de situación", roster, companias).agente.id, "estados");
+  assert.equal(DirectorCore.decidir("cuánto ganó en el año", roster, companias).agente.id, "estados");
   assert.equal(DirectorCore.decidir("hola", roster, companias).accion, "no-entiendo");
   assert.equal(DirectorCore.decidir("hola", null, companias).accion, "sin-roster");
 });

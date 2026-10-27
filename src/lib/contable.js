@@ -37,14 +37,16 @@ export async function ultimaFechaPorCompania(odoo, hoy = hoyLocal()) {
   return out;
 }
 
-// Mes a evaluar: el que se pida (AAAA-MM), o el último cerrado respecto de hoy; con
-// ALERTA_REFERENCIA=ultimo-correo (base congelada), el anterior al de la fecha contable más reciente.
+// Mes a evaluar: el que se pida (AAAA-MM), o el último cerrado respecto de hoy. Con
+// ALERTA_REFERENCIA=ultimo-correo (base congelada), el anterior al mes en que la compañía típica
+// dejó de registrar (mediana de las últimas fechas): unos pocos asientos con fecha adelantada no
+// mueven la referencia.
 export function mesAEvaluar(cfg, pedido, ultimas) {
   if (pedido) return pedido;
   const hoy = hoyLocal();
   if (cfg.ALERTA_REFERENCIA === "ultimo-correo") {
-    const max = [...ultimas.values()].map(u => u.ultima).filter(Boolean).reduce((a, b) => (a > b ? a : b), "");
-    if (max) return sumarMeses(mesDe(max), -1);
+    const fechas = [...ultimas.values()].map(u => u.ultima).filter(Boolean).sort();
+    if (fechas.length) return sumarMeses(mesDe(fechas[Math.floor((fechas.length - 1) / 2)]), -1);
   }
   return sumarMeses(mesDe(hoy), -1);
 }

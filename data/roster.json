@@ -243,8 +243,8 @@
       ],
       "palabras": {
         "cierre": 5,
-        "cuenta puente": 6,
-        "cuentas puente": 6,
+        "cuenta puente": 10,
+        "cuentas puente": 10,
         "salarios por pagar": 5,
         "ccss": 5,
         "cargas sociales": 4,
@@ -255,7 +255,8 @@
         "credito fiscal": 5,
         "retenciones": 3,
         "transitoria": 4,
-        "declaracion": 3
+        "declaracion": 3,
+        "en cero": 4
       },
       "parametros": [],
       "escribe": false
@@ -285,7 +286,10 @@
         "activo": 3,
         "pasivo": 3,
         "patrimonio": 4,
-        "flujo": 2
+        "flujo": 2,
+        "gano": 4,
+        "perdio": 4,
+        "gananci": 4
       },
       "parametros": [],
       "escribe": false

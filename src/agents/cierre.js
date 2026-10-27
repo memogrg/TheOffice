@@ -195,6 +195,7 @@ export async function ejecutar({ odoo, cfg, log }) {
     });
     const v = ivaMeses.get(`${cia}|${mes}`) || { compania: [...ivaMeses.values()].find(x => x.companiaId === cia).compania, debito: 0, credito: 0, noAcreditable: 0, malUbicado: 0 };
     const b = borr.get(cia) || null, dec = declarado.get(cia) || null;
+    if (!v.debito && !v.credito && !v.noAcreditable && !b && !dec) continue;   // sin IVA en el mes evaluado
     iva.push({
       compania: v.compania || [...ivaMeses.values()].find(x => x.companiaId === cia).compania, companiaId: cia, mes,
       debito: r2(v.debito), credito: r2(v.credito), noAcreditable: r2(v.noAcreditable), neto: r2(v.debito - v.credito),

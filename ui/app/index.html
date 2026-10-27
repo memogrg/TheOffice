@@ -309,7 +309,7 @@ function pintarCierre(r){
   var cs = (r.cuentas||[]);
   h += '<h3 style="margin:12px 0 6px;font-size:13px">Cuentas puente que no quedaron liquidadas</h3>'+(!cs.length?'<div class="sub">Ninguna.</div>':tabla(["Compañía","Cuenta","Estado",{t:"Saldo",n:1},{t:"Entró en el mes",n:1},{t:"Sin liquidar",n:1},{t:"Meses",n:1}], cs.map(function(c){
     var e = c.saldoAFavor && c.estado==="arrastra" ? ["saldo a favor","neutro"] : (PUENTE_EST[c.estado]||[c.estado,"neutro"]);
-    return [esc(c.compania), esc(c.cuenta)+'<div class="sub">'+esc(c.titulo)+(c.periodicidad===12?" · plazo anual":"")+'</div>', '<span class="est '+e[1]+'">'+esc(e[0])+'</span>',
+    return [esc(c.compania), esc(c.cuenta)+(c.titulo!==c.cuenta||c.periodicidad===12?'<div class="sub">'+esc(c.titulo!==c.cuenta?c.titulo:"")+(c.periodicidad===12?" · plazo anual":"")+'</div>':""), '<span class="est '+e[1]+'">'+esc(e[0])+'</span>',
       mon(c.saldo), mon(c.entradasMes), c.estado==="arrastra"?'<b>'+mon(c.arrastre)+'</b>':"—", c.mesesSeguidos?n(c.mesesSeguidos):"—"]; })));
   var iv = (r.iva||[]);
   h += '<h3 style="margin:14px 0 6px;font-size:13px">IVA de '+esc(r.mes)+' según los documentos publicados</h3>'+(!iv.length?'<div class="sub">Sin IVA en el mes.</div>':tabla(["Compañía",{t:"Débito (ventas)",n:1},{t:"Crédito (compras)",n:1},{t:"Neto",n:1},"Resultado",{t:"No acreditable",n:1},"Observaciones"], iv.map(function(i){

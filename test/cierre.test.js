@@ -139,3 +139,10 @@ test("Estados: balance que cuadra, resultados del mes y del año, caja negativa,
   assert.ok(r.alertas.some(a => /caja o banco con saldo negativo/.test(a.texto)));
   assert.ok(r.alertas.some(a => /años anteriores/.test(a.texto)));
 });
+
+test("Mes a evaluar en una base congelada: la mediana de las últimas fechas, no un asiento adelantado", async () => {
+  const { mesAEvaluar } = await import("../src/lib/contable.js");
+  const ultimas = new Map([[1, { ultima: "2026-03-05" }], [2, { ultima: "2026-03-02" }], [3, { ultima: "2026-02-27" }], [4, { ultima: "2026-10-13" }], [5, { ultima: "2026-03-01" }]]);
+  assert.equal(mesAEvaluar({ ALERTA_REFERENCIA: "ultimo-correo" }, null, ultimas), "2026-02");
+  assert.equal(mesAEvaluar({}, "2025-12", ultimas), "2025-12");
+});
