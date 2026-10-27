@@ -14,11 +14,13 @@ import * as diagnostico from "../agents/diagnostico.js";
 import * as recurrentes from "../agents/recurrentes.js";
 import * as bancos from "../agents/bancos.js";
 import * as documentos from "../agents/documentos.js";
+import * as cierre from "../agents/cierre.js";
+import * as estados from "../agents/estados.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {

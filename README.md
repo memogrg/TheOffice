@@ -118,6 +118,8 @@ Verifica después de escribir. Recuerda lo revisado en `data/revisadas.json` (`-
 - **RECURRENTES** — por compañía y proveedor, lo que se factura todos los meses; avisa lo que faltó en el último mes cerrado y los montos fuera de lo normal (`RECURRENTES_VENTANA`, `RECURRENTES_MINIMO`, `RECURRENTES_DESVIO`, `RECURRENTES_MES`).
 - **BANCOS** — estado de las conciliaciones bancarias del módulo de TecnoDEM por cuenta: al día, atrasada, solo borradores, nunca conciliada (con movimiento), partidas pendientes, fechas en el futuro.
 - **DOCUMENTOS** — notas de crédito de compra y venta sin ligar a la factura que corrigen (propone el vínculo por clave o consecutivo) y huecos en los consecutivos de venta.
+- **CIERRE** — cuentas puente (salarios, CCSS, IVA, retenciones, renta, transitorias; reconocidas por nombre según `data/referencia/cuentas-puente.json`, más las cuentas que usan los impuestos) cuyo saldo es más viejo que su plazo: lo que no se liquidó. Y el IVA del mes por compañía: débito, crédito, neto, IVA no acreditable, IVA cargado a cuentas que no son de IVA, facturas del mes en borrador y diferencia con el Reporte IVA de TecnoDEM si existe (`CIERRE_MES`, `CIERRE_VENTANA`, `CIERRE_TOLERANCIA`).
+- **ESTADOS** — balance de situación y estado de resultados (mes, año y últimos meses) de cada compañía por tipo de cuenta de Odoo, con vista imprimible; avisa cajas o bancos en negativo, proveedores o clientes del lado contrario, años anteriores sin cerrar, borradores del mes y balances que no cuadran (`ESTADOS_MES`, `ESTADOS_VENTANA`).
 
 **DIRECTOR** — `node src/run.js director "revisá las cuentas de Puuk"`. Puntúa a todos los
 agentes con las palabras del roster, pregunta si hay empate, pide la compañía si falta.

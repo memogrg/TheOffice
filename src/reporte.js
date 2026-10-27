@@ -25,6 +25,11 @@ export const ETIQUETA = {
   casosAfuera:"Casos que se reclaman afuera", casosAdentro:"Casos que se revisan adentro",
   enviados:"Correos enviados",
   avisosAfuera:"Avisos a girar afuera", avisosAdentro:"Avisos a girar adentro",
+  cuentasPuente:"Cuentas puente revisadas", arrastran:"Arrastran saldo sin liquidar", saldoAFavor:"Crédito fiscal arrastrado", alReves:"Con saldo al revés",
+  transitoriasConSaldo:"Transitorias con saldo", sinRegistro:"Compañías sin asientos en el mes", montoArrastrado:"Monto sin liquidar", companiasIva:"Compañías con IVA en el mes",
+  ivaMalUbicado:"IVA en cuentas equivocadas", conBorradores:"Compañías con borradores del mes", difDeclaracion:"Diferencias con el Reporte IVA",
+  cajasNegativas:"Cajas o bancos en negativo", ladoContrario:"Proveedores o clientes del lado contrario", anioSinCerrar:"Años anteriores sin cerrar",
+  descuadres:"Balances que no cuadran", conPerdidaEnElAnio:"Con pérdida en el año",
   documentosAfuera:"Documentos distintos a reclamar", documentosAdentro:"Documentos distintos a revisar"
 };
 

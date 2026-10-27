@@ -178,6 +178,8 @@ V.tablero = function(){
     '<button class="b gh" data-correr="recurrentes">Recurrentes</button>'+
     '<button class="b gh" data-correr="bancos">Bancos</button>'+
     '<button class="b gh" data-correr="documentos">Documentos</button>'+
+    '<button class="b gh" data-correr="cierre">Cierre</button>'+
+    '<button class="b gh" data-correr="estados">Estados financieros</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -258,6 +260,8 @@ var HALLAZGOS = [
   { id:"diagnostico", titulo:"Diagnóstico — por qué fallan los correos", ayuda:"Reconoce la causa en el texto del error y dice qué hacer y quién. Lo que es configuración se arregla adentro; lo que es del emisor va en el reclamo de Victor." },
   { id:"recurrentes", titulo:"Recurrentes — lo que llega todos los meses", ayuda:"Proveedores que facturan cada mes a una compañía. Avisa si faltó la factura del último mes cerrado o si el monto se salió de lo normal." },
   { id:"bancos", titulo:"Bancos — conciliaciones bancarias", ayuda:"Hasta qué mes está conciliada cada cuenta de banco (módulo de TecnoDEM), qué quedó en borrador y qué cuentas con movimiento nunca se concilian." },
+  { id:"cierre", titulo:"Cierre — cuentas puente e IVA del mes", ayuda:"Salarios, CCSS, IVA, retenciones y transitorias que no quedaron liquidados (lo más viejo que el plazo), y el IVA del mes por compañía: débito, crédito, neto, IVA en cuentas equivocadas y facturas en borrador." },
+  { id:"estados", titulo:"Estados financieros — balance y resultados", ayuda:"Balance de situación y estado de resultados de cada compañía al cierre del mes, con los últimos meses. Pulse «ver» para el detalle e «Imprimir» para entregarlo." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
 ];
 V.hallazgos = function(){
@@ -294,7 +298,60 @@ function pintarHallazgo(id, r){
     h += '<h3 style="margin:12px 0 6px;font-size:13px">Consecutivos de venta con huecos</h3>'+((r.consecutivos||[]).length?tabla(["Compañía","Serie",{t:"Emitidos",n:1},{t:"Faltan",n:1},"Números que faltan"], r.consecutivos.map(function(c){
       return [esc(c.compania), esc(c.tipo)+'<div class="sub mono">'+esc(c.sucursal)+'-'+esc(c.terminal)+'</div>', n(c.emitidos), n(c.faltantes), '<span class="sub mono">'+esc(c.rangos.join(", "))+(c.saltos&&c.saltos.length?'<br>'+c.saltos.length+' saltos grandes (serie que empezó en otro sistema)':"")+'</span>']; })):'<div class="sub">Sin huecos.</div>');
   }
+  if (id==="cierre") h += pintarCierre(r);
+  if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
   el.innerHTML = h;
+}
+var PUENTE_EST = { "arrastra":["sin liquidar","alto"], "al-reves":["al revés","critico"], "con-saldo":["con saldo","alto"], "sin-registro":["sin asientos en el mes","neutro"], "ok":["al día","ok"] };
+function mon(x){ return x==null?"—":n(Math.round(x)); }
+function pintarCierre(r){
+  var h = '<div class="sub" style="margin:6px 0">Mes revisado: <b>'+esc(r.mes)+'</b> · '+n(r.alDia||0)+' cuentas puente liquidadas al día.</div>';
+  var cs = (r.cuentas||[]);
+  h += '<h3 style="margin:12px 0 6px;font-size:13px">Cuentas puente que no quedaron liquidadas</h3>'+(!cs.length?'<div class="sub">Ninguna.</div>':tabla(["Compañía","Cuenta","Estado",{t:"Saldo",n:1},{t:"Entró en el mes",n:1},{t:"Sin liquidar",n:1},{t:"Meses",n:1}], cs.map(function(c){
+    var e = c.saldoAFavor && c.estado==="arrastra" ? ["saldo a favor","neutro"] : (PUENTE_EST[c.estado]||[c.estado,"neutro"]);
+    return [esc(c.compania), esc(c.cuenta)+'<div class="sub">'+esc(c.titulo)+(c.periodicidad===12?" · plazo anual":"")+'</div>', '<span class="est '+e[1]+'">'+esc(e[0])+'</span>',
+      mon(c.saldo), mon(c.entradasMes), c.estado==="arrastra"?'<b>'+mon(c.arrastre)+'</b>':"—", c.mesesSeguidos?n(c.mesesSeguidos):"—"]; })));
+  var iv = (r.iva||[]);
+  h += '<h3 style="margin:14px 0 6px;font-size:13px">IVA de '+esc(r.mes)+' según los documentos publicados</h3>'+(!iv.length?'<div class="sub">Sin IVA en el mes.</div>':tabla(["Compañía",{t:"Débito (ventas)",n:1},{t:"Crédito (compras)",n:1},{t:"Neto",n:1},"Resultado",{t:"No acreditable",n:1},"Observaciones"], iv.map(function(i){
+    var obs=[]; if(i.malUbicado) obs.push('IVA en cuenta equivocada: '+mon(i.malUbicado));
+    if(i.borradores&&(i.borradores.compras||i.borradores.ventas)) obs.push((i.borradores.compras?i.borradores.compras+' compras':'')+(i.borradores.compras&&i.borradores.ventas?' y ':'')+(i.borradores.ventas?i.borradores.ventas+' ventas':'')+' en borrador (IVA '+mon(i.borradores.ivaCompras+i.borradores.ivaVentas)+')');
+    if(i.declarado) obs.push('Reporte IVA: dif. débito '+mon(i.declarado.difDebito)+', crédito '+mon(i.declarado.difCredito));
+    return [esc(i.compania), mon(i.debito), mon(i.credito), '<b>'+mon(Math.abs(i.neto))+'</b>', '<span class="est '+(i.resultado==="a pagar"?"alto":"ok")+'">'+esc(i.resultado)+'</span>', mon(i.noAcreditable), '<span class="sub">'+obs.map(esc).join("<br>")+'</span>']; })));
+  var mal = (r.ivaMalUbicado||[]);
+  if (mal.length) h += '<h3 style="margin:14px 0 6px;font-size:13px">IVA cargado a cuentas que no son de IVA</h3>'+tabla(["Compañía","Impuesto","Cuenta",{t:"Líneas",n:1},{t:"Monto",n:1},"Meses"], mal.map(function(m){
+    return [esc(m.compania), esc(m.impuesto)+'<div class="sub">de '+esc(m.uso)+'</div>', esc(m.cuenta)+'<div class="sub mono">'+esc(m.tipoCuenta)+'</div>', n(m.lineas), mon(Math.abs(m.monto)), esc(m.meses.join(", "))]; }));
+  var sr = (r.sinRegistro||[]);
+  if (sr.length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+sr.length+' compañías sin asientos en '+esc(r.mes)+'</summary><div class="sub">'+sr.map(function(x){ return esc(x.compania)+' — último asiento '+esc(x.ultima||"nunca"); }).join("<br>")+'</div></details>';
+  return h;
+}
+function pintarEstados(r){
+  var cs = (r.companias||[]);
+  var h = '<div class="sub" style="margin:6px 0">Al cierre de <b>'+esc(r.mes)+'</b>, '+cs.length+' compañías. Montos en la moneda de cada compañía.</div>';
+  h += tabla(["Compañía",{t:"Activo",n:1},{t:"Pasivo",n:1},{t:"Patrimonio",n:1},{t:"Utilidad del mes",n:1},{t:"Utilidad del año",n:1},"Avisos",""], cs.map(function(c){
+    var av=[]; if(c.sinMovimientoEnElMes) av.push("sin asientos en el mes"); if(c.borradores) av.push(c.borradores+" en borrador");
+    if(Math.abs(c.balance.resultadosAnteriores)>1) av.push("año anterior sin cerrar"); if(Math.abs(c.balance.diferencia)>1) av.push("no cuadra");
+    return [esc(c.compania), mon(c.balance.activo), mon(c.balance.pasivo), mon(c.balance.patrimonio), mon(c.resultadosMes&&c.resultadosMes.utilidad), mon(c.resultadosAnio.utilidad),
+      '<span class="sub">'+esc(av.join(" · "))+'</span>', '<a href="#" data-estado-cia="'+c.companiaId+'">ver</a>']; }));
+  return h+'<div id="estadoDetalle"></div>';
+}
+function estadoHtml(c, mes){
+  var fila=function(t,v,b){ return '<tr'+(b?' style="font-weight:700"':'')+'><td style="padding:4px 8px">'+esc(t)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">'+mon(v)+'</td></tr>'; };
+  var B=c.balance, h='<h3 style="margin:0 0 4px">'+esc(c.compania)+'</h3><div style="font-size:12px;color:#6B7C77;margin-bottom:10px">Balance de situación al cierre de '+esc(mes)+' · asientos publicados'+(c.borradores?' · '+c.borradores+' documentos del mes en borrador no incluidos':'')+'</div>';
+  h += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+  ["activo","pasivo","patrimonio"].forEach(function(sec){
+    h += '<tr><td colspan="2" style="padding:8px 8px 2px;font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.08em">'+sec+'</td></tr>';
+    c.rubros.filter(function(x){ return x.seccion===sec; }).forEach(function(x){ h += fila("  "+x.rubro, x.monto); });
+    if(sec==="patrimonio"){ if(Math.abs(B.resultadosAnteriores)>1) h += fila("  Resultados de años anteriores sin cerrar", B.resultadosAnteriores); h += fila("  Resultado del año", B.resultadoDelAnio); }
+    h += fila("Total "+sec+(sec==="patrimonio"?" (con resultados)":""), sec==="activo"?B.activo:sec==="pasivo"?B.pasivo:B.patrimonio+B.resultadosAnteriores+B.resultadoDelAnio, true);
+  });
+  h += fila("Pasivo + patrimonio", B.pasivoYPatrimonio, true)+(Math.abs(B.diferencia)>1?fila("Diferencia", B.diferencia, true):"")+'</table>';
+  var M=c.resultadosMes||{}, A=c.resultadosAnio;
+  h += '<div style="font-size:12px;color:#6B7C77;margin:16px 0 6px">Estado de resultados</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><td></td><td style="text-align:right;padding:4px 8px;font-weight:700">'+esc(mes)+'</td><td style="text-align:right;padding:4px 8px;font-weight:700">Año '+esc(mes.slice(0,4))+'</td></tr>';
+  [["Ingresos","ingresos"],["Costo de ventas","costo"],["Utilidad bruta","utilidadBruta",1],["Gastos","gastos"],["Depreciación","depreciacion"],["Otros ingresos","otrosIngresos"],["Utilidad (pérdida) neta","utilidad",1]].forEach(function(x){
+    h += '<tr'+(x[2]?' style="font-weight:700"':'')+'><td style="padding:4px 8px">'+x[0]+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">'+mon(M[x[1]])+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">'+mon(A[x[1]])+'</td></tr>'; });
+  h += '</table><div style="font-size:12px;color:#6B7C77;margin:16px 0 6px">Últimos meses</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><td></td>'+c.serie.map(function(s){ return '<td style="text-align:right;padding:4px 8px;font-weight:700">'+esc(s.mes)+'</td>'; }).join("")+'</tr>'+
+    [["Ingresos","ingresos"],["Gastos y costos",null],["Utilidad","utilidad"]].map(function(x){ return '<tr><td style="padding:4px 8px">'+x[0]+'</td>'+c.serie.map(function(s){ var v=x[1]?s[x[1]]:s.costo+s.gastos+s.depreciacion; return '<td style="padding:4px 8px;text-align:right;font-family:monospace">'+mon(v)+'</td>'; }).join("")+'</tr>'; }).join("")+'</table>';
+  return h;
 }
 V.casos = function(){
   var f = S.filtros;
@@ -528,6 +585,10 @@ $("#main").addEventListener("click", function(ev){
   else if (t.id==="cNueva"){ var cid=S.conversacion; S.chat=[]; S.conversacion=null; S.nueva=true; pintar();
     if (cid) api("/api/director/"+cid+"/cerrar",{}).then(function(){ cargarDirector(false); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.conv){ api("/api/director/"+d.conv+"/reabrir",{}).then(function(c){ S.conversacion=c.id; S.nueva=false; S.chatAlFinal=true; S.chat=chatDe(c.resumen); cargarDirector(false); pintar(); var ch=$("#chat"); if(ch) ch.scrollTop=ch.scrollHeight; }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.estadoCia){ ev.preventDefault(); var ce=(S.estados&&S.estados.companias||[]).find(function(x){ return String(x.companiaId)===d.estadoCia; }); var de=$("#estadoDetalle"); if(!ce||!de) return;
+    de.innerHTML='<div style="margin-top:14px;padding:14px;border:1px solid var(--borde);border-radius:6px"><div class="fila"><button class="b gh" data-imprimir-estado="'+ce.companiaId+'">Imprimir</button></div>'+estadoHtml(ce, S.estados.mes)+'</div>'; de.scrollIntoView({behavior:"smooth"}); }
+  else if (d.imprimirEstado){ var ci=(S.estados.companias||[]).find(function(x){ return String(x.companiaId)===d.imprimirEstado; }); var w=window.open("","_blank"); if(!w) return msg("El navegador bloqueó la ventana de impresión.", true);
+    w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }

@@ -227,6 +227,68 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "cierre",
+      "nombre": "CIERRE",
+      "rol": "CIERRE",
+      "modo": "lectura",
+      "hace": "Revisa el cierre de cada mes en todas las compañías: cuentas puente (salarios, CCSS, IVA, retenciones, renta, transitorias) que arrastran saldo sin liquidar o están al revés, y el cuadre de IVA del mes (débito, crédito, neto, IVA cargado a cuentas equivocadas, facturas en borrador y diferencia con el Reporte IVA de TecnoDEM).",
+      "noHace": "No hace asientos ni ajustes: dice qué falta registrar.",
+      "responde": [
+        "qué cuentas puente no quedaron en cero",
+        "cuánto IVA hay que pagar este mes",
+        "si la CCSS o los salarios quedaron sin pagar",
+        "dónde hay IVA en cuentas equivocadas"
+      ],
+      "palabras": {
+        "cierre": 5,
+        "cuenta puente": 6,
+        "cuentas puente": 6,
+        "salarios por pagar": 5,
+        "ccss": 5,
+        "cargas sociales": 4,
+        "iva por pagar": 6,
+        "cuadre de iva": 6,
+        "iva": 3,
+        "debito fiscal": 5,
+        "credito fiscal": 5,
+        "retenciones": 3,
+        "transitoria": 4,
+        "declaracion": 3
+      },
+      "parametros": [],
+      "escribe": false
+    },
+    {
+      "id": "estados",
+      "nombre": "ESTADOS",
+      "rol": "ESTADOS",
+      "modo": "lectura",
+      "hace": "Arma el balance de situación y el estado de resultados (del mes, del año y de los últimos meses) de cada compañía a partir de los asientos publicados, y avisa lo que los vuelve poco confiables: cajas o bancos en negativo, proveedores o clientes del lado contrario, años anteriores sin cerrar y documentos del mes en borrador.",
+      "noHace": "No cierra periodos ni hace asientos de cierre.",
+      "responde": [
+        "cómo está el balance de una compañía",
+        "cuánto ganó o perdió en el año",
+        "qué compañías tienen bancos en negativo",
+        "qué años faltan por cerrar"
+      ],
+      "palabras": {
+        "estados financieros": 6,
+        "estado financiero": 6,
+        "balance": 5,
+        "estado de resultados": 6,
+        "resultados": 3,
+        "utilidad": 4,
+        "perdida": 4,
+        "ganancia": 4,
+        "activo": 3,
+        "pasivo": 3,
+        "patrimonio": 4,
+        "flujo": 2
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

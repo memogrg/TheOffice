@@ -13,8 +13,8 @@ La Biblia (v1.0, 25 oct 2026) documenta el estado al **10 de setiembre**. Este a
 | Usuarios | Sin usuarios; credencial `admin` | Usuario de servicio en Odoo; en la app, roles **contable** y **receptor** (cada receptor ve solo lo suyo), entrada por enlace de un solo uso o token |
 | Varias firmas | Una instancia | **Multitenencia**: un inquilino por firma, con su Odoo, base, reglas, calendario, Director y marca |
 | Despliegue | Local en el Mac | Local en la PC + túnel para pruebas; Docker, Fly.io y Render listos; CI en GitHub Actions |
-| Agentes | 4 (Recepción, Conciliación, Cuentas, Comunicación) | + **Diagnóstico, Recurrentes, Bancos y Documentos** (fase 3A de la matriz B1/B2, solo lectura), en la pestaña Hallazgos |
-| Pruebas | Ninguna automatizada | 69 pruebas (`npm test`) con un Odoo simulado |
+| Agentes | 4 (Recepción, Conciliación, Cuentas, Comunicación) | + **Diagnóstico, Recurrentes, Bancos, Documentos, Cierre y Estados financieros** (fase 3A de la matriz B1/B2, completa, solo lectura), en la pestaña Hallazgos |
+| Pruebas | Ninguna automatizada | 72 pruebas (`npm test`) con un Odoo simulado |
 
 ## Decisiones que la Biblia todavía no registra (pendientes de Memo)
 

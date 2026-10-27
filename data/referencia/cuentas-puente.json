@@ -1,0 +1,14 @@
+{
+  "_comentario": "Cuentas puente: las que reciben un monto y se tienen que liquidar en el plazo indicado (salarios se pagan, la CCSS se paga el mes siguiente, el IVA se declara y paga el 15 del mes siguiente). El agente CIERRE las busca por nombre (expresión regular, sin distinguir mayúsculas ni tildes) en cada compañía y mide cuánto del saldo es más viejo que el plazo: eso es lo que no se liquidó. 'periodicidad' = meses de plazo (1 = mensual, 12 = anual, 0 = debe quedar en cero al cierre de cada mes). 'tipos' = tipos de cuenta de Odoo en que se busca. 'saldoAFavor' = que el saldo se arrastre puede ser legítimo (crédito fiscal a favor): se informa, no se alerta. Las cuentas de IVA que usan los impuestos se agregan solas aunque no calcen con ningún nombre.",
+  "version": "1.0 · propuesta",
+  "estado": "PROPUESTA — pendiente de revisión de Victor",
+  "puentes": [
+    { "id": "salarios", "titulo": "Salarios por pagar", "patron": "salari\\w*\\s+(por|a)\\s+pagar|planillas? por pagar", "periodicidad": 1, "tipos": ["liability_current"] },
+    { "id": "cargas-sociales", "titulo": "CCSS y cargas sociales por pagar", "patron": "\\bccss\\b|cargas sociales|cuotas (patronales|obrer)", "periodicidad": 1, "tipos": ["liability_current"] },
+    { "id": "iva", "titulo": "IVA por pagar", "patron": "\\biva\\b.*(por pagar|debito)|debito fiscal", "periodicidad": 1, "tipos": ["liability_current"] },
+    { "id": "iva-credito", "titulo": "IVA crédito fiscal", "patron": "credito\\w* (por|para|de) iva|iva acreditable|credito fiscal|iva soportado", "periodicidad": 1, "tipos": ["asset_current"], "saldoAFavor": true },
+    { "id": "retenciones", "titulo": "Retenciones por pagar", "patron": "retenci\\w+", "periodicidad": 1, "tipos": ["liability_current"] },
+    { "id": "renta", "titulo": "Impuesto de renta por pagar", "patron": "renta por pagar", "periodicidad": 12, "tipos": ["liability_current"] },
+    { "id": "transitoria", "titulo": "Cuentas transitorias", "patron": "transitori|suspense|cuenta puente|por liquidar|por aplicar|por identificar", "periodicidad": 0, "tipos": ["asset_current", "liability_current"] }
+  ]
+}

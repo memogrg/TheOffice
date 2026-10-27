@@ -45,7 +45,7 @@ export function crearApi(opciones) {
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -105,7 +105,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente);
     return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
   });

@@ -7,6 +7,7 @@ Tres archivos que llevan al repositorio lo útil del histórico «Artículos por
 | `naturaleza-del-gasto.json` | Palabras clave por **naturaleza del gasto** (restaurante, electricidad, ferretería…), la cuenta lógica a la que apuntan, tipos de proveedor y señales de **gasto personal** | 1 y 3 |
 | `consenso-articulos.json` | Para cada artículo que usan **3 o más clientes**: en qué cuentas lo registran, cuántos clientes y cuántas veces, y si hay **consenso**, está **dividido** o la mayoría lo manda a un **comodín** | 2 |
 | `actividad-proveedor.json` | El **tipo de proveedor** a partir de su actividad económica (la del emisor, que viene en el XML y Odoo guarda en la factura de compra): restaurante, supermercado, ferretería, gasolinera, farmacia… y a qué naturaleza apunta. Propuesta, igual que la naturaleza | 1 y 3 |
+| `cuentas-puente.json` | Para el agente **Cierre** (no para clasificar): cómo se reconocen por nombre las cuentas puente (salarios, CCSS, IVA, retenciones, renta, transitorias) y en qué plazo se tienen que liquidar. Propuesta | — |
 | `cuentas-logicas.json` | Las cuentas de gasto usadas por 3 o más clientes, su nombre canónico, si el código significa **lo mismo en todos los clientes** y la lista de **comodines** prohibidos | 2 y 4 |
 
 ## Qué NO está aquí, y por qué
