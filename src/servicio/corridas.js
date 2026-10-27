@@ -98,6 +98,11 @@ export class Corridas {
       const ids = this.db.registrarCorreos(corridaId, piezas);
       return { correos: ids.length };
     }
+    // Cierre deja sus asientos sugeridos en la cola (fase 3B). Si la corrida no pudo calcularlos
+    // (sin diarios, sin historial), no se tocan los que ya estaban.
+    if (quien === "cierre" && Array.isArray(r.asientosSugeridos) && !r.errorAsientos) {
+      return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "cierre" }) };
+    }
     return {};
   }
 

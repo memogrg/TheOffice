@@ -17,6 +17,7 @@ const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
+import * as asientos from "./asientos.js";
 import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
@@ -41,6 +42,7 @@ export function crearApi(opciones) {
     inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
+    escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
@@ -56,6 +58,8 @@ export function crearApi(opciones) {
       correos: ctx.db.correos({ estado: "borrador" }).length,
       correosAprobados: ctx.db.correos({ estado: "aprobado" }).length,
       reglas: ctx.db.reglas().length,
+      asientos: ctx.db.asientos({ estado: "propuesta" }).length,
+      asientosAprobados: ctx.db.asientos({ estado: "aprobada" }).length,
       consultas: ctx.db.consultas().length
     }
   }), AMBOS);
@@ -158,6 +162,50 @@ export function crearApi(opciones) {
     } catch (e) {
       return { ok: true, regla: r.id, mensaje: `Regla guardada, pero Cuentas no pudo correr ahora: ${e.message}. Córralo desde el Tablero.` };
     }
+  });
+
+  // --- asientos propuestos (fase 3B): Cierre o el Director los proponen; un contable decide
+  ruta("GET", "/api/asientos", (q, p, c, quien, ctx) => ctx.db.asientos({ estado: q.estado || "abiertos", companiaId: q.compania ? Number(q.compania) : null }));
+  ruta("GET", "/api/asientos/:id/opciones", async (q, p, c, quien, ctx) => {
+    const a = ctx.db.asiento(Number(p.id));
+    if (!a) return error(404, "No existe ese asiento.");
+    return asientos.opciones({ corridas: ctx.corridas, companiaId: a.compania_id });
+  });
+  // Elegir el banco de la contrapartida (y con él, el diario) o cambiar la fecha.
+  ruta("POST", "/api/asientos/:id/editar", async (q, p, cuerpo, quien, ctx) => {
+    const a = ctx.db.asiento(Number(p.id));
+    if (!a) return error(404, "No existe ese asiento.");
+    if (a.estado !== "propuesta") return error(409, `El asiento ya está ${a.estado}.`);
+    const cambios = {};
+    if (cuerpo.fecha) { if (!/^\d{4}-\d{2}-\d{2}$/.test(cuerpo.fecha)) return error(400, "Fecha inválida (AAAA-MM-DD)."); cambios.fecha = cuerpo.fecha; }
+    if (cuerpo.diarioId) {
+      const d = (await asientos.opciones({ corridas: ctx.corridas, companiaId: a.compania_id })).find(x => x.id === Number(cuerpo.diarioId));
+      if (!d) return error(400, "Ese diario no es de la compañía.");
+      cambios.diarioId = d.id; cambios.diario = d.nombre;
+      if (d.cuentaId && a.lineas.some(l => l.rol === "contrapartida"))
+        cambios.lineas = a.lineas.map(l => l.rol === "contrapartida" ? { ...l, cuentaId: d.cuentaId, cuenta: d.cuenta, editada: true, fuente: `elegido por ${quien}` } : l);
+    }
+    if (!Object.keys(cambios).length) return error(400, "Nada que cambiar (fecha o diarioId).");
+    ctx.db.editarAsiento(a.id, cambios, quien);
+    return ctx.db.asiento(a.id);
+  });
+  ruta("POST", "/api/asientos/:id/aprobar", async (q, p, cuerpo, quien, ctx) => {
+    const a = ctx.db.asiento(Number(p.id));
+    if (!a) return error(404, "No existe ese asiento.");
+    if (a.estado !== "propuesta") return error(409, `El asiento ya está ${a.estado}.`);
+    const forma = asientos.revisarForma(a);
+    if (forma.errores.length) return error(400, forma.errores.join(" "));
+    let v = { ok: true, errores: [], avisos: [] };
+    try { v = await asientos.validar(ctx.corridas.crearCliente({ meta: { escribe: false } }), a); }
+    catch (e) { v.avisos.push(`No se pudo validar contra Odoo ahora: ${e.message}`); }
+    if (!v.ok) return error(400, "No se puede aprobar: " + v.errores.join(" "));
+    ctx.db.decidirAsiento(a.id, "aprobada", quien, cuerpo.nota || null);
+    return { ok: true, avisos: v.avisos, mensaje: asientos.escrituraAsientos(ctx.cfg) ? "Aprobado. Ya se puede crear en Odoo." : "Aprobado. Crearlo en Odoo requiere PERMITIR_ESCRITURA_ASIENTOS=si." };
+  });
+  ruta("POST", "/api/asientos/:id/rechazar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirAsiento(Number(p.id), "rechazada", quien, cuerpo.motivo || null) }));
+  ruta("POST", "/api/asientos/:id/aplicar", async (q, p, cuerpo, quien, ctx) => {
+    const r = await asientos.aplicar({ corridas: ctx.corridas, db: ctx.db, id: p.id, quien });
+    return r.error ? error(r.codigo || 400, r.error) : r;
   });
 
   // --- correos de Victor

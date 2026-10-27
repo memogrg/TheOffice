@@ -230,6 +230,113 @@ export class BaseDeDatos {
       corrida_id  INTEGER
     )`);
     if (!columnas("reglas_propuestas").has("naturaleza")) this.db.exec("ALTER TABLE reglas_propuestas ADD COLUMN naturaleza TEXT");
+    // Fase 3B: asientos de diario propuestos (sin comprobante electrónico). Los deja Cierre o el
+    // Director; un contable los aprueba; con PERMITIR_ESCRITURA_ASIENTOS=si se crean en Odoo.
+    this.db.exec(`CREATE TABLE IF NOT EXISTS asientos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      clave       TEXT,                 -- origen estable (cierre|cia|cuenta) para no duplicar
+      origen      TEXT NOT NULL,        -- cierre | director | manual
+      corrida_id  INTEGER,
+      mes         TEXT,
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      fecha       TEXT NOT NULL,
+      diario_id   INTEGER,
+      diario      TEXT,
+      referencia  TEXT,
+      motivo      TEXT,
+      aviso       TEXT,
+      lineas      TEXT NOT NULL,        -- JSON [{cuentaId, cuenta, descripcion, debito, credito, rol, fuente}]
+      total       REAL,
+      propuso     TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      actualizado_en TEXT,
+      estado      TEXT NOT NULL DEFAULT 'propuesta',  -- propuesta | aprobada | rechazada | aplicada | fallo | obsoleta
+      decidio     TEXT,
+      decidido_en TEXT,
+      nota        TEXT,
+      move_id     INTEGER,
+      move_name   TEXT,
+      resultado   TEXT                  -- JSON: verificación o error al aplicar
+    )`);
+    this.db.exec("CREATE INDEX IF NOT EXISTS asientos_estado ON asientos(estado, compania_id)");
+  }
+
+  // --- asientos propuestos (fase 3B)
+  #filaAsiento(a) {
+    if (!a) return null;
+    const lineas = JSON.parse(a.lineas || "[]");
+    return { ...a, lineas, resultado: a.resultado ? JSON.parse(a.resultado) : null, porDefinir: lineas.some(l => !l.cuentaId) || !a.diario_id };
+  }
+  #total(lineas) { return Math.round(lineas.reduce((t, l) => t + (Number(l.debito) || 0), 0) * 100) / 100; }
+  proponerAsiento(a, quien) {
+    const ahora = this.#ahora();
+    const x = this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave ?? null, a.origen || "manual", a.corridaId ?? null, a.mes ?? null, a.companiaId, a.compania ?? null, a.fecha,
+      a.diarioId ?? null, a.diario ?? null, a.referencia ?? null, a.motivo ?? null, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), quien, ahora);
+    const id = Number(x.lastInsertRowid);
+    this.auditar(quien, "proponer", "asiento", id, { compania: a.compania, referencia: a.referencia, total: this.#total(a.lineas) });
+    return this.asiento(id);
+  }
+  // Lo que deja Cierre: uno abierto por clave. Si ya hay uno propuesto se actualiza (mes y montos
+  // nuevos); si alguien lo rechazó para ese mismo mes no se repite; los propuestos que ya no salen
+  // (la cuenta quedó liquidada) pasan a obsoletos.
+  sincronizarAsientos(corridaId, sugeridos, { origen = "cierre" } = {}) {
+    const ahora = this.#ahora();
+    let nuevos = 0, actualizados = 0, obsoletos = 0;
+    this.transaccion(() => {
+      const vistas = new Set();
+      for (const a of sugeridos) {
+        vistas.add(a.clave);
+        const abierto = this.uno("SELECT * FROM asientos WHERE clave=? AND estado IN ('propuesta','aprobada') ORDER BY id DESC", a.clave);
+        if (abierto) {
+          if (abierto.estado === "aprobada") continue;          // ya decidido: no se cambia por debajo
+          // si una persona eligió el banco, se respeta su elección
+          const previas = JSON.parse(abierto.lineas);
+          const lineas = a.lineas.map(l => { const p = previas.find(x => x.rol === l.rol && x.editada); return p && !l.cuentaId ? { ...l, cuentaId: p.cuentaId, cuenta: p.cuenta, editada: true, fuente: p.fuente } : l; });
+          const diarioEditado = abierto.diario_id && previas.some(x => x.editada);
+          this.correr(`UPDATE asientos SET corrida_id=?, mes=?, fecha=?, referencia=?, motivo=?, aviso=?, lineas=?, total=?, actualizado_en=?${diarioEditado ? "" : ", diario_id=?, diario=?"} WHERE id=?`,
+            corridaId, a.mes, a.fecha, a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(lineas), this.#total(lineas), ahora,
+            ...(diarioEditado ? [] : [a.diarioId ?? null, a.diario ?? null]), abierto.id);
+          actualizados++;
+          continue;
+        }
+        if (this.uno("SELECT id FROM asientos WHERE clave=? AND mes=? AND estado IN ('rechazada','aplicada')", a.clave, a.mes)) continue;
+        this.correr(`INSERT INTO asientos (clave, origen, corrida_id, mes, compania_id, compania, fecha, diario_id, diario, referencia, motivo, aviso, lineas, total, propuso, creado_en)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, a.clave, origen, corridaId, a.mes, a.companiaId, a.compania, a.fecha, a.diarioId ?? null, a.diario ?? null,
+          a.referencia, a.motivo, a.aviso ?? null, JSON.stringify(a.lineas), this.#total(a.lineas), `agente:${origen}`, ahora);
+        nuevos++;
+      }
+      for (const v of this.todos("SELECT id, clave FROM asientos WHERE origen=? AND estado='propuesta'", origen))
+        if (!vistas.has(v.clave)) { this.correr("UPDATE asientos SET estado='obsoleta', actualizado_en=? WHERE id=?", ahora, v.id); obsoletos++; }
+    });
+    return { nuevos, actualizados, obsoletos };
+  }
+  asientos({ estado = "propuesta", companiaId = null, limite = 300 } = {}) {
+    const cond = [], p = [];
+    if (estado !== "todos") { cond.push(estado === "abiertos" ? "estado IN ('propuesta','aprobada')" : "estado=?"); if (estado !== "abiertos") p.push(estado); }
+    if (companiaId) { cond.push("compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT * FROM asientos${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY compania, id LIMIT ?`, ...p, limite).map(a => this.#filaAsiento(a));
+  }
+  asiento(id) { return this.#filaAsiento(this.uno("SELECT * FROM asientos WHERE id=?", id)); }
+  // Solo mientras está propuesto: fecha, diario y la cuenta de alguna línea (el banco por definir).
+  editarAsiento(id, { fecha = null, diarioId = null, diario = null, lineas = null }, quien) {
+    const a = this.asiento(id);
+    if (!a || a.estado !== "propuesta") return false;
+    const nuevas = lineas || a.lineas;
+    this.correr("UPDATE asientos SET fecha=?, diario_id=?, diario=?, lineas=?, total=?, actualizado_en=? WHERE id=?",
+      fecha || a.fecha, diarioId ?? a.diario_id, diario ?? a.diario, JSON.stringify(nuevas), this.#total(nuevas), this.#ahora(), id);
+    this.auditar(quien, "editar", "asiento", id, { fecha, diarioId, lineas: lineas ? nuevas.filter(l => l.editada).map(l => l.cuenta) : undefined });
+    return true;
+  }
+  decidirAsiento(id, decision, quien, nota = null) {
+    const r = this.correr("UPDATE asientos SET estado=?, decidio=?, decidido_en=?, nota=? WHERE id=? AND estado='propuesta'", decision, quien, this.#ahora(), nota, id);
+    if (r.changes) this.auditar(quien, decision === "aprobada" ? "aprobar" : "rechazar", "asiento", id, nota ? { nota } : null);
+    return r.changes > 0;
+  }
+  marcarAsiento(id, estado, { moveId = null, moveName = null, resultado = null } = {}) {
+    this.correr("UPDATE asientos SET estado=?, move_id=COALESCE(?, move_id), move_name=COALESCE(?, move_name), resultado=?, actualizado_en=? WHERE id=?",
+      estado, moveId, moveName, resultado == null ? null : JSON.stringify(resultado), this.#ahora(), id);
   }
 
   // --- consultas al contador (paso 3 y 4 de la guía): lo que Cuentas no cierra solo

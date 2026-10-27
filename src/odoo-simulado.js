@@ -80,8 +80,28 @@ export class OdooSimulado {
       return true;
     }
     if (metodo === "button_draft") { for (const r of t) if (args[0].includes(r.id)) r.state = "draft"; return true; }
-    if (metodo === "action_post") { for (const r of t) if (args[0].includes(r.id)) r.state = "posted"; return true; }
-    if (metodo === "create") { const id = Math.max(0, ...t.map(r => r.id)) + 1; t.push({ id, ...args[0] }); return id; }
+    if (metodo === "action_post") {
+      for (const r of t) if (args[0].includes(r.id)) r.state = "posted";
+      if (modelo === "account.move") for (const l of this.datos["account.move.line"] || []) if (args[0].includes(idDe(l.move_id))) l.parent_state = "posted";
+      return true;
+    }
+    if (metodo === "create") {
+      const id = Math.max(0, ...t.map(r => r.id)) + 1;
+      const { line_ids, ...valores } = args[0];
+      // Como Odoo: un asiento nace en borrador, con nombre, y sus líneas quedan en account.move.line.
+      const reg = { id, ...this.#normalizar(valores) };
+      if (modelo === "account.move") {
+        reg.state = reg.state || "draft"; reg.name = reg.name || `MISC/${id}`;
+        const lineas = (this.datos["account.move.line"] = this.datos["account.move.line"] || []);
+        for (const [, , l] of line_ids || []) {
+          const lid = Math.max(0, ...lineas.map(r => r.id)) + 1;
+          lineas.push({ id: lid, ...this.#normalizar(l), move_id: [id, reg.name], company_id: reg.company_id, journal_id: reg.journal_id, date: reg.date,
+            parent_state: "draft", balance: (l.debit || 0) - (l.credit || 0) });
+        }
+      }
+      t.push(reg);
+      return id;
+    }
     if (metodo === "unlink") { const ids = args[0]; this.datos[modelo] = t.filter(r => !ids.includes(r.id)); return true; }
     return true;
   }

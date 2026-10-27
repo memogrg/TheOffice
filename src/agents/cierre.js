@@ -136,6 +136,13 @@ export async function ejecutar({ odoo, cfg, log }) {
   const pesoEstado = { "al-reves": 0, arrastra: 1, "con-saldo": 2, "sin-registro": 3, ok: 4 };
   cuentas.sort((a, b) => (pesoEstado[a.estado] - pesoEstado[b.estado]) || (Math.abs(b.arrastre) - Math.abs(a.arrastre)));
 
+  // 2b. Asientos sugeridos (fase 3B): para lo que arrastra, el asiento que lo liquida, con la
+  // contrapartida que esa misma cuenta usó en sus pagos anteriores. Solo se proponen; un contable
+  // los revisa, los aprueba y recién entonces se pueden crear en Odoo.
+  let asientosSugeridos = [], errorAsientos = null;
+  try { asientosSugeridos = await sugerirAsientos({ odoo, cuentas, mes, cuentasInfo, log }); }
+  catch (e) { errorAsientos = e.message; log(`Sin asientos sugeridos: ${e.message}`); }
+
   // 3. Cuadre de IVA por compañía y mes (documentos publicados).
   const ivaMeses = new Map();
   const malUbicado = new Map();
@@ -218,6 +225,8 @@ export async function ejecutar({ odoo, cfg, log }) {
     montoArrastrado: r2(arr.reduce((t, c) => t + c.arrastre, 0)),
     companiasIva: iva.length, ivaMalUbicado: mal.length, conBorradores: iva.filter(i => i.borradores && (i.borradores.ivaCompras || i.borradores.ivaVentas)).length,
     difDeclaracion: iva.filter(i => i.declarado && (Math.abs(i.declarado.difDebito) > tolerancia || Math.abs(i.declarado.difCredito) > tolerancia)).length
+,
+    asientosSugeridos: asientosSugeridos.length
   };
 
   const alertas = [];
@@ -242,12 +251,98 @@ export async function ejecutar({ odoo, cfg, log }) {
     detalle: favor.slice(0, 6).map(c => `${c.compania} — ${c.cuenta}: ₡${colones(c.arrastre)}`) });
   if (sinRegistro.length) alertas.push({ nivel: "info", texto: `${sinRegistro.length} compañías sin ningún asiento publicado en ${mes}: su cierre no se puede revisar todavía.`,
     detalle: sinRegistro.slice(0, 10).map(s => `${s.compania} — último asiento ${s.ultima || "nunca"}`) });
+  if (asientosSugeridos.length) alertas.push({ nivel: "info", texto: `${asientosSugeridos.length} asientos de liquidación propuestos en Aprobaciones → Asientos (${asientosSugeridos.filter(a => a.porDefinir).length} con el banco por elegir). Ninguno se crea en Odoo sin aprobación.`,
+    detalle: asientosSugeridos.slice(0, 6).map(a => `${a.compania}: ${a.referencia}`) });
   if (!alertas.length) alertas.push({ nivel: "ok", texto: `Cierre de ${mes}: cuentas puente liquidadas e IVA sin observaciones.`, detalle: [] });
 
   return {
     agente: meta.nombre, titulo: `Cierre de ${mes}: cuentas puente e IVA`, corrida: new Date().toISOString(),
     segundos: Math.round((Date.now() - t0) / 100) / 10, llamadasOdoo: odoo.llamadas,
     mes, ventana: serieMeses, totales, cuentas: cuentas.filter(c => c.estado !== "ok").slice(0, 400), alDia: cuentas.filter(c => c.estado === "ok").length,
-    iva: iva.slice(0, 200), ivaMalUbicado: mal.slice(0, 100), sinRegistro, alertas
+    iva: iva.slice(0, 200), ivaMalUbicado: mal.slice(0, 100), sinRegistro, asientosSugeridos, errorAsientos, alertas
   };
+}
+
+// --- Fase 3B: asientos sugeridos para liquidar lo que arrastra ------------------------------
+const PAGABLES = new Set(["salarios", "cargas-sociales", "iva", "retenciones"]);
+export const ultimoDia = mes => { const [a, m] = mes.split("-").map(Number); return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10); };
+
+// La contrapartida usual de cada cuenta puente: el banco (cuenta y diario) contra el que se
+// registraron sus pagos del último año. Devuelve Map "cia|cuenta" → { cuentaId, cuenta, diarioId, diario, veces }.
+async function contrapartidasUsuales(odoo, objetivo, desde, cuentasInfo) {
+  const ids = [...new Set(objetivo.map(c => c.cuentaId))], cias = [...new Set(objetivo.map(c => c.companiaId))];
+  const pagos = await odoo.leerTodo("account.move.line", [["parent_state", "=", "posted"], ["account_id", "in", ids], ["company_id", "in", cias], ["debit", ">", 0], ["date", ">=", desde]],
+    ["company_id", "account_id", "move_id", "journal_id"]);
+  const puentesDe = new Map();
+  for (const p of pagos) { const m = idDe(p.move_id); puentesDe.set(m, [...(puentesDe.get(m) || []), `${idDe(p.company_id)}|${idDe(p.account_id)}`]); }
+  const moves = [...puentesDe.keys()], otras = [];
+  for (let i = 0; i < moves.length; i += 500)
+    otras.push(...await odoo.leerTodo("account.move.line", [["move_id", "in", moves.slice(i, i + 500)], ["credit", ">", 0]], ["move_id", "account_id", "journal_id", "credit"]));
+  const faltan = [...new Set(otras.map(o => idDe(o.account_id)))].filter(id => !cuentasInfo.has(id));
+  if (faltan.length) for (const [id, c] of await leerCuentas(odoo, faltan)) cuentasInfo.set(id, c);
+  const conteo = new Map();
+  for (const o of otras) {
+    const c = cuentasInfo.get(idDe(o.account_id));
+    if (c?.tipo !== "asset_cash") continue;
+    for (const k of puentesDe.get(idDe(o.move_id)) || []) {
+      const llave = `${idDe(o.account_id)}|${idDe(o.journal_id)}`;
+      const m = conteo.get(k) || new Map();
+      const x = m.get(llave) || { cuentaId: idDe(o.account_id), cuenta: c.nombre, diarioId: idDe(o.journal_id), diario: nombreDe(o.journal_id), veces: 0 };
+      x.veces++; m.set(llave, x); conteo.set(k, m);
+    }
+  }
+  return new Map([...conteo].map(([k, m]) => [k, [...m.values()].sort((a, b) => b.veces - a.veces)[0]]));
+}
+
+export async function sugerirAsientos({ odoo, cuentas, mes, cuentasInfo, log = () => {} }) {
+  const objetivo = cuentas.filter(c => c.estado === "arrastra" && c.periodicidad === 1 && (PAGABLES.has(c.puente) || c.puente === "iva-credito"));
+  const pagables = objetivo.filter(c => PAGABLES.has(c.puente));
+  if (!pagables.length) return [];
+  const cias = [...new Set(pagables.map(c => c.companiaId))];
+  const fecha = ultimoDia(mes), desde = `${sumarMeses(mes, -12)}-01`;
+  const diarios = await odoo.leerTodo("account.journal", [["company_id", "in", cias], ["type", "in", ["bank", "cash", "general"]]], ["name", "type", "company_id", "default_account_id"]);
+  const usual = await contrapartidasUsuales(odoo, pagables, desde, cuentasInfo);
+  const AVISO = `Confirme contra el estado de cuenta la fecha y el monto reales del pago: la fecha propuesta es el último día de ${mes}, y el monto es lo que quedó sin liquidar.`;
+  const contrapartidaDe = (cia, cuentaId) => {
+    const u = usual.get(`${cia}|${cuentaId}`);
+    if (u) return { ...u, fuente: `la usó en ${u.veces} pagos anteriores` };
+    const bancos = diarios.filter(d => idDe(d.company_id) === cia && d.type === "bank" && d.default_account_id);
+    if (bancos.length === 1) return { cuentaId: idDe(bancos[0].default_account_id), cuenta: nombreDe(bancos[0].default_account_id), diarioId: bancos[0].id, diario: bancos[0].name, fuente: "único banco de la compañía" };
+    return null;
+  };
+  const general = cia => diarios.find(d => idDe(d.company_id) === cia && d.type === "general") || null;
+  const lineaContra = (c, monto) => c
+    ? { cuentaId: c.cuentaId, cuenta: c.cuenta, descripcion: "Pago", debito: 0, credito: r2(monto), rol: "contrapartida", fuente: c.fuente }
+    : { cuentaId: null, cuenta: "(banco por definir)", descripcion: "Pago", debito: 0, credito: r2(monto), rol: "contrapartida", fuente: "sin pagos anteriores: elija el banco" };
+
+  const out = [];
+  for (const cia of cias) {
+    const mias = objetivo.filter(c => c.companiaId === cia), compania = mias[0].compania;
+    const ivaD = mias.filter(c => c.puente === "iva"), ivaC = mias.filter(c => c.puente === "iva-credito");
+    if (ivaD.length) {
+      const totalD = ivaD.reduce((t, c) => t + c.arrastre, 0), totalC = ivaC.reduce((t, c) => t + c.arrastre, 0);
+      let compensar = Math.min(totalD, totalC);
+      const pagar = r2(totalD - compensar);
+      const lineas = ivaD.map(c => ({ cuentaId: c.cuentaId, cuenta: c.cuenta, descripcion: `IVA por pagar anterior a ${mes}`, debito: r2(c.arrastre), credito: 0, rol: "puente" }));
+      for (const c of ivaC) { if (compensar <= 0.005) break; const m = Math.min(c.arrastre, compensar); compensar -= m;
+        lineas.push({ cuentaId: c.cuentaId, cuenta: c.cuenta, descripcion: "Compensación con crédito fiscal", debito: 0, credito: r2(m), rol: "compensacion" }); }
+      const contra = pagar > 0.005 ? contrapartidaDe(cia, ivaD[0].cuentaId) : null;
+      if (pagar > 0.005) lineas.push(lineaContra(contra, pagar));
+      const diario = contra ? { id: contra.diarioId, nombre: contra.diario } : (g => g ? { id: g.id, nombre: g.name } : null)(general(cia));
+      out.push({ clave: `cierre|${cia}|iva`, origen: "cierre", mes, companiaId: cia, compania, fecha, diarioId: diario?.id ?? null, diario: diario?.nombre ?? null,
+        referencia: `Liquidación de IVA pendiente al cierre de ${mes}`,
+        motivo: `IVA por pagar con ₡${colones(totalD)} más viejo que ${mes}` + (totalC ? `; se compensa con ₡${colones(totalD - pagar)} de crédito fiscal también arrastrado` : "") + (pagar > 0.005 ? `; el pago neto es ₡${colones(pagar)}.` : "."),
+        aviso: AVISO, lineas, porDefinir: lineas.some(l => !l.cuentaId) });
+    }
+    for (const c of mias.filter(x => PAGABLES.has(x.puente) && x.puente !== "iva")) {
+      const contra = contrapartidaDe(cia, c.cuentaId);
+      const lineas = [{ cuentaId: c.cuentaId, cuenta: c.cuenta, descripcion: `${c.titulo} anterior a ${mes}`, debito: r2(c.arrastre), credito: 0, rol: "puente" }, lineaContra(contra, c.arrastre)];
+      out.push({ clave: `cierre|${cia}|${c.cuentaId}`, origen: "cierre", mes, companiaId: cia, compania, fecha, diarioId: contra?.diarioId ?? null, diario: contra?.diario ?? null,
+        referencia: `${c.titulo}: pago pendiente al cierre de ${mes}`,
+        motivo: `${c.cuenta} tiene ₡${colones(c.arrastre)} más viejos que ${mes}${c.mesesSeguidos > 1 ? ` (${c.mesesSeguidos} meses seguidos)` : ""}: falta registrar el pago, o se registró contra otra cuenta (en ese caso, rechace y corrija aquel asiento).`,
+        aviso: AVISO, lineas, porDefinir: !contra });
+    }
+  }
+  log(`${out.length} asientos sugeridos (${out.filter(a => a.porDefinir).length} con el banco por definir)`);
+  return out;
 }

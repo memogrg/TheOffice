@@ -156,6 +156,7 @@ V.tablero = function(){
   var h = '<div class="chips">'+
     '<span class="chip">Odoo: <b>'+esc(e.odoo.simulado ? "SIMULADO "+e.odoo.simulado : e.odoo.url+" · "+e.odoo.db)+'</b></span>'+
     '<span class="chip">Escritura: <b>'+(e.escrituraPermitida?"permitida":"bloqueada")+'</b></span>'+
+    '<span class="chip">Asientos: <b>'+(e.escrituraAsientos?(e.publicarAsientos?"crea y publica":"crea en borrador"):"bloqueados")+'</b></span>'+
     '<span class="chip">Correo: <b>'+(e.smtp?"configurado":"sin SMTP")+'</b></span>'+
     '<span class="chip">Calendario: <b>'+esc(e.programador?e.programador.plan:"—")+'</b></span>'+
     (e.enCurso?'<span class="chip">Corriendo: <b>'+esc(e.enCurso.agente)+'</b></span>':"")+'</div>';
@@ -167,7 +168,7 @@ V.tablero = function(){
     tile("Compañías", t.companias, "con correos en el buzón")+
     tile("Por reclamar afuera", ab["afuera|abierto"]||0, "documentos abiertos")+
     tile("Por revisar adentro", ab["adentro|abierto"]||0, "documentos abiertos")+
-    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas":"")+(e.pendientes.consultas?" · "+e.pendientes.consultas+" consultas":""))+
+    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas":"")+(e.pendientes.asientos?" · "+e.pendientes.asientos+" asientos":"")+(e.pendientes.consultas?" · "+e.pendientes.consultas+" consultas":""))+
     tile("Correos por aprobar", e.pendientes.correos, e.pendientes.correosAprobados+" aprobados sin enviar")+
     '</div>';
   h += '<section><h2>Correr ahora</h2><div class="fila">'+
@@ -376,7 +377,13 @@ function pintarCasos(lista){
   }));
 }
 V.aprobaciones = function(){
-  return '<section><h2>Reglas por aprobar</h2>'+
+  var e=S.estado||{};
+  return '<section><h2>Asientos propuestos</h2>'+
+    '<div class="aviso">Asientos de diario sin comprobante electrónico (no pasan por Hacienda). Los propone <b>Cierre</b> para liquidar lo que arrastra (salarios, CCSS, IVA, retenciones), con la cuenta de banco que esa cuenta usó en sus pagos anteriores, o se dictan al Director. Revise el monto y la fecha contra el estado de cuenta, elija el banco si dice «por definir», y apruebe. '+
+      (e.escrituraAsientos?'Crear en Odoo está <b>habilitado</b>'+(e.publicarAsientos?' y se publican al crearse.':'; se crean en <b>borrador</b> para revisarlos en Odoo.'):'Crear en Odoo está <b>bloqueado</b> (PERMITIR_ESCRITURA_ASIENTOS): por ahora solo se aprueban.')+'</div>'+
+    '<div class="fila"><select id="aEstado"><option value="abiertos">por decidir y aprobados</option><option value="propuesta">por decidir</option><option value="aprobada">aprobados</option><option value="aplicada">creados en Odoo</option><option value="rechazada">rechazados</option><option value="fallo">con fallo</option><option value="obsoleta">obsoletos</option><option value="todos">todos</option></select><button class="b gh" id="aIr">Ver</button></div>'+
+    '<div id="asientosTabla">Cargando…</div></section>'+
+    '<section><h2>Reglas por aprobar</h2>'+
     '<div class="aviso">Decisiones contables dictadas en el chat del Director («todo lo de este proveedor va a 5.04.17.01») o creadas desde una consulta. Al <b>aprobar</b>, la regla se guarda (manda sobre el histórico) y Cuentas revisa de nuevo esa compañía: cada línea afectada aparece abajo como propuesta.</div>'+
     '<div id="reglasTabla">Cargando…</div></section>'+
     '<section><h2>Consultas al contador</h2>'+
@@ -391,6 +398,25 @@ V.aprobaciones = function(){
     '<select id="pAplicarCia"><option value="">Aplicar aprobadas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b" id="pAplicar">Aplicar en Odoo</button></div><div id="propTabla">Cargando…</div></section>';
 };
+var EST_ASIENTO = { propuesta:["por decidir","alto"], aprobada:["aprobado","ok"], aplicada:["en Odoo","ok"], rechazada:["rechazado","neutro"], fallo:["fallo","critico"], obsoleta:["obsoleto","neutro"] };
+function cargarAsientos(){ var s=$("#aEstado"); api("/api/asientos?estado="+(s?s.value:"abiertos")).then(pintarAsientos).catch(function(e){ msg(e.message,true); }); }
+function pintarAsientos(lista){
+  var el=$("#asientosTabla"); if(!el) return; S.asientos=lista;
+  if(!lista.length){ el.innerHTML='<div class="sub">Nada aquí. Los propone Cierre al correr (Hallazgos) o se dictan al Director: «registrá el pago de la CCSS de enero de [compañía] contra el BNCR».</div>'; return; }
+  el.innerHTML = lista.map(function(a){ var e=EST_ASIENTO[a.estado]||[a.estado,"neutro"];
+    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?"Elegir banco":"Cambiar banco o fecha")+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
+      : a.estado==="aprobada" ? (S.estado.escrituraAsientos?'<button class="b" data-aplicar-asiento="'+a.id+'">Crear en Odoo</button>':'<span class="sub">Aprobado. Crear en Odoo requiere PERMITIR_ESCRITURA_ASIENTOS=si.</span>')
+      : a.move_name ? '<span class="sub">Asiento '+esc(a.move_name)+(a.resultado&&a.resultado.estadoOdoo?' ('+esc(a.resultado.estadoOdoo==="posted"?"publicado":"borrador")+')':'')+'</span>'
+      : a.resultado&&a.resultado.error ? '<span class="sub" style="color:var(--critico)">'+esc(a.resultado.error)+'</span>' : (a.nota?'<span class="sub">'+esc(a.nota)+'</span>':'');
+    return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
+      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
+      '<div style="font-size:13px">'+esc(a.referencia||"")+'</div><div class="sub" style="margin-bottom:6px">'+esc(a.motivo||"")+'</div>'+
+      tabla(["Cuenta","Descripción",{t:"Débito",n:1},{t:"Crédito",n:1}], a.lineas.map(function(l){
+        return [(l.cuentaId?esc(l.cuenta):'<span class="est alto">'+esc(l.cuenta)+'</span>')+(l.fuente?'<div class="sub">'+esc(l.fuente)+'</div>':''), '<span class="sub">'+esc(l.descripcion||"")+'</span>', l.debito?n(l.debito):"", l.credito?n(l.credito):""]; }))+
+      (a.aviso&&a.estado==="propuesta"?'<div class="sub" style="margin:6px 0">'+esc(a.aviso)+'</div>':'')+
+      '<div class="fila" style="margin:8px 0 0">'+acciones+'</div><div id="ed-'+a.id+'"></div></div>';
+  }).join("");
+}
 function pintarReglas(lista){
   var el=$("#reglasTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">No hay reglas por decidir. Se proponen desde el Director: «todo lo de Rostipollos en Alfonso Llorca va a 5.04.17.01».</div>'; return; }
@@ -526,7 +552,7 @@ function pintar(){
   if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
   if (S.vista==="hallazgos") cargarHallazgos();
   if (S.vista==="casos") cargarCasos();
-  if (S.vista==="aprobaciones"){ cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
+  if (S.vista==="aprobaciones"){ cargarAsientos(); cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -589,6 +615,17 @@ $("#main").addEventListener("click", function(ev){
     de.innerHTML='<div style="margin-top:14px;padding:14px;border:1px solid var(--borde);border-radius:6px"><div class="fila"><button class="b gh" data-imprimir-estado="'+ce.companiaId+'">Imprimir</button></div>'+estadoHtml(ce, S.estados.mes)+'</div>'; de.scrollIntoView({behavior:"smooth"}); }
   else if (d.imprimirEstado){ var ci=(S.estados.companias||[]).find(function(x){ return String(x.companiaId)===d.imprimirEstado; }); var w=window.open("","_blank"); if(!w) return msg("El navegador bloqueó la ventana de impresión.", true);
     w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
+  else if (t.id==="aIr"){ cargarAsientos(); }
+  else if (d.elegirBanco){ var ed=$("#ed-"+d.elegirBanco), as=(S.asientos||[]).find(function(x){ return String(x.id)===d.elegirBanco; }); ed.innerHTML='<div class="sub">Cargando bancos…</div>';
+    api("/api/asientos/"+d.elegirBanco+"/opciones").then(function(ops){
+      ed.innerHTML='<div class="fila" style="margin-top:8px"><select id="edD-'+as.id+'">'+ops.map(function(o){ return '<option value="'+o.id+'"'+(o.id===as.diario_id?" selected":"")+'>'+esc(o.nombre)+' ('+esc(o.tipo==="bank"?"banco":o.tipo==="cash"?"caja":"general")+(o.cuenta?" · "+esc(o.cuenta):"")+')</option>'; }).join("")+'</select>'+
+        '<input class="f" type="date" id="edF-'+as.id+'" value="'+esc(as.fecha)+'"><button class="b" data-guardar-asiento="'+as.id+'">Guardar</button></div><div class="sub">El banco elegido pasa a la línea de contrapartida y su diario al asiento.</div>';
+    }).catch(function(e){ ed.innerHTML=''; msg(e.message,true); }); }
+  else if (d.guardarAsiento){ var id=d.guardarAsiento; api("/api/asientos/"+id+"/editar",{diarioId:Number($("#edD-"+id).value), fecha:$("#edF-"+id).value}).then(function(){ msg("Guardado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.aprobarAsiento){ t.disabled=true; api("/api/asientos/"+d.aprobarAsiento+"/aprobar",{}).then(function(j){ msg(j.mensaje+(j.avisos&&j.avisos.length?" "+j.avisos.join(" "):"")); cargarAsientos(); }).catch(function(e){ t.disabled=false; msg(e.message,true); }); }
+  else if (d.rechazarAsiento){ var mo=prompt("¿Por qué se rechaza? (queda en la auditoría; si el pago se registró contra otra cuenta, dígalo)", ""); if(mo===null) return; api("/api/asientos/"+d.rechazarAsiento+"/rechazar",{motivo:mo}).then(function(){ msg("Rechazado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.aplicarAsiento){ if(!confirm("Esto CREA el asiento en Odoo"+(S.estado.publicarAsientos?" y lo publica":" en borrador")+". ¿Continuar?")) return; t.disabled=true; msg("Creando en Odoo…");
+    api("/api/asientos/"+d.aplicarAsiento+"/aplicar",{}).then(function(j){ msg(j.mensaje); cargarAsientos(); }).catch(function(e){ t.disabled=false; msg(e.message,true); cargarAsientos(); }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }
