@@ -80,6 +80,7 @@ a{color:var(--sello)}
     <button data-v="tablero" aria-selected="true">Tablero</button>
     <button data-v="director">Director</button>
     <button data-v="casos">Casos</button>
+    <button data-v="hallazgos">Hallazgos</button>
     <button data-v="aprobaciones">Aprobaciones</button>
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
@@ -173,6 +174,10 @@ V.tablero = function(){
     '<button class="b" data-correr="recepcion">Recepción (Marta)</button>'+
     '<button class="b gh" data-correr="comunicacion">Comunicación (Victor) → borradores</button>'+
     '<button class="b gh" data-correr="conciliacion">Conciliación</button>'+
+    '<button class="b gh" data-correr="diagnostico">Diagnóstico</button>'+
+    '<button class="b gh" data-correr="recurrentes">Recurrentes</button>'+
+    '<button class="b gh" data-correr="bancos">Bancos</button>'+
+    '<button class="b gh" data-correr="documentos">Documentos</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -247,6 +252,49 @@ function invitar(id){
     $("#uEnlace").innerHTML='<div class="aviso"><b>Enlace de acceso'+(j.enviado?" (también enviado por correo)":"")+':</b><br><input class="f" style="width:100%;margin-top:6px" readonly value="'+esc(j.enlace)+'" onclick="this.select()"><div class="sub" style="margin-top:4px">Vale hasta '+fecha(j.vence)+', una sola vez.'+(j.errorCorreo?' No se pudo enviar por correo: '+esc(j.errorCorreo):"")+'</div></div>';
     msg("Enlace listo.");
   }).catch(function(e){ msg(e.message,true); });
+}
+/* ---------- Hallazgos: fase 3A (solo lectura) ---------- */
+var HALLAZGOS = [
+  { id:"diagnostico", titulo:"Diagnóstico — por qué fallan los correos", ayuda:"Reconoce la causa en el texto del error y dice qué hacer y quién. Lo que es configuración se arregla adentro; lo que es del emisor va en el reclamo de Victor." },
+  { id:"recurrentes", titulo:"Recurrentes — lo que llega todos los meses", ayuda:"Proveedores que facturan cada mes a una compañía. Avisa si faltó la factura del último mes cerrado o si el monto se salió de lo normal." },
+  { id:"bancos", titulo:"Bancos — conciliaciones bancarias", ayuda:"Hasta qué mes está conciliada cada cuenta de banco (módulo de TecnoDEM), qué quedó en borrador y qué cuentas con movimiento nunca se concilian." },
+  { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
+];
+V.hallazgos = function(){
+  return HALLAZGOS.map(function(h){ return '<section><h2>'+esc(h.titulo)+'</h2><div class="fila"><div class="sub" style="flex:1">'+esc(h.ayuda)+'</div><button class="b gh" data-correr="'+h.id+'">Correr ahora</button></div><div id="hz-'+h.id+'">Cargando…</div></section>'; }).join("");
+};
+function cargarHallazgos(){ HALLAZGOS.forEach(function(h){ api("/api/hallazgos/"+h.id).then(function(r){ pintarHallazgo(h.id, r); }).catch(function(e){ var el=$("#hz-"+h.id); if(el) el.innerHTML='<div class="sub">'+esc(e.message)+'</div>'; }); }); }
+var ARREGLO = { "configuración":"configuración", emisor:"reclamo al emisor", datos:"datos", ninguno:"nada que corregir", reproceso:"reprocesar", revisar:"revisar" };
+var ESTADO_BANCO = { "atrasada":["atrasada","alto"], "solo-borradores":["solo borradores","alto"], "nunca-conciliada":["nunca conciliada","critico"], "al-dia":["al día","ok"], "sin-movimiento":["sin movimiento","neutro"] };
+function pintarHallazgo(id, r){
+  var el=$("#hz-"+id); if(!el) return;
+  if(!r || !r.corrida){ el.innerHTML='<div class="sub">Todavía no ha corrido. Pulse «Correr ahora».</div>'; return; }
+  var h = '<div class="sub" style="margin-bottom:6px">Última corrida: '+fecha(r.fin||r.corrida)+'</div>'+(r.alertas||[]).map(alerta).join("");
+  if (id==="diagnostico") h += tabla(["Causa",{t:"Correos",n:1},"Compañías","Qué hacer","Quién",""], (r.causas||[]).map(function(c){
+    return ['<b>'+esc(c.titulo)+'</b>'+(c.pendientes&&c.pendientes.length?'<details><summary class="sub" style="cursor:pointer">'+c.pendientes.length+' pendientes concretos</summary><div class="sub">'+c.pendientes.slice(0,20).map(function(p){ return esc(p.compania)+' — '+esc(p.detalle)+' ('+p.correos+')'; }).join("<br>")+'</div></details>':""),
+      n(c.correos), '<span class="sub">'+c.companias.slice(0,3).map(function(x){ return esc(x.compania)+' ('+x.correos+')'; }).join("<br>")+(c.companias.length>3?'<br>+'+(c.companias.length-3)+' más':"")+'</span>',
+      '<span class="sub">'+esc(c.accion)+'</span>', '<span class="sub">'+esc(c.responsable)+'</span>',
+      '<span class="est '+(c.arreglo==="emisor"?"alto":c.arreglo==="ninguno"?"neutro":"ok")+'">'+esc(ARREGLO[c.arreglo]||c.arreglo)+'</span>']; }));
+  if (id==="recurrentes"){
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Sin factura en '+esc(r.mes)+'</h3>'+((r.faltantes||[]).length?tabla(["Compañía","Proveedor",{t:"Monto típico",n:1},"Última factura"], r.faltantes.map(function(f){
+      return [esc(f.compania), esc(f.proveedor)+(f.servicioPublico?' <span class="est alto">servicio</span>':""), n(Math.round(f.montoTipico)), esc(f.ultimoMes)]; })):'<div class="sub">Ninguno.</div>');
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Montos fuera de lo normal</h3>'+((r.desvios||[]).length?tabla(["Compañía","Proveedor",{t:"Este mes",n:1},{t:"Típico",n:1},{t:"Desvío",n:1}], r.desvios.map(function(d){
+      return [esc(d.compania), esc(d.proveedor), n(Math.round(d.monto)), n(Math.round(d.montoTipico)), (d.desvioPct>0?"+":"")+d.desvioPct+" %"]; })):'<div class="sub">Ninguno.</div>');
+  }
+  if (id==="bancos") h += '<div class="sub" style="margin:6px 0">Se espera conciliado hasta <b>'+esc(r.esperadoHasta||"—")+'</b>.</div>'+tabla(["Compañía","Cuenta","Estado","Conciliada hasta",{t:"Atraso",n:1},"Borradores",{t:"Pendientes",n:1}],
+    (r.cuentas||[]).filter(function(c){ return c.estado!=="al-dia" && c.estado!=="sin-movimiento"; }).map(function(c){ var e=ESTADO_BANCO[c.estado]||[c.estado,"neutro"];
+      return [esc(c.compania), esc(c.diario)+'<div class="sub mono">'+esc(c.cuenta||"")+'</div>', '<span class="est '+e[1]+'">'+esc(e[0])+'</span>', esc(c.ultimaConciliada||"—"), c.mesesAtraso==null?"—":n(c.mesesAtraso)+" m",
+        '<span class="sub">'+c.borradores.map(function(b){ return esc(b.nombre); }).slice(0,3).join("<br>")+'</span>', n(c.partidasPendientes)]; }));
+  if (id==="documentos"){
+    var EST = { "ligable":["original encontrado","ok"], "original-no-esta":["original no registrado","alto"], "sin-referencia":["sin referencia","critico"] };
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Notas de crédito sin ligar</h3>'+(!(r.notas||[]).length?'<div class="sub">Ninguna.</div>':tabla(["Compañía","Nota","Contraparte","Estado","Factura original","Motivo"], (r.notas||[]).map(function(x){ var e=EST[x.estado]||[x.estado,"neutro"];
+      return [esc(x.compania)+'<div class="sub">'+esc(x.tipo)+'</div>', esc(x.nota||("#"+x.id))+'<div class="sub">'+esc(x.fecha||"")+' · '+n(x.monto)+'</div>', esc(x.contraparte||"—"), '<span class="est '+e[1]+'">'+esc(e[0])+'</span>',
+        x.original?esc(x.original)+'<div class="sub">por '+esc(x.encontradaPor)+(x.montoMayor?' · ⚠ la nota supera a la factura':"")+'</div>':'<span class="sub mono">'+esc(x.referencia?String(x.referencia).slice(-20):"—")+'</span>',
+        '<span class="sub">'+esc(x.motivo||"")+(x.razon?' — '+esc(x.razon):"")+'</span>']; })));
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Consecutivos de venta con huecos</h3>'+((r.consecutivos||[]).length?tabla(["Compañía","Serie",{t:"Emitidos",n:1},{t:"Faltan",n:1},"Números que faltan"], r.consecutivos.map(function(c){
+      return [esc(c.compania), esc(c.tipo)+'<div class="sub mono">'+esc(c.sucursal)+'-'+esc(c.terminal)+'</div>', n(c.emitidos), n(c.faltantes), '<span class="sub mono">'+esc(c.rangos.join(", "))+(c.saltos&&c.saltos.length?'<br>'+c.saltos.length+' saltos grandes (serie que empezó en otro sistema)':"")+'</span>']; })):'<div class="sub">Sin huecos.</div>');
+  }
+  el.innerHTML = h;
 }
 V.casos = function(){
   var f = S.filtros;
@@ -419,6 +467,7 @@ function pintar(){
   // si había subido a leer algo anterior, a ese mismo punto (mejora 1 del log, variante de Victor).
   if (S.vista==="director"){ var ch=$("#chat"); if(ch){ var ir=function(){ ch.scrollTop = (S.chatPos!=null && !S.chatAlFinal) ? S.chatPos : ch.scrollHeight; }; ir(); requestAnimationFrame(ir); } }
   if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
+  if (S.vista==="hallazgos") cargarHallazgos();
   if (S.vista==="casos") cargarCasos();
   if (S.vista==="aprobaciones"){ cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();

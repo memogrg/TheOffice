@@ -10,11 +10,15 @@ import * as recepcion from "../agents/recepcion.js";
 import * as conciliacion from "../agents/conciliacion.js";
 import * as cuentas from "../agents/cuentas.js";
 import * as comunicacion from "../agents/comunicacion.js";
+import * as diagnostico from "../agents/diagnostico.js";
+import * as recurrentes from "../agents/recurrentes.js";
+import * as bancos from "../agents/bancos.js";
+import * as documentos from "../agents/documentos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {

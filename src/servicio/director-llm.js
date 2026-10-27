@@ -44,8 +44,8 @@ export class DirectorLLM {
         input_schema: { type: "object", properties: { buscar: { type: "string", description: "texto a buscar en el nombre (opcional)" } } } },
       { name: "estado", description: "Estado general: última corrida de cada agente con sus totales y alertas, casos abiertos por frente/receptor/compañía, pendientes de aprobación.",
         input_schema: { type: "object", properties: {} } },
-      { name: "correr_agente", description: "Ejecuta un agente contra Odoo AHORA y devuelve sus totales y alertas. recepcion (Marta): buzón de todas las compañías. conciliacion: correos registrados sin asiento. cuentas: propone cuentas contables de UNA compañía (obligatorio empresa), solo propone. comunicacion (Victor): redacta borradores a partir de la última corrida de Marta, no envía. Tarda de 5 a 60 segundos.",
-        input_schema: { type: "object", properties: { agente: { type: "string", enum: ["recepcion", "conciliacion", "cuentas", "comunicacion"] }, empresa: { type: "integer", description: "id de compañía, obligatorio para cuentas" } }, required: ["agente"] } },
+      { name: "correr_agente", description: "Ejecuta un agente contra Odoo AHORA y devuelve sus totales y alertas. recepcion (Marta): buzón de todas las compañías. conciliacion: correos registrados sin asiento. cuentas: propone cuentas contables de UNA compañía (obligatorio empresa), solo propone. comunicacion (Victor): redacta borradores a partir de la última corrida de Marta, no envía. diagnostico: por qué fallan los correos del buzón (causa, qué hacer, quién; periodos fiscales por abrir). recurrentes: servicios que llegan todos los meses y faltaron o vinieron con monto anormal en el último mes cerrado. bancos: estado de las conciliaciones bancarias por cuenta (atrasadas, borradores, nunca conciliadas). documentos: notas de crédito sin ligar a su factura (propone el vínculo) y huecos en consecutivos de venta. Tarda de 5 a 60 segundos.",
+        input_schema: { type: "object", properties: { agente: { type: "string", enum: ["recepcion", "conciliacion", "cuentas", "comunicacion", "diagnostico", "recurrentes", "bancos", "documentos"] }, empresa: { type: "integer", description: "id de compañía, obligatorio para cuentas" } }, required: ["agente"] } },
       { name: "casos", description: "Casos abiertos que dejó Recepción (uno por documento y receptor): tiquetes, rechazados, duplicados, errores, en cola, cédulas inválidas. Filtra por receptor (correo), compañía (id) o frente (afuera = reclamar al establecimiento; adentro = revisar en la compañía).",
         input_schema: { type: "object", properties: { receptor: { type: "string" }, compania: { type: "integer" }, frente: { type: "string", enum: ["afuera", "adentro"] }, seguimiento: { type: "string", enum: ["abierto", "resuelto", "cerrado", "todos"] }, limite: { type: "integer" } } } },
       { name: "propuestas", description: "Propuestas de corrección de cuenta contable del agente Cuentas, con su estado (propuesta, aprobada, rechazada, aplicada, fallo).",
@@ -54,6 +54,8 @@ export class DirectorLLM {
         input_schema: { type: "object", properties: { estado: { type: "string" } } } },
       { name: "causas_errores", description: "Agrupa los correos en estado error por causa (texto del error normalizado). Es el adelanto del agente Diagnóstico, que todavía no está construido.",
         input_schema: { type: "object", properties: { compania: { type: "integer" } } } },
+      { name: "hallazgos", description: "Detalle de la última corrida de un agente de la fase 3A sin volver a correrlo: diagnostico (causas y pendientes concretos: qué mes abrir, qué impuesto crear), recurrentes (faltantes y desvíos), bancos (cuentas atrasadas, borradores) o documentos (notas de crédito y consecutivos). Filtra por compañía (id).",
+        input_schema: { type: "object", properties: { agente: { type: "string", enum: ["diagnostico", "recurrentes", "bancos", "documentos"] }, compania: { type: "integer" } }, required: ["agente"] } },
       { name: "consultas", description: "Consultas al contador que dejó el agente Cuentas (paso 3 y 4 de la guía de clasificación): líneas con historial dividido o que choca con la naturaleza, gasto que parece personal, o sin identificar en un comodín. Cada una trae cuenta actual, sugerida y motivo.",
         input_schema: { type: "object", properties: { compania: { type: "integer" }, estado: { type: "string", enum: ["abierta", "resuelta", "descartada", "cerrada", "todas"] } } } },
       { name: "revisar_factura", description: "Revisa UNA factura de proveedor línea por línea con el criterio del agente Cuentas: para cada línea devuelve la cuenta actual y la cuenta que el catálogo histórico de esa compañía (o una regla humana) sugiere, con fuente y confianza, si esa cuenta existe en el plan de la compañía y qué hacen las demás compañías con el mismo artículo. Úsala cuando pregunten en qué cuenta debería ir una factura o sus ítems. Solo lee y propone; no cambia nada.",
@@ -77,7 +79,7 @@ export class DirectorLLM {
       }
       case "estado": {
         const ultimas = {};
-        for (const a of ["recepcion", "comunicacion", "conciliacion", "cuentas"]) {
+        for (const a of ["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos"]) {
           const u = db.ultimaCorrida(a);
           ultimas[a] = u ? { corrida: u.id, fin: u.fin, compania: u.compania, totales: u.totales, alertas: (u.alertas || []).map(x => x.texto), porEstado: u.resultado?.porEstado } : null;
         }
@@ -103,6 +105,18 @@ export class DirectorLLM {
       case "causas_errores": {
         const casos = db.casos({ frente: "adentro", companiaId: args.compania || null, seguimiento: "todos", limite: 5000 }).filter(c => c.estado_buzon === "error");
         return { correosConError: casos.length, causas: causasDominantes(casos.map(c => ({ error: c.error, estado: "error" })), { max: 10 }) };
+      }
+      case "hallazgos": {
+        const u = db.ultimaCorrida(args.agente);
+        if (!u) return { error: `${args.agente} no ha corrido todavía; usá correr_agente.` };
+        const r = u.resultado || {};
+        const deCia = x => !args.compania || x.companiaId === args.compania || (x.companias || []).some(c => c.companiaId === args.compania);
+        const corta = (xs, n = 40) => (xs || []).filter(deCia).slice(0, n);
+        const base = { corrida: u.id, fin: u.fin, totales: r.totales, alertas: (r.alertas || []).map(a => a.texto) };
+        if (args.agente === "diagnostico") return { ...base, causas: (r.causas || []).map(c => ({ ...c, ejemplos: undefined, companias: c.companias.filter(deCia).slice(0, 10), pendientes: c.pendientes.filter(p => !args.compania || c.companias.some(x => x.companiaId === args.compania && x.compania === p.compania)).slice(0, 15) })).filter(c => c.companias.length) };
+        if (args.agente === "recurrentes") return { ...base, mes: r.mes, faltantes: corta(r.faltantes), desvios: corta(r.desvios) };
+        if (args.agente === "bancos") return { ...base, esperadoHasta: r.esperadoHasta, cuentas: corta((r.cuentas || []).filter(c => c.estado !== "al-dia" && c.estado !== "sin-movimiento"), 60) };
+        return { ...base, notas: corta(r.notas), consecutivos: corta(r.consecutivos, 20) };
       }
       case "consultas": return db.consultas({ estado: args.estado || "abierta", companiaId: args.compania || null, limite: 150 })
         .map(c => ({ id: c.id, compania: c.compania, factura: c.factura, articulo: c.articulo, proveedor: c.proveedor, cuentaActual: c.cuenta_actual, sugerida: c.sugerida, tipo: c.tipo, motivo: c.motivo, nota: c.nota, estado: c.estado }));

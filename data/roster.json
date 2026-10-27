@@ -128,19 +128,108 @@
       ],
       "escribe": true,
       "avisoEscritura": "Este agente modifica Odoo. Sin --aplicar solo propone."
-    }
-  ],
-  "noConstruidos": [
+    },
     {
       "id": "diagnostico",
       "nombre": "DIAGNÓSTICO",
-      "hace": "Agruparía las causas de los errores del buzón.",
+      "rol": "DIAGNÓSTICO",
+      "modo": "lectura",
+      "hace": "Explica por qué fallan los correos del buzón: reconoce la causa en el texto del error (periodo fiscal cerrado, impuesto que no existe, medio de pago, factura a otra cédula, proveedor repetido, XML dañado, reenvíos) y dice qué hacer, quién y si es configuración o reclamo al emisor.",
+      "noHace": "No reprocesa ni corrige nada; no abre periodos.",
+      "responde": [
+        "por qué fallan los correos",
+        "qué periodos fiscales hay que abrir",
+        "qué se arregla con configuración"
+      ],
       "palabras": {
         "causa": 4,
         "porque fallo": 4,
-        "diagnost": 5
-      }
+        "por que falla": 4,
+        "diagnost": 5,
+        "error": 3,
+        "periodo fiscal": 4,
+        "impuesto": 2
+      },
+      "parametros": [],
+      "escribe": false
     },
+    {
+      "id": "recurrentes",
+      "nombre": "RECURRENTES",
+      "rol": "RECURRENTES",
+      "modo": "lectura",
+      "hace": "Encuentra por compañía los proveedores que facturan todos los meses (luz, agua, teléfono, alquiler, honorarios) y avisa cuáles no llegaron en el último mes cerrado o vinieron con un monto fuera de lo normal.",
+      "noHace": "No registra facturas ni reclama; el reclamo lo redacta Victor.",
+      "responde": [
+        "qué servicios no llegaron este mes",
+        "qué recibos vinieron más caros",
+        "cuáles son los gastos fijos de una compañía"
+      ],
+      "palabras": {
+        "recurrent": 5,
+        "todos los meses": 4,
+        "mensual": 3,
+        "servicio": 2,
+        "luz": 3,
+        "agua": 3,
+        "telefono": 3,
+        "alquiler": 3,
+        "falto": 3,
+        "no llego": 4
+      },
+      "parametros": [],
+      "escribe": false
+    },
+    {
+      "id": "bancos",
+      "nombre": "BANCOS",
+      "rol": "BANCOS",
+      "modo": "lectura",
+      "hace": "Vigila la conciliación bancaria del módulo de TecnoDEM: hasta qué mes está conciliada cada cuenta de banco, qué quedó en borrador, partidas pendientes y cuentas con movimiento que nunca se conciliaron.",
+      "noHace": "No concilia ni importa extractos.",
+      "responde": [
+        "qué cuentas de banco están atrasadas",
+        "qué conciliaciones están en borrador",
+        "qué cuentas nunca se han conciliado"
+      ],
+      "palabras": {
+        "banco": 5,
+        "bancari": 5,
+        "conciliacion bancaria": 6,
+        "extracto": 3,
+        "estado de cuenta": 3,
+        "borrador": 2
+      },
+      "parametros": [],
+      "escribe": false
+    },
+    {
+      "id": "documentos",
+      "nombre": "DOCUMENTOS",
+      "rol": "DOCUMENTOS",
+      "modo": "lectura",
+      "hace": "Encuentra notas de crédito (de compra y venta) que no están ligadas a la factura que corrigen y propone el vínculo, y busca huecos en los consecutivos de venta por compañía, sucursal, terminal y tipo.",
+      "noHace": "No liga ni crea documentos.",
+      "responde": [
+        "qué notas de crédito no están ligadas",
+        "qué consecutivos de venta faltan",
+        "si falta registrar ventas"
+      ],
+      "palabras": {
+        "nota de credito": 6,
+        "notas de credito": 6,
+        "nc": 3,
+        "consecutivo": 5,
+        "ventas": 2,
+        "hueco": 2,
+        "ligar": 3,
+        "vincul": 3
+      },
+      "parametros": [],
+      "escribe": false
+    }
+  ],
+  "noConstruidos": [
     {
       "id": "correccion",
       "nombre": "CORRECCIÓN",

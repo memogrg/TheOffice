@@ -4,6 +4,13 @@ const esc = s => String(s ?? "").replace(/[<>&]/g, c => ({ "<":"&lt;", ">":"&gt;
 const COL = { critico:"#B3402E", alto:"#8A6410", ok:"#1B7F5E" };
 
 export const ETIQUETA = {
+  correosConProblema:"Correos con problema", causas:"Causas distintas", porConfiguracion:"Se arreglan con configuración", porEmisor:"Hay que pedírselo al emisor",
+  porDatos:"Datos a corregir", sinArreglo:"Sin nada que corregir", sinCatalogar:"Causas sin catalogar",
+  recurrentes:"Servicios recurrentes", faltantes:"Recurrentes sin factura del mes", desvios:"Montos fuera de lo normal",
+  cuentas:"Cuentas de banco", alDia:"Conciliadas al día", atrasadas:"Con conciliación atrasada", soloBorradores:"Solo con borradores",
+  nuncaConciliadas:"Nunca conciliadas", sinMovimiento:"Sin movimiento", borradores:"Conciliaciones en borrador", partidasPendientes:"Partidas pendientes", fechasFuturas:"Fechas en el futuro",
+  notasSinLigar:"Notas de crédito sin ligar", ligables:"Con original encontrado", originalNoEsta:"Original no registrado", sinReferencia:"Sin referencia",
+  compra:"De compra", venta:"De venta", seriesConHuecos:"Series de venta con huecos", consecutivosFaltantes:"Consecutivos faltantes",
   total:"Correos revisados", registradas:"Registrados como factura", tiquetes:"Tiquetes electrónicos",
   sinRegistrar:"Sin registrar", pctOk:"Tasa de registro (%)", companias:"Compañías",
   correosDone:"Correos dados por registrados", conClaveLegible:"Con clave legible",

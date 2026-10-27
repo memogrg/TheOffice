@@ -112,6 +112,13 @@ las aplica: borrador → corrige → confirma; publicada → restablece → corr
 si la cuenta actual es un "cajón de sastre" o hay regla humana. Nunca toca facturas pagadas.
 Verifica después de escribir. Recuerda lo revisado en `data/revisadas.json` (`--revisar-todo` lo ignora).
 
+**Fase 3A, solo lectura** (pestaña **Hallazgos**; corren solos: Diagnóstico cada día con Recepción, el resto una vez por semana con Conciliación):
+
+- **DIAGNÓSTICO** — reconoce la causa de cada correo con problema en el buzón (periodo fiscal cerrado, impuesto que no existe, medio de pago, factura a otra cédula, proveedor repetido o inexistente, XML dañado, reenvíos), dice qué hacer y quién, y separa lo que es configuración de lo que hay que pedirle al emisor. Da los pendientes concretos: qué mes abrir en qué compañía, qué impuesto crear.
+- **RECURRENTES** — por compañía y proveedor, lo que se factura todos los meses; avisa lo que faltó en el último mes cerrado y los montos fuera de lo normal (`RECURRENTES_VENTANA`, `RECURRENTES_MINIMO`, `RECURRENTES_DESVIO`, `RECURRENTES_MES`).
+- **BANCOS** — estado de las conciliaciones bancarias del módulo de TecnoDEM por cuenta: al día, atrasada, solo borradores, nunca conciliada (con movimiento), partidas pendientes, fechas en el futuro.
+- **DOCUMENTOS** — notas de crédito de compra y venta sin ligar a la factura que corrigen (propone el vínculo por clave o consecutivo) y huecos en los consecutivos de venta.
+
 **DIRECTOR** — `node src/run.js director "revisá las cuentas de Puuk"`. Puntúa a todos los
 agentes con las palabras del roster, pregunta si hay empate, pide la compañía si falta.
 

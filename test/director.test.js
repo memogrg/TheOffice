@@ -35,7 +35,10 @@ test("enruta a Cuentas con la compañía y a Marta para el buzón", () => {
 
 test("pide la compañía cuando falta, avisa de puestos no construidos, y dice cuando no entiende", () => {
   assert.equal(DirectorCore.decidir("revisá las cuentas", roster, companias).accion, "falta-dato");
-  assert.equal(DirectorCore.decidir("qué causa tienen los errores", roster, companias).accion, "no-construido");
+  assert.equal(DirectorCore.decidir("reprocesá el rezago", roster, companias).accion, "no-construido");
+  const diag = DirectorCore.decidir("qué causa tienen los errores", roster, companias);
+  assert.equal(diag.accion, "ejecutar");
+  assert.equal(diag.agente.id, "diagnostico", "Diagnóstico ya existe");
   assert.equal(DirectorCore.decidir("hola", roster, companias).accion, "no-entiendo");
   assert.equal(DirectorCore.decidir("hola", null, companias).accion, "sin-roster");
 });

@@ -15,13 +15,17 @@ import * as recepcion from "./agents/recepcion.js";
 import * as conciliacion from "./agents/conciliacion.js";
 import * as cuentas from "./agents/cuentas.js";
 import * as comunicacion from "./agents/comunicacion.js";
+import * as diagnostico from "./agents/diagnostico.js";
+import * as recurrentes from "./agents/recurrentes.js";
+import * as bancos from "./agents/bancos.js";
+import * as documentos from "./agents/documentos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "./reporte.js";
 import { enviar } from "./mailer.js";
 import { Director } from "./director.js";
 import { escribirOficina } from "./oficina.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
-const AGENTES = { recepcion, conciliacion, cuentas, comunicacion };
+const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos };
 
 const hhmmss = () => new Date().toLocaleTimeString("es-CR", { hour12: false });
 const bitacora = [];

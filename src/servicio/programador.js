@@ -31,8 +31,8 @@ export class Programador {
   describir() {
     const p = this.plan();
     const partes = [];
-    if (p.diaria) partes.push(`Recepción + Comunicación todos los días a las ${p.diaria}`);
-    if (p.conciliacionDia !== null) partes.push(`Conciliación los ${["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"][p.conciliacionDia]}`);
+    if (p.diaria) partes.push(`Recepción + Comunicación + Diagnóstico todos los días a las ${p.diaria}`);
+    if (p.conciliacionDia !== null) partes.push(`Conciliación, Recurrentes, Bancos y Documentos los ${["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"][p.conciliacionDia]}`);
     return partes.length ? partes.join("; ") : "sin corridas programadas (CORRIDA_DIARIA vacío)";
   }
 
@@ -55,11 +55,19 @@ export class Programador {
       await this.corridas.reportar(corridaId).catch(e => this.log("reporte: " + e.message));
       disparos.push("comunicacion");
       await this.corridas.correr("comunicacion", [], { quienPide: "programador" }).catch(e => this.log("comunicacion: " + e.message));
+      // Diagnóstico es barato y explica lo que Recepción encontró: corre con ella cada día.
+      disparos.push("diagnostico");
+      await this.corridas.correr("diagnostico", [], { quienPide: "programador" }).catch(e => this.log("diagnostico: " + e.message));
     }
     if (p.conciliacionDia !== null && ahora.getDay() === p.conciliacionDia && p.diaria && hhmm >= p.diaria.padStart(5, "0")
         && !this.#yaCorrioHoy("conciliacion", ahora) && !this.corridas.enCurso) {
       disparos.push("conciliacion");
       await this.corridas.correr("conciliacion", [], { quienPide: "programador" }).catch(e => this.log("conciliacion: " + e.message));
+      // El resto de la fase 3A, una vez por semana con Conciliación.
+      for (const a of ["recurrentes", "bancos", "documentos"]) {
+        disparos.push(a);
+        await this.corridas.correr(a, [], { quienPide: "programador" }).catch(e => this.log(`${a}: ${e.message}`));
+      }
     }
     this.ultimoTick = ahora.toISOString();
     return disparos;
