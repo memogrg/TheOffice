@@ -11,6 +11,7 @@ primary_region = "mia"
 
 [env]
   PUERTO = "4180"
+  SERVICIO_HOST = "0.0.0.0"
   TZ = "America/Costa_Rica"
 
 [http_service]

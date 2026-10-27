@@ -9,5 +9,6 @@ COPY . .
 VOLUME ["/app/data", "/app/inquilinos", "/app/reportes"]
 EXPOSE 4180
 ENV PUERTO=4180
+ENV SERVICIO_HOST=0.0.0.0
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:4180/api/inquilinos >/dev/null || exit 1
 CMD ["node", "src/servicio/index.js"]

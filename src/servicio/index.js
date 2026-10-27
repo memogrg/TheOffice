@@ -36,17 +36,26 @@ const contextos = inquilinos.map(inq => {
   return { inquilino: inq, db, corridas, programador, director, cfg: c, raiz: inq.raiz };
 });
 const api = crearApi({ contextos, raizProyecto: RAIZ, log });
+import("./seguridad.js").then(({ avisosDeArranque }) => {
+  for (const x of contextos) for (const a of avisosDeArranque(x.cfg)) console.log(`  ⚠ ${x.inquilino.id}: ${a}`);
+});
 
 const puerto = Number(cfg.PUERTO || 4180);
-api.listen(puerto, () => {
+// Por omisión solo escucha en esta PC (el túnel de Cloudflare se conecta a localhost). En Docker,
+// Fly o Render el proxy llega por la red: ahí se pone SERVICIO_HOST=0.0.0.0.
+const host = cfg.SERVICIO_HOST || "127.0.0.1";
+api.listen(puerto, host, () => {
   console.log(`\n=== Oficina · servicio (${inquilinos.length} inquilino${inquilinos.length === 1 ? "" : "s"}) ===`);
   for (const x of contextos) {
     const c = x.cfg, i = x.inquilino;
     console.log(`  · ${i.nombre} (${i.id})${i.dominio ? " · " + i.dominio : ""}${i.unico ? "" : " · /t/" + i.id}`);
     console.log(`      ${c.ODOO_SIMULADO ? "SIMULADO " + c.ODOO_SIMULADO : (c.ODOO_URL || "(sin ODOO_URL)") + " · base " + (c.ODOO_DB || "?")}`);
-    console.log(`      escritura ${String(c.PERMITIR_ESCRITURA || "").toLowerCase() === "si" ? "PERMITIDA" : "bloqueada"} · SMTP ${c.SMTP_HOST ? "listo" : "sin configurar"} · token ${c.SERVICIO_TOKEN ? "sí" : "no"} · calendario: ${x.programador.describir()}`);
+    const si = k => String(c[k] || "").toLowerCase() === "si";
+    console.log(`      escritura: facturas ${si("PERMITIR_ESCRITURA") ? "PERMITIDA" : "bloqueada"} · asientos ${si("PERMITIR_ESCRITURA_ASIENTOS") ? "PERMITIDA" : "bloqueada"} · plan de cuentas ${si("PERMITIR_ESCRITURA_CUENTAS") ? "PERMITIDO" : "bloqueado"}`);
+    console.log(`      SMTP ${c.SMTP_HOST ? "listo" : "sin configurar"} · token ${c.SERVICIO_TOKEN ? "sí" : "no"} · calendario: ${x.programador.describir()}`);
     console.log(`      Director: ${x.director.disponible ? "modelo de lenguaje (" + x.director.modelo + ")" : "palabras clave"}`);
   }
+  console.log(`    Escucha en ${host}:${puerto}${host === "127.0.0.1" ? " (solo esta PC; el túnel funciona igual)" : ""}`);
   console.log(`    App: http://localhost:${puerto}   API: http://localhost:${puerto}/api/estado\n`);
   for (const x of contextos) x.programador.iniciar();
 });

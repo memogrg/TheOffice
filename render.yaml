@@ -14,6 +14,8 @@ services:
     envVars:
       - key: PUERTO
         value: "4180"
+      - key: SERVICIO_HOST
+        value: "0.0.0.0"
       - key: TZ
         value: America/Costa_Rica
       - key: INQUILINOS

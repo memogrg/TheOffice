@@ -158,6 +158,7 @@ V.tablero = function(){
   var h = '<div class="chips">'+
     '<span class="chip">Odoo: <b>'+esc(e.odoo.simulado ? "SIMULADO "+e.odoo.simulado : e.odoo.url+" · "+e.odoo.db)+'</b></span>'+
     '<span class="chip">Escritura: <b>'+(e.escrituraPermitida?"permitida":"bloqueada")+'</b></span>'+
+    '<span class="chip">Acceso: <b>'+(!e.acceso||!e.acceso.remota?"en esta PC":(e.acceso.sesion?"remoto con sesión personal":"remoto con token (escribir en Odoo pide sesión personal)"))+'</b></span>'+
     '<span class="chip">Asientos: <b>'+(e.escrituraAsientos?(e.publicarAsientos?"crea y publica":"crea en borrador"):"bloqueados")+'</b></span>'+
     '<span class="chip">Correo: <b>'+(e.smtp?"configurado":"sin SMTP")+'</b></span>'+
     '<span class="chip">Calendario: <b>'+esc(e.programador?e.programador.plan:"—")+'</b></span>'+
@@ -241,7 +242,7 @@ V.tableroReceptor = function(){
     '<section><h2>Sus compañías</h2>'+(c.porCompania.length?tabla(["Compañía",{t:"Afuera",n:1},{t:"Adentro",n:1},""],c.porCompania.map(function(x){ return [esc(x.compania||"—"), n(x.afuera), n(x.adentro), '<a href="#" data-ver-cia="'+x.compania_id+'">ver casos</a>']; })):'<div class="sub">Nada abierto. 🙂</div>')+'</section>';
 };
 V.usuarios = function(){
-  return '<section><h2>Usuarios</h2><div class="aviso">Los <b>receptores</b> entran con un enlace y ven solo los casos de su propio correo (el que recibe las facturas en el buzón). Los <b>contables</b> ven todo. '+
+  return '<section><h2>Usuarios</h2><div class="aviso">Los <b>receptores</b> entran con un enlace y ven solo los casos de su propio correo (el que recibe las facturas en el buzón). Los <b>contables</b> ven todo y, desde fuera de la PC del servicio, son los únicos que pueden crear asientos o cambiar el plan de cuentas en Odoo (con el token solo se puede ver y aprobar). '+
     (S.estado.smtp?'El enlace se envía por correo y también queda aquí para copiarlo.':'Sin SMTP configurado, el enlace no se envía: cópielo y mándelo usted (WhatsApp, Teams). Vale 3 días y una sola vez.')+'</div>'+
     '<form class="fila" id="uNuevo"><input class="f" id="uCorreo" type="email" placeholder="correo (el del buzón, p. ej. contabilidad@puuk.cr)" style="flex:2" required><input class="f" id="uNombre" placeholder="nombre" style="flex:1">'+
     '<select id="uRol"><option value="receptor">receptor</option><option value="contable">contable</option></select><button class="b" type="submit">Agregar e invitar</button></form>'+

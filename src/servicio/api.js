@@ -18,6 +18,7 @@ import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
+import { esRemota, ipDe, Limitador, cabeceras, origenAjeno, esJSON, RUTAS_CON_SESION } from "./seguridad.js";
 import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
 import * as activosSrv from "./activos.js";
@@ -46,6 +47,7 @@ export function crearApi(opciones) {
     inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
+    acceso: { remota: ctx.remota === true, token: Boolean(ctx.cfg.SERVICIO_TOKEN), sesion: Boolean(ctx.usuario) },
     escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), escrituraCuentas: cambios.escrituraCuentas(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
     enCurso: ctx.corridas.enCurso,
@@ -384,9 +386,11 @@ export function crearApi(opciones) {
   const listaInquilinos = () => inquilinos.map(i => ({ ...marcaDe(i), prefijo: `/t/${i.id}` }));
 
   // --- el servidor
+  const intentos = new Limitador({ maximo: 10, ventanaMs: 15 * 60 * 1000 });
   const servidor = createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const q = Object.fromEntries(url.searchParams);
+    const remota = esRemota(req), ip = ipDe(req);
     try {
       if (url.pathname === "/api/inquilinos") return responder(res, 200, listaInquilinos());
       const r0 = resolverInquilino(inquilinos, { host: req.headers.host || "", pathname: url.pathname });
@@ -396,17 +400,31 @@ export function crearApi(opciones) {
         return estatico(res, raizProyecto, url.pathname);
       }
       const ctx0 = contextos.find(c => c.inquilino === r0.inquilino);
-      const ctx = { ...ctx0, prefijo: r0.prefijo };
+      const ctx = { ...ctx0, prefijo: r0.prefijo, remota };
       const pathname = r0.ruta;
       const token = ctx.cfg.SERVICIO_TOKEN || "";
       const nombreCookie = `oficina_${ctx.inquilino.id}`;
+      // Sin token, nada se sirve hacia afuera (túnel, proxy u otra máquina): solo esta PC.
+      if (remota && !token) {
+        log(`Acceso remoto rechazado (${ip}) a ${url.pathname}: falta SERVICIO_TOKEN`);
+        return responder(res, 403, { error: "Esta oficina no acepta conexiones remotas: configure SERVICIO_TOKEN en el servicio." });
+      }
+      if (req.method === "POST" && !esJSON(req)) return responder(res, 415, { error: "Las peticiones tienen que ser JSON." });
+      const porBearer = Boolean(token) && igual(String(req.headers.authorization || ""), `Bearer ${token}`);
+      if (req.method === "POST" && !porBearer && origenAjeno(req)) {
+        log(`POST con origen ajeno rechazado (${ip}): ${req.headers.origin} → ${url.pathname}`);
+        return responder(res, 403, { error: "Origen no permitido." });
+      }
+      const entradas = ["/api/entrar", "/api/acceso/entrar"];
+      if (req.method === "POST" && entradas.includes(pathname) && intentos.bloqueado(ip)) return responder(res, 429, { error: "Demasiados intentos. Espere 15 minutos." });
 
       // Entrar: valida el token y lo deja en una cookie (HttpOnly) para la app y la oficina 2D.
       if (pathname === "/api/entrar" && req.method === "POST") {
         const cuerpo = await leerCuerpo(req);
         if (!token) return responder(res, 200, { ok: true, token: false });
-        if (!igual(String(cuerpo.token || ""), token)) return responder(res, 401, { error: "Token incorrecto." });
-        res.setHeader("Set-Cookie", `${nombreCookie}=${firmar(token)}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Lax; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+        if (!igual(String(cuerpo.token || ""), token)) { intentos.fallo(ip); log(`Token incorrecto desde ${ip}`); return responder(res, 401, { error: "Token incorrecto." }); }
+        intentos.limpiar(ip);
+        res.setHeader("Set-Cookie", `${nombreCookie}=${firmar(token)}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Strict; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
         return responder(res, 200, { ok: true, token: true });
       }
       if (pathname === "/api/salir" && req.method === "POST") {
@@ -418,11 +436,11 @@ export function crearApi(opciones) {
       if (pathname === "/api/acceso/entrar" && req.method === "POST") {
         const cuerpo = await leerCuerpo(req);
         const u = ctx.db.canjearInvitacion(hash(String(cuerpo.token || "")));
-        if (!u) return responder(res, 401, { error: "El enlace no es válido, ya se usó o venció. Pida uno nuevo." });
+        if (!u) { intentos.fallo(ip); return responder(res, 401, { error: "El enlace no es válido, ya se usó o venció. Pida uno nuevo." }); }
         const id = randomBytes(24).toString("base64url");
         ctx.db.crearSesion(hash(id), u.id);
         ctx.db.auditar(u.correo, "entrar", "usuario", u.id);
-        res.setHeader("Set-Cookie", `${nombreSesion}=${id}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Lax; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+        res.setHeader("Set-Cookie", `${nombreSesion}=${id}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Strict; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
         return responder(res, 200, { ok: true, usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol } });
       }
       if (pathname === "/api/acceso/salir" && req.method === "POST") {
@@ -432,7 +450,7 @@ export function crearApi(opciones) {
       }
 
       // ¿Quién es? (1) token de servicio: contable sin nombre fijo; (2) sesión de un usuario registrado.
-      const porToken = Boolean(token) && ((req.headers.authorization === `Bearer ${token}`) || igual(cookie(req, nombreCookie), firmar(token)));
+      const porToken = porBearer || (Boolean(token) && igual(cookie(req, nombreCookie), firmar(token)));
       const usuario = ctx.db.usuarioDeSesion(hash(cookie(req, nombreSesion)));
       ctx.usuario = usuario;
       // Sin SERVICIO_TOKEN configurado y sin sesión, todo es contable (modo local de siempre).
@@ -456,6 +474,11 @@ export function crearApi(opciones) {
         if (!r) return responder(res, 404, { error: "No existe esa ruta." });
         const rol = usuario ? usuario.rol : "contable";
         if (!r.roles.includes(rol) && !r.roles.includes("publico")) return responder(res, 403, { error: "Su acceso no permite esta acción." });
+        // Escribir en Odoo o mandar correos desde afuera: con sesión personal, no con el token compartido.
+        if (remota && !usuario && RUTAS_CON_SESION.some(re => re.test(pathname)) && String(ctx.cfg.ESCRITURA_SIN_SESION || "").toLowerCase() !== "si") {
+          ctx.db.auditar(`token (${ip})`, "rechazado", "ruta", null, { ruta: pathname, motivo: "escritura remota sin sesión" });
+          return responder(res, 403, { error: "Desde fuera de la PC del servicio, ejecutar en Odoo o enviar correos requiere entrar con su enlace personal (pestaña Usuarios): así la auditoría lleva su nombre verificado." });
+        }
         let cuerpo = {};
         if (req.method === "POST") cuerpo = await leerCuerpo(req);
         const quien = usuario ? (usuario.nombre ? `${usuario.nombre} <${usuario.correo}>` : usuario.correo) : String(req.headers["x-quien"] || cuerpo.quien || "anónimo").slice(0, 120);
@@ -471,7 +494,7 @@ export function crearApi(opciones) {
         const rutaEstado = join(ctx.raiz, "data", "estado.json");
         const estado = existsSync(rutaEstado) ? JSON.parse(readFileSync(rutaEstado, "utf8")) : { agentes: [] };
         const html = generarOficina({ raizProyecto, raiz: ctx.raiz, cfg: ctx.cfg, estado, marca: ctx.corridas?.marca || ctx.inquilino, prefijo: ctx.corridas?.prefijo ?? (r0.prefijo || "") });
-        res.writeHead(200, { "Content-Type": TIPOS[".html"], "Cache-Control": "no-store" });
+        res.writeHead(200, cabeceras({ "Content-Type": TIPOS[".html"], "Cache-Control": "no-store" }, { html: true }));
         return res.end(html);
       }
       return estatico(res, raizProyecto, pathname);
@@ -488,7 +511,7 @@ function estatico(res, raizProyecto, pathname) {
   const base = join(raizProyecto, "ui", "app");
   const archivo = normalize(join(base, pathname === "/" ? "index.html" : pathname));
   if (!archivo.startsWith(base + sep) || !existsSync(archivo)) return responder(res, 404, { error: "No existe." });
-  res.writeHead(200, { "Content-Type": TIPOS[extname(archivo)] || "application/octet-stream" });
+  res.writeHead(200, cabeceras({ "Content-Type": TIPOS[extname(archivo)] || "application/octet-stream" }, { html: extname(archivo) === ".html" }));
   res.end(readFileSync(archivo));
 }
 
@@ -509,9 +532,9 @@ function cookie(req, nombre) {
   const m = String(req.headers.cookie || "").split(";").map(s => s.trim()).find(s => s.startsWith(nombre + "="));
   return m ? decodeURIComponent(m.slice(nombre.length + 1)) : "";
 }
-function redirigir(res, a) { res.writeHead(302, { Location: a }); res.end(); }
+function redirigir(res, a) { res.writeHead(302, cabeceras({ Location: a })); res.end(); }
 function responder(res, codigo, obj) {
-  res.writeHead(codigo, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.writeHead(codigo, cabeceras({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }));
   res.end(JSON.stringify(obj));
 }
 function leerCuerpo(req) {

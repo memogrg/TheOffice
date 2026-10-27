@@ -134,6 +134,10 @@ Verifica después de escribir. Recuerda lo revisado en `data/revisadas.json` (`-
 **DIRECTOR** — `node src/run.js director "revisá las cuentas de Puuk"`. Puntúa a todos los
 agentes con las palabras del roster, pregunta si hay empate, pide la compañía si falta.
 
+## Seguridad
+
+Por omisión el servicio solo escucha en esta PC; lo remoto (túnel, proxy, otra máquina) necesita `SERVICIO_TOKEN`, y escribir en Odoo desde afuera necesita además la sesión personal de un usuario contable. Hay límite de intentos, protección CSRF y cabeceras de seguridad. Detalle y pasos a mano (usuario de servicio en Odoo, rotar claves, repositorio privado): `docs/seguridad.md`.
+
 ## Configuración — `.env`
 
 | Variable | Para qué |
