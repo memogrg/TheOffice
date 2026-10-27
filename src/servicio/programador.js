@@ -64,7 +64,7 @@ export class Programador {
       disparos.push("conciliacion");
       await this.corridas.correr("conciliacion", [], { quienPide: "programador" }).catch(e => this.log("conciliacion: " + e.message));
       // El resto de la fase 3A, una vez por semana con Conciliación.
-      for (const a of ["recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos"]) {
+      for (const a of ["recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion"]) {
         disparos.push(a);
         await this.corridas.correr(a, [], { quienPide: "programador" }).catch(e => this.log(`${a}: ${e.message}`));
       }

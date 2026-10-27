@@ -34,6 +34,7 @@ export const ETIQUETA = {
   sinTasa:"Sin tipo de cambio", cuentasSinMoneda:"Cuentas en dólares sin moneda", asientosSugeridos:"Asientos sugeridos",
   diferidos:"Diferidos activos", cuotaDelMes:"Con cuota del mes", atrasados:"Con cuotas atrasadas", terminados:"Terminados", porEmpezar:"Por empezar",
   cuentaInvalida:"Con cuenta inválida", montoDelMes:"Monto a amortizar",
+  activos:"Activos registrados", depreciados:"Totalmente depreciados", bajas:"Dados de baja", yaAMano:"Compañías que ya depreciaron a mano", valorEnLibros:"Valor en libros",
   documentosAfuera:"Documentos distintos a reclamar", documentosAdentro:"Documentos distintos a revisar"
 };
 

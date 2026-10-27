@@ -16,11 +16,11 @@ const CAMPOS = {
 };
 const campo = (fila, k) => { for (const n of CAMPOS[k]) if (fila[n] != null && String(fila[n]).trim() !== "") return String(fila[n]).trim(); return null; };
 
-async function companias(corridas) {
+export async function companias(corridas) {
   const odoo = corridas.crearCliente({ meta: { escribe: false } });
   return odoo.leer("res.company", "search_read", [[], ["name"]], {});
 }
-const resolverCia = (lista, v) => {
+export const resolverCia = (lista, v) => {
   if (v == null) return null;
   if (/^\d+$/.test(String(v))) return lista.find(c => c.id === Number(v)) || null;
   const n = String(v).toLowerCase();

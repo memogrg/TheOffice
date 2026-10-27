@@ -343,6 +343,31 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "depreciacion",
+      "nombre": "DEPRECIACIÓN",
+      "rol": "DEPRECIACIÓN",
+      "modo": "lectura",
+      "hace": "Con los activos fijos registrados en la app, arma cada mes por compañía el asiento de depreciación lineal (gasto contra depreciación acumulada), con los meses atrasados; no lo propone si la compañía ya depreció a mano ese mes.",
+      "noHace": "No crea el asiento en Odoo ni usa el módulo de activos de Odoo.",
+      "responde": [
+        "cuánto se deprecia este mes",
+        "cuál es el valor en libros de los activos",
+        "qué compañías deprecian a mano"
+      ],
+      "palabras": {
+        "depreciacion": 6,
+        "depreciar": 6,
+        "activo fijo": 6,
+        "activos fijos": 6,
+        "valor en libros": 5,
+        "vida util": 5,
+        "vehiculo": 2,
+        "mobiliario": 2
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

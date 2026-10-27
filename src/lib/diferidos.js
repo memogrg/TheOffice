@@ -12,13 +12,15 @@ export function calendario({ monto, meses, inicio }) {
 }
 
 // Cuotas vencidas hasta el mes indicado (inclusive) que todavía no se registraron.
-export function pendientes(d, hasta, aplicados = new Set()) {
-  return calendario(d).filter(c => c.mes <= hasta && !aplicados.has(c.mes));
+// Con hechoHasta (AAAA-MM) se excluyen los meses ya registrados fuera de la app; con hastaBaja, los
+// posteriores a la baja del bien.
+export function pendientes(d, hasta, aplicados = new Set(), { hechoHasta = null, baja = null } = {}) {
+  return calendario(d).filter(c => c.mes <= hasta && !aplicados.has(c.mes) && !(hechoHasta && c.mes <= hechoHasta) && !(baja && c.mes > baja));
 }
 
 // Avance: cuántas cuotas van, cuánto se amortizó y el saldo por amortizar.
-export function avance(d, aplicados = new Set()) {
-  const cal = calendario(d), hechas = cal.filter(c => aplicados.has(c.mes));
+export function avance(d, aplicados = new Set(), { hechoHasta = null } = {}) {
+  const cal = calendario(d), hechas = cal.filter(c => aplicados.has(c.mes) || (hechoHasta && c.mes <= hechoHasta));
   const amortizado = r2(hechas.reduce((t, c) => t + c.cuota, 0));
   return { cuotas: cal.length, registradas: hechas.length, amortizado, saldo: r2(r2(d.monto) - amortizado), fin: cal[cal.length - 1].mes };
 }

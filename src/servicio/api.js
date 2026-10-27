@@ -20,6 +20,7 @@ import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
 import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
+import * as activosSrv from "./activos.js";
 import { avance, calendario } from "../lib/diferidos.js";
 import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 
@@ -50,7 +51,7 @@ export function crearApi(opciones) {
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -113,7 +114,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente);
     return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
   });
@@ -261,6 +262,27 @@ export function crearApi(opciones) {
     return r.error ? error(400, r.error) : r;
   });
   ruta("POST", "/api/diferidos/:id/anular", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.anularDiferido(Number(p.id), quien, cuerpo.nota || null) }));
+
+  // --- activos fijos (ítem 16): registro en la app; la depreciación va a la cola de asientos
+  ruta("GET", "/api/activos", (q, p, c, quien, ctx) => {
+    const ap = ctx.db.mesesAplicadosActivos();
+    return ctx.db.activos({ estado: q.estado || "activo", companiaId: q.compania ? Number(q.compania) : null }).map(a => {
+      const s = { monto: Number(a.costo) - Number(a.residual || 0), meses: a.vida_meses, inicio: a.inicio }, av = avance(s, ap.get(a.id) || new Set(), { hechoHasta: a.hecho_hasta });
+      return { ...a, ...av, cuota: calendario(s)[0].cuota, valorEnLibros: Math.round((Number(a.costo) - av.amortizado) * 100) / 100 };
+    });
+  });
+  ruta("POST", "/api/activos", async (q, p, cuerpo, quien, ctx) => {
+    const r = await activosSrv.registrar({ corridas: ctx.corridas, db: ctx.db, d: cuerpo, quien });
+    return r.error ? error(400, r.error) : r;
+  });
+  ruta("POST", "/api/activos/importar", async (q, p, cuerpo, quien, ctx) => {
+    const r = await activosSrv.importar({ corridas: ctx.corridas, db: ctx.db, texto: cuerpo.texto, quien, probar: cuerpo.probar === true, companiaPorDefecto: cuerpo.compania || null });
+    return r.error ? error(400, r.error) : r;
+  });
+  ruta("POST", "/api/activos/:id/baja", (q, p, cuerpo, quien, ctx) => {
+    if (!/^\d{4}-\d{2}$/.test(String(cuerpo.mes || ""))) return error(400, "Indique el mes de la baja (AAAA-MM).");
+    return { ok: ctx.db.darDeBajaActivo(Number(p.id), cuerpo.mes, quien, cuerpo.nota || null) };
+  });
 
   // --- correos de Victor
   ruta("GET", "/api/correos", (q, p, c, quien, ctx) => esReceptor(ctx)

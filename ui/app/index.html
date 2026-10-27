@@ -83,6 +83,7 @@ a{color:var(--sello)}
     <button data-v="hallazgos">Hallazgos</button>
     <button data-v="aprobaciones">Aprobaciones</button>
     <button data-v="diferidos">Diferidos</button>
+    <button data-v="activos">Activos fijos</button>
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
     <button data-v="auditoria">Auditoría</button>
@@ -184,6 +185,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="estados">Estados financieros</button>'+
     '<button class="b gh" data-correr="cambiario">Diferencial cambiario</button>'+
     '<button class="b gh" data-correr="diferidos">Diferidos</button>'+
+    '<button class="b gh" data-correr="depreciacion">Depreciación</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -434,7 +436,7 @@ function pintarAsientos(lista){
       : a.move_name ? '<span class="sub">Asiento '+esc(a.move_name)+(a.resultado&&a.resultado.estadoOdoo?' ('+esc(a.resultado.estadoOdoo==="posted"?"publicado":"borrador")+')':'')+'</span>'
       : a.resultado&&a.resultado.error ? '<span class="sub" style="color:var(--critico)">'+esc(a.resultado.error)+'</span>' : (a.nota?'<span class="sub">'+esc(a.nota)+'</span>':'');
     return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
-      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.origen==="diferidos"?"Diferidos":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
+      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.origen==="diferidos"?"Diferidos":a.origen==="depreciacion"?"Depreciación":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
       '<div style="font-size:13px">'+esc(a.referencia||"")+'</div><div class="sub" style="margin-bottom:6px">'+esc(a.motivo||"")+'</div>'+
       tabla(["Cuenta","Descripción",{t:"Débito",n:1},{t:"Crédito",n:1}], a.lineas.map(function(l){
         return [(l.cuentaId?esc(l.cuenta):'<span class="est alto">'+esc(l.cuenta)+'</span>')+(l.fuente?'<div class="sub">'+esc(l.fuente)+'</div>':''), '<span class="sub">'+esc(l.descripcion||"")+'</span>', l.debito?n(l.debito):"", l.credito?n(l.credito):""]; }))+
@@ -575,6 +577,45 @@ function importarDiferidos(probar){
     }).catch(function(e){ msg(e.message,true); });
   }; rd.readAsText(f);
 }
+/* ---------- Activos fijos (ítem 16): registro en la app, depreciación a la cola de asientos ---------- */
+V.activos = function(){
+  return '<section><h2>Activos fijos</h2><div class="aviso">En IASIMA los activos no están cargados en Odoo y la depreciación se hace a mano. Registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
+    '<form class="fila" id="afForm"><select id="afCia" required><option value="">compañía…</option>'+opcionesCia()+'</select>'+
+    '<input class="f" id="afDesc" placeholder="activo (p. ej. Pickup Toyota placa …)" style="flex:1;min-width:200px" required><input class="f" id="afCat" placeholder="categoría" style="width:120px">'+
+    '<input class="f" id="afAcu" placeholder="cuenta dep. acumulada" style="width:160px" required><input class="f" id="afGas" placeholder="cuenta gasto depreciación" style="width:170px" required>'+
+    '<input class="f" id="afCta" placeholder="cuenta del activo (opcional)" style="width:170px">'+
+    '<input class="f" id="afCosto" placeholder="costo" style="width:120px" required><input class="f" id="afRes" placeholder="residual" style="width:100px">'+
+    '<input class="f" id="afVida" type="number" min="1" placeholder="vida (meses)" style="width:110px" required>'+
+    '<label class="sub">inicio <input class="f" id="afIni" type="month" required></label><label class="sub">depreciado a mano hasta <input class="f" id="afHecho" type="month"></label>'+
+    '<button class="b" type="submit">Registrar</button></form>'+
+    '<div class="fila" style="margin-top:4px"><span class="sub">O suba la hoja de activos del cliente como <b>CSV</b>: compañía, activo, categoría, cuenta depreciación acumulada, cuenta gasto depreciación, costo, valor residual, vida útil (años o meses), inicio, depreciado hasta.</span></div>'+
+    '<div class="fila"><input type="file" id="afArchivo" accept=".csv,text/csv,text/plain"><select id="afCiaDef"><option value="">compañía (si la hoja no la trae)…</option>'+opcionesCia()+'</select>'+
+    '<button class="b gh" id="afProbar">Revisar el archivo</button><button class="b" id="afImportar">Importar</button></div><div id="afImport"></div></section>'+
+    '<section><h2>Registrados</h2><div class="fila"><select id="afFiltro"><option value="">todas las compañías</option>'+opcionesCia()+'</select><select id="afEstado"><option value="activo">en uso</option><option value="baja">dados de baja</option><option value="todos">todos</option></select><button class="b gh" id="afIr">Ver</button>'+
+    '<span style="flex:1"></span><button class="b gh" data-correr="depreciacion">Proponer depreciación ahora</button></div><div id="afTabla">Cargando…</div></section>';
+};
+function cargarActivos(){ var f=$("#afFiltro"), e=$("#afEstado"); api("/api/activos?estado="+(e?e.value:"activo")+(f&&f.value?"&compania="+f.value:"")).then(pintarActivos).catch(function(x){ msg(x.message,true); }); }
+function pintarActivos(lista){
+  var el=$("#afTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Nada registrado con ese filtro.</div>'; return; }
+  el.innerHTML = tabla(["Compañía","Activo","Cuentas",{t:"Costo",n:1},{t:"Por mes",n:1},"Vida","Depreciado",{t:"Valor en libros",n:1},""], lista.map(function(a){
+    return [esc(a.compania), esc(a.descripcion)+'<div class="sub">'+esc(a.categoria||"")+(a.residual?' · residual '+mon(a.residual):'')+(a.hecho_hasta?' · a mano hasta '+esc(a.hecho_hasta):'')+(a.baja_mes?' · baja '+esc(a.baja_mes):'')+'</div>',
+      '<span class="sub">'+esc(a.cuenta_gasto)+'<br>→ '+esc(a.cuenta_acumulada)+'</span>', mon(a.costo), mon(a.cuota), '<span class="sub">'+n(a.vida_meses)+' meses<br>'+esc(a.inicio)+' a '+esc(a.fin)+'</span>',
+      n(a.registradas)+' de '+n(a.cuotas)+'<div class="sub">'+mon(a.amortizado)+'</div>', mon(a.valorEnLibros),
+      a.estado==="activo"?'<button class="b rj" data-baja-activo="'+a.id+'">Dar de baja</button>':'']; }));
+}
+function importarActivos(probar){
+  var f=$("#afArchivo").files[0]; if(!f) return msg("Elija el archivo CSV.", true);
+  var rd=new FileReader(); rd.onload=function(){
+    msg(probar?"Revisando…":"Importando…");
+    api("/api/activos/importar",{texto:rd.result, probar:probar, compania:$("#afCiaDef").value?Number($("#afCiaDef").value):null}).then(function(j){
+      $("#afImport").innerHTML='<div class="aviso">'+j.filas+' filas: <b>'+j.validos+' válidas</b>'+(probar?' (no se guardó nada; pulse Importar)':', '+j.creados+' registradas')+(j.errores.length?', <b style="color:var(--critico)">'+j.errores.length+' con error</b>':'')+'.</div>'+
+        (j.errores.length?tabla(["Fila","Qué falta"], j.errores.map(function(e){ return [n(e.fila), '<span class="sub">'+esc(e.errores.join(" "))+'</span>']; })):'')+
+        (probar&&j.vista.length?tabla(["Fila","Compañía","Activo",{t:"Costo",n:1},"Vida","Inicio","A mano hasta"], j.vista.slice(0,30).map(function(v){ return [n(v.fila), esc(v.compania), esc(v.descripcion), mon(v.costo), n(v.vidaMeses)+' m', esc(v.inicio), esc(v.hechoHasta||"—")]; })):'');
+      msg(probar?"Revisión lista.":"Importados."); if(!probar) cargarActivos();
+    }).catch(function(e){ msg(e.message,true); });
+  }; rd.readAsText(f);
+}
 V.corridas = function(){ return '<section><h2>Corridas</h2><div id="corrdTabla">Cargando…</div></section>'; };
 function pintarCorridas(lista){
   var el=$("#corrdTabla"); if(!el) return;
@@ -646,6 +687,7 @@ function pintar(){
   if (S.vista==="aprobaciones"){ cargarAsientos(); cargarCambios(); mostrarCamposCambio(); cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="diferidos") cargarDiferidos();
+  if (S.vista==="activos") cargarActivos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
   if (S.vista==="usuarios") api("/api/usuarios").then(pintarUsuarios);
@@ -682,6 +724,11 @@ $("#main").addEventListener("change", function(ev){
   var d=ev.target.dataset; if (d && d.incluirCambio) api("/api/cambios/"+d.incluirCambio+"/incluir",{compania:Number(d.cia), incluido:ev.target.checked}).then(cargarCambios).catch(function(e){ msg(e.message,true); });
 });
 $("#main").addEventListener("submit", function(ev){
+  if (ev.target.id==="afForm"){ ev.preventDefault();
+    var a={ compania:Number($("#afCia").value), descripcion:$("#afDesc").value.trim(), categoria:$("#afCat").value.trim()||null, cuentaAcumulada:$("#afAcu").value.trim(), cuentaGasto:$("#afGas").value.trim(),
+      cuentaActivo:$("#afCta").value.trim()||null, costo:$("#afCosto").value.trim(), residual:$("#afRes").value.trim()||0, vidaMeses:Number($("#afVida").value), inicio:$("#afIni").value, hechoHasta:$("#afHecho").value||null };
+    api("/api/activos", a).then(function(j){ msg("Registrado: "+mon(j.cuota)+" por mes hasta "+j.fin+"."); ev.target.reset(); cargarActivos(); }).catch(function(e){ msg(e.message,true); });
+    return; }
   if (ev.target.id==="dfForm"){ ev.preventDefault();
     var b={ compania:Number($("#dfCia").value), descripcion:$("#dfDesc").value.trim(), cuentaActivo:$("#dfAct").value.trim(), cuentaGasto:$("#dfGas").value.trim(),
       monto:$("#dfMonto").value.trim(), meses:Number($("#dfMeses").value), inicio:$("#dfIni").value, referencia:$("#dfRef").value.trim()||null };
@@ -729,6 +776,11 @@ $("#main").addEventListener("click", function(ev){
     w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
   else if (t.id==="aIr"){ cargarAsientos(); }
   else if (t.id==="dfIr"){ cargarDiferidos(); }
+  else if (t.id==="afIr"){ cargarActivos(); }
+  else if (t.id==="afProbar"){ importarActivos(true); }
+  else if (t.id==="afImportar"){ if(confirm("¿Registrar las filas válidas del archivo?")) importarActivos(false); }
+  else if (d.bajaActivo){ var mb=prompt("Mes de la baja (AAAA-MM): se deprecia hasta ese mes inclusive", new Date().toISOString().slice(0,7)); if(!mb) return; var nb=prompt("Motivo (venta, desecho, robo…)", "")||"";
+    api("/api/activos/"+d.bajaActivo+"/baja",{mes:mb, nota:nb}).then(function(){ msg("Dado de baja."); cargarActivos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (t.id==="dfProbar"){ importarDiferidos(true); }
   else if (t.id==="dfImportar"){ if(confirm("¿Registrar las filas válidas del archivo?")) importarDiferidos(false); }
   else if (d.anularDiferido){ var nd=prompt("¿Por qué se anula? (se deja de proponer; lo ya registrado en Odoo no se toca)", ""); if(nd===null) return; api("/api/diferidos/"+d.anularDiferido+"/anular",{nota:nd}).then(function(){ msg("Anulado."); cargarDiferidos(); }).catch(function(e){ msg(e.message,true); }); }

@@ -263,6 +263,7 @@ export class BaseDeDatos {
     // fecha en que se revierte solo (revaluaciones de fin de mes: se revierten el día 1)
     if (!columnas("asientos").has("reversa")) this.db.exec("ALTER TABLE asientos ADD COLUMN reversa TEXT");
     this.#tablaDiferidos();
+    this.#tablaActivos();
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -330,6 +331,64 @@ export class BaseDeDatos {
         const s = out.get(l.diferidoId) || new Set();
         for (const m of l.meses || []) s.add(m);
         out.set(l.diferidoId, s);
+      }
+    return out;
+  }
+
+  // --- activos fijos (ítem 16): registro y depreciación lineal; los asientos, en la cola
+  #tablaActivos() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS activos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      descripcion TEXT NOT NULL,
+      categoria   TEXT,
+      cuenta_activo_id INTEGER, cuenta_activo TEXT,                 -- costo (informativa)
+      cuenta_acumulada_id INTEGER NOT NULL, cuenta_acumulada TEXT,  -- depreciación acumulada
+      cuenta_gasto_id INTEGER NOT NULL, cuenta_gasto TEXT,          -- gasto por depreciación
+      costo       REAL NOT NULL,
+      residual    REAL NOT NULL DEFAULT 0,
+      vida_meses  INTEGER NOT NULL,
+      inicio      TEXT NOT NULL,        -- AAAA-MM del primer mes que se deprecia
+      hecho_hasta TEXT,                 -- AAAA-MM: depreciado fuera de la app hasta este mes
+      referencia  TEXT,
+      estado      TEXT NOT NULL DEFAULT 'activo',   -- activo | baja
+      baja_mes    TEXT,
+      creado_por  TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      nota        TEXT
+    )`);
+  }
+  registrarActivo(a, quien) {
+    const x = this.correr(`INSERT INTO activos (compania_id, compania, descripcion, categoria, cuenta_activo_id, cuenta_activo, cuenta_acumulada_id, cuenta_acumulada, cuenta_gasto_id, cuenta_gasto,
+      costo, residual, vida_meses, inicio, hecho_hasta, referencia, creado_por, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      a.companiaId, a.compania ?? null, a.descripcion, a.categoria ?? null, a.cuentaActivoId ?? null, a.cuentaActivo ?? null, a.cuentaAcumuladaId, a.cuentaAcumulada ?? null,
+      a.cuentaGastoId, a.cuentaGasto ?? null, Math.round(Number(a.costo) * 100) / 100, Math.round(Number(a.residual || 0) * 100) / 100, Number(a.vidaMeses), a.inicio, a.hechoHasta ?? null,
+      a.referencia ?? null, quien, this.#ahora());
+    const id = Number(x.lastInsertRowid);
+    this.auditar(quien, "registrar", "activo", id, { compania: a.compania, descripcion: a.descripcion, costo: a.costo, vidaMeses: a.vidaMeses, inicio: a.inicio });
+    return this.activo(id);
+  }
+  activo(id) { return this.uno("SELECT * FROM activos WHERE id=?", id); }
+  activos({ estado = "activo", companiaId = null } = {}) {
+    const cond = [], p = [];
+    if (estado !== "todos") { cond.push("estado=?"); p.push(estado); }
+    if (companiaId) { cond.push("compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT * FROM activos${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY compania, inicio, id`, ...p);
+  }
+  // Baja (venta, desecho): se deprecia hasta el mes de la baja inclusive y después ya no.
+  darDeBajaActivo(id, mes, quien, nota = null) {
+    const r = this.correr("UPDATE activos SET estado='baja', baja_mes=?, nota=? WHERE id=? AND estado='activo'", mes, nota, id);
+    if (r.changes) this.auditar(quien, "baja", "activo", id, { mes, nota });
+    return r.changes > 0;
+  }
+  mesesAplicadosActivos() {
+    const out = new Map();
+    for (const a of this.todos("SELECT lineas FROM asientos WHERE origen='depreciacion' AND estado='aplicada'"))
+      for (const l of JSON.parse(a.lineas || "[]")) if (l.activoId) {
+        const s = out.get(l.activoId) || new Set();
+        for (const m of l.meses || []) s.add(m);
+        out.set(l.activoId, s);
       }
     return out;
   }

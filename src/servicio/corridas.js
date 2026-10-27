@@ -18,11 +18,12 @@ import * as cierre from "../agents/cierre.js";
 import * as estados from "../agents/estados.js";
 import * as cambiario from "../agents/cambiario.js";
 import * as diferidos from "../agents/diferidos.js";
+import * as depreciacion from "../agents/depreciacion.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -112,6 +113,9 @@ export class Corridas {
     // Diferidos: el asiento del mes incluye las cuotas atrasadas, así que también reemplaza a los anteriores.
     if (quien === "diferidos" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "diferidos", reemplazarAnteriores: true }) };
+    }
+    if (quien === "depreciacion" && Array.isArray(r.asientosSugeridos)) {
+      return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "depreciacion", reemplazarAnteriores: true }) };
     }
     return {};
   }
