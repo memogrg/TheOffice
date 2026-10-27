@@ -168,7 +168,7 @@ V.tablero = function(){
     tile("Compañías", t.companias, "con correos en el buzón")+
     tile("Por reclamar afuera", ab["afuera|abierto"]||0, "documentos abiertos")+
     tile("Por revisar adentro", ab["adentro|abierto"]||0, "documentos abiertos")+
-    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas":"")+(e.pendientes.asientos?" · "+e.pendientes.asientos+" asientos":"")+(e.pendientes.consultas?" · "+e.pendientes.consultas+" consultas":""))+
+    tile("Propuestas por decidir", e.pendientes.propuestas, e.pendientes.aprobadas+" aprobadas sin aplicar"+(e.pendientes.reglas?" · "+e.pendientes.reglas+" reglas":"")+(e.pendientes.asientos?" · "+e.pendientes.asientos+" asientos":"")+(e.pendientes.cambios?" · "+e.pendientes.cambios+" cambios":"")+(e.pendientes.consultas?" · "+e.pendientes.consultas+" consultas":""))+
     tile("Correos por aprobar", e.pendientes.correos, e.pendientes.correosAprobados+" aprobados sin enviar")+
     '</div>';
   h += '<section><h2>Correr ahora</h2><div class="fila">'+
@@ -383,6 +383,19 @@ V.aprobaciones = function(){
       (e.escrituraAsientos?'Crear en Odoo está <b>habilitado</b>'+(e.publicarAsientos?' y se publican al crearse.':'; se crean en <b>borrador</b> para revisarlos en Odoo.'):'Crear en Odoo está <b>bloqueado</b> (PERMITIR_ESCRITURA_ASIENTOS): por ahora solo se aprueban.')+'</div>'+
     '<div class="fila"><select id="aEstado"><option value="abiertos">por decidir y aprobados</option><option value="propuesta">por decidir</option><option value="aprobada">aprobados</option><option value="aplicada">creados en Odoo</option><option value="rechazada">rechazados</option><option value="fallo">con fallo</option><option value="obsoleta">obsoletos</option><option value="todos">todos</option></select><button class="b gh" id="aIr">Ver</button></div>'+
     '<div id="asientosTabla">Cargando…</div></section>'+
+    '<section><h2>Cambios al plan de cuentas — varias compañías a la vez</h2>'+
+    '<div class="aviso">Renombrar, recodificar, crear o marcar obsoleta una cuenta en muchos clientes de una vez. La previsualización muestra qué pasa en cada compañía: dónde el código es otra cuenta, dónde no existe, dónde el código nuevo ya está ocupado. Excluya lo que no corresponda y apruebe. '+
+      (e.escrituraCuentas?'Ejecutar en Odoo está <b>habilitado</b>.':'Ejecutar en Odoo está <b>bloqueado</b> (PERMITIR_ESCRITURA_CUENTAS): por ahora solo se aprueba.')+' También se le puede pedir al Director.</div>'+
+    '<form class="fila" id="cmForm"><select id="cmTipo"><option value="renombrar">Renombrar</option><option value="recodificar">Cambiar código</option><option value="crear">Crear cuenta</option><option value="obsoleta">Marcar obsoleta</option></select>'+
+    '<input class="f" id="cmCodigo" placeholder="código (p. ej. 5.04.17.01)" style="width:150px" required>'+
+    '<input class="f" id="cmActual" placeholder="nombre actual (opcional, filtra)" style="width:190px">'+
+    '<input class="f" id="cmNuevoCod" placeholder="código nuevo" style="width:120px;display:none">'+
+    '<input class="f" id="cmNuevoNom" placeholder="nombre nuevo" style="width:190px">'+
+    '<select id="cmTipoCta" style="display:none"><option value="">tipo de cuenta…</option>'+["expense","expense_direct_cost","income","income_other","asset_current","asset_cash","asset_receivable","asset_non_current","asset_fixed","asset_prepayments","liability_current","liability_payable","liability_non_current","equity"].map(function(t){ return '<option>'+t+'</option>'; }).join("")+'</select>'+
+    '<select id="cmCias" multiple size="3" title="vacío = todas" style="min-width:180px">'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
+    '<input class="f" id="cmMotivo" placeholder="motivo" style="flex:1;min-width:160px" required><button class="b" type="submit">Previsualizar</button></form>'+
+    '<div class="sub" style="margin:-4px 0 10px">Compañías: sin selección = todas (Ctrl/Cmd para elegir varias).</div>'+
+    '<div id="cambiosTabla">Cargando…</div></section>'+
     '<section><h2>Reglas por aprobar</h2>'+
     '<div class="aviso">Decisiones contables dictadas en el chat del Director («todo lo de este proveedor va a 5.04.17.01») o creadas desde una consulta. Al <b>aprobar</b>, la regla se guarda (manda sobre el histórico) y Cuentas revisa de nuevo esa compañía: cada línea afectada aparece abajo como propuesta.</div>'+
     '<div id="reglasTabla">Cargando…</div></section>'+
@@ -416,6 +429,33 @@ function pintarAsientos(lista){
       (a.aviso&&a.estado==="propuesta"?'<div class="sub" style="margin:6px 0">'+esc(a.aviso)+'</div>':'')+
       '<div class="fila" style="margin:8px 0 0">'+acciones+'</div><div id="ed-'+a.id+'"></div></div>';
   }).join("");
+}
+var EST_ITEM = { listo:["listo","ok"], revisar:["revisar","alto"], conflicto:["conflicto","critico"], "otro-significado":["otra cuenta","neutro"], "no-existe":["no existe","neutro"], "ya-existe":["ya existe","neutro"], "sin-cambio":["sin cambio","neutro"], aplicado:["hecho","ok"], fallo:["fallo","critico"], omitido:["omitido","alto"], error:["error","critico"] };
+var EST_CAMBIO = { propuesta:["por decidir","alto"], aprobada:["aprobado","ok"], aplicada:["ejecutado","ok"], parcial:["parcial","alto"], fallo:["fallo","critico"], rechazada:["rechazado","neutro"] };
+function cargarCambios(){ api("/api/cambios?estado=todos").then(pintarCambios).catch(function(e){ msg(e.message,true); }); }
+function descCambio(c){ var x=c.instruccion;
+  return c.tipo==="renombrar" ? 'Renombrar <b>'+esc(x.codigo)+'</b>'+(x.nombreActual?' («'+esc(x.nombreActual)+'»)':'')+' → «'+esc(x.nuevoNombre)+'»'
+    : c.tipo==="recodificar" ? 'Cambiar código <b>'+esc(x.codigo)+'</b> → <b>'+esc(x.nuevoCodigo)+'</b>'
+    : c.tipo==="crear" ? 'Crear <b>'+esc(x.codigo)+'</b> «'+esc(x.nuevoNombre)+'» ('+esc(x.tipoCuenta)+')' : 'Marcar obsoleta <b>'+esc(x.codigo)+'</b>'+(x.nombreActual?' («'+esc(x.nombreActual)+'»)':''); }
+function pintarCambios(lista){
+  var el=$("#cambiosTabla"); if(!el) return; S.cambios=lista;
+  if(!lista.length){ el.innerHTML='<div class="sub">Todavía no hay cambios. Use el formulario o pídale al Director: «renombrá la 5.04.17.01 a Alimentación y viáticos en todos los clientes».</div>'; return; }
+  el.innerHTML = lista.slice(0,12).map(function(c){ var e=EST_CAMBIO[c.estado]||[c.estado,"neutro"], inc=c.items.filter(function(i){ return i.incluido; }).length;
+    var acc = c.estado==="propuesta" ? '<button class="b" data-aprobar-cambio="'+c.id+'">Aprobar ('+inc+' compañías)</button> <button class="b rj" data-rechazar-cambio="'+c.id+'">Rechazar</button>'
+      : c.estado==="aprobada" ? (S.estado.escrituraCuentas?'<button class="b" data-aplicar-cambio="'+c.id+'">Ejecutar en Odoo</button>':'<span class="sub">Aprobado. Ejecutar requiere PERMITIR_ESCRITURA_CUENTAS=si.</span>') : '';
+    var orden={conflicto:0,revisar:1,"otro-significado":2,listo:3};
+    var items=c.items.slice().sort(function(a,b){ return (orden[a.estado]==null?9:orden[a.estado])-(orden[b.estado]==null?9:orden[b.estado]); });
+    return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
+      '<div class="fila" style="margin-bottom:4px"><span>'+descCambio(c)+'</span><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+c.id+' · '+esc(c.propuso)+' · '+fecha(c.creado_en)+'</span></div>'+
+      '<div class="sub" style="margin-bottom:6px">'+esc(c.motivo||"")+' · '+inc+' de '+c.items.length+' compañías incluidas</div>'+
+      '<details'+(c.estado==="propuesta"?' open':'')+'><summary class="sub" style="cursor:pointer">Detalle por compañía</summary>'+
+      tabla(["Compañía",c.estado==="propuesta"||c.estado==="aprobada"?"Hoy":"Antes",c.estado==="propuesta"||c.estado==="aprobada"?"Queda":"Después","Estado",""], items.map(function(i){
+        var ei = !i.incluido && c.estado!=="propuesta" && ["listo","revisar"].indexOf(i.estado)>=0 ? ["excluido","neutro"] : (EST_ITEM[i.estado]||[i.estado,"neutro"]);
+        var tog = c.estado==="propuesta" && ["listo","revisar"].indexOf(i.estado)>=0 ? '<label class="sub"><input type="checkbox" data-incluir-cambio="'+c.id+'" data-cia="'+i.companiaId+'"'+(i.incluido?' checked':'')+'> incluir</label>' : '';
+        var hoy = i.actual ? '<span class="mono">'+esc(i.actual.codigo)+'</span> '+esc(i.actual.nombre) : '—';
+        var queda = i.despues ? '<span class="mono">'+esc(i.despues.codigo)+'</span> '+esc(i.despues.nombre)+(i.despues.obsoleta?' (obsoleta)':'') : i.nuevo&&i.incluido ? '<span class="mono">'+esc(i.nuevo.codigo)+'</span> '+esc(i.nuevo.nombre)+(i.nuevo.obsoleta?' (obsoleta)':'') : '';
+        return [esc(i.compania), hoy, queda, '<span class="est '+ei[1]+'">'+esc(ei[0])+'</span>'+(i.motivo?'<div class="sub">'+esc(i.motivo)+'</div>':''), tog]; }))+
+      '</details><div class="fila" style="margin:8px 0 0">'+acc+'</div></div>'; }).join("");
 }
 function pintarReglas(lista){
   var el=$("#reglasTabla"); if(!el) return;
@@ -552,7 +592,7 @@ function pintar(){
   if (S.vista==="director" && !S.directorCargado) cargarDirector(true);
   if (S.vista==="hallazgos") cargarHallazgos();
   if (S.vista==="casos") cargarCasos();
-  if (S.vista==="aprobaciones"){ cargarAsientos(); cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
+  if (S.vista==="aprobaciones"){ cargarAsientos(); cargarCambios(); mostrarCamposCambio(); cargarPropuestas(); cargarConsultas(); api("/api/reglas").then(pintarReglas).catch(function(){}); }
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -581,6 +621,21 @@ $("#main").addEventListener("submit", function(ev){
     var c=$("#chat"); if(c) c.scrollTop=c.scrollHeight; var n=$("#ci"); if(n) n.focus();
     cargarDirector(false);
   }).catch(function(e){ S.chat.pop(); S.chat.push({w:"dir", t:"Error: "+e.message}); pintar(); });
+});
+function mostrarCamposCambio(){ var t=$("#cmTipo"); if(!t) return; var v=t.value;
+  $("#cmNuevoCod").style.display = v==="recodificar"?"":"none"; $("#cmNuevoNom").style.display = (v==="renombrar"||v==="crear")?"":"none";
+  $("#cmTipoCta").style.display = v==="crear"?"":"none"; $("#cmActual").style.display = v==="crear"?"none":""; }
+$("#main").addEventListener("change", function(ev){
+  if (ev.target.id==="cmTipo") mostrarCamposCambio();
+  var d=ev.target.dataset; if (d && d.incluirCambio) api("/api/cambios/"+d.incluirCambio+"/incluir",{compania:Number(d.cia), incluido:ev.target.checked}).then(cargarCambios).catch(function(e){ msg(e.message,true); });
+});
+$("#main").addEventListener("submit", function(ev){
+  if (ev.target.id!=="cmForm") return; ev.preventDefault();
+  var cias=[].slice.call($("#cmCias").selectedOptions).map(function(o){ return Number(o.value); });
+  var b={ tipo:$("#cmTipo").value, codigo:$("#cmCodigo").value.trim(), nombreActual:$("#cmActual").value.trim()||null, nuevoCodigo:$("#cmNuevoCod").value.trim()||null,
+    nuevoNombre:$("#cmNuevoNom").value.trim()||null, tipoCuenta:$("#cmTipoCta").value||null, companias:cias.length?cias:null, motivo:$("#cmMotivo").value.trim() };
+  msg("Revisando el plan de cada compañía…"); var bt=ev.target.querySelector("button"); bt.disabled=true;
+  api("/api/cambios", b).then(function(j){ bt.disabled=false; var r=j.cambio.resumen; msg("Previsualización lista: "+r.incluidos+" compañías incluidas."); cargarCambios(); }).catch(function(e){ bt.disabled=false; msg(e.message,true); });
 });
 $("#main").addEventListener("click", function(ev){
   var t = ev.target.closest("button,a"); if(!t) return;
@@ -616,6 +671,10 @@ $("#main").addEventListener("click", function(ev){
   else if (d.imprimirEstado){ var ci=(S.estados.companias||[]).find(function(x){ return String(x.companiaId)===d.imprimirEstado; }); var w=window.open("","_blank"); if(!w) return msg("El navegador bloqueó la ventana de impresión.", true);
     w.document.write('<!doctype html><meta charset="utf-8"><title>'+esc(ci.compania)+' — '+esc(S.estados.mes)+'</title><body style="font:13px Helvetica,Arial,sans-serif;color:#111;max-width:760px;margin:24px auto">'+estadoHtml(ci, S.estados.mes)+'</body>'); w.document.close(); w.focus(); w.print(); }
   else if (t.id==="aIr"){ cargarAsientos(); }
+  else if (d.aprobarCambio){ if(!confirm("¿Aprobar el cambio en las compañías incluidas? No se ejecuta en Odoo hasta pulsar «Ejecutar».")) return; api("/api/cambios/"+d.aprobarCambio+"/aprobar",{}).then(function(j){ msg(j.mensaje); cargarCambios(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.rechazarCambio){ var mc=prompt("¿Por qué se rechaza?", ""); if(mc===null) return; api("/api/cambios/"+d.rechazarCambio+"/rechazar",{motivo:mc}).then(function(){ msg("Rechazado."); cargarCambios(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.aplicarCambio){ if(!confirm("Esto CAMBIA el plan de cuentas en Odoo en cada compañía incluida. ¿Continuar?")) return; t.disabled=true; msg("Ejecutando…");
+    api("/api/cambios/"+d.aplicarCambio+"/aplicar",{}).then(function(j){ msg(j.mensaje); cargarCambios(); }).catch(function(e){ t.disabled=false; msg(e.message,true); cargarCambios(); }); }
   else if (d.elegirBanco){ var ed=$("#ed-"+d.elegirBanco), as=(S.asientos||[]).find(function(x){ return String(x.id)===d.elegirBanco; }); ed.innerHTML='<div class="sub">Cargando bancos…</div>';
     api("/api/asientos/"+d.elegirBanco+"/opciones").then(function(ops){
       ed.innerHTML='<div class="fila" style="margin-top:8px"><select id="edD-'+as.id+'">'+ops.map(function(o){ return '<option value="'+o.id+'"'+(o.id===as.diario_id?" selected":"")+'>'+esc(o.nombre)+' ('+esc(o.tipo==="bank"?"banco":o.tipo==="cash"?"caja":"general")+(o.cuenta?" · "+esc(o.cuenta):"")+')</option>'; }).join("")+'</select>'+

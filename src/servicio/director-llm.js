@@ -19,6 +19,7 @@ import { DirectorCore } from "../director.js";
 import { Catalogo, canon, norm } from "../catalogo.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientosSrv from "./asientos.js";
+import * as cambiosSrv from "./cambios.js";
 import { Clasificador, resolverEnPlan } from "../clasificador.js";
 
 const API = "https://api.anthropic.com/v1/messages";
@@ -70,6 +71,13 @@ export class DirectorLLM {
           referencia: { type: "string" }, motivo: { type: "string", description: "por qué, en palabras de la persona" },
           lineas: { type: "array", items: { type: "object", properties: { codigo: { type: "string" }, descripcion: { type: "string" }, debito: { type: "number" }, credito: { type: "number" } }, required: ["codigo"] } } },
           required: ["compania", "fecha", "lineas", "motivo"] } },
+      { name: "proponer_cambio_masivo", description: "Deja PROPUESTO un cambio al plan de cuentas en varias compañías a la vez («renombrá la 5.04.17.01 a Alimentación y viáticos en todos los clientes», «creá la 1.01.012.003 Saldo a favor IVA en todas», «marcá obsoleta la 5.04.99 en los clientes de X»). tipo: renombrar | recodificar | crear | obsoleta. Lee el plan de cada compañía y arma la previsualización (nombre actual, conflictos, compañías donde ese código significa otra cosa). No escribe en Odoo: queda en Aprobaciones → Cambios al plan de cuentas. Si sabés cómo se llama hoy la cuenta, pasá nombre_actual para dejar fuera las compañías donde el código es otra cosa.",
+        input_schema: { type: "object", properties: { tipo: { type: "string", enum: cambiosSrv.TIPOS }, codigo: { type: "string" }, nombre_actual: { type: "string" },
+          nuevo_codigo: { type: "string" }, nuevo_nombre: { type: "string" }, tipo_cuenta: { type: "string", enum: cambiosSrv.TIPOS_CUENTA, description: "solo para crear" },
+          companias: { type: "array", items: { type: "integer" }, description: "ids; vacío = todas" }, excluir: { type: "array", items: { type: "integer" } }, motivo: { type: "string" } },
+          required: ["tipo", "codigo", "motivo"] } },
+      { name: "cambios_masivos", description: "Cambios masivos al plan de cuentas propuestos y su estado, con el resumen por compañía.",
+        input_schema: { type: "object", properties: { estado: { type: "string", enum: ["abiertos", "propuesta", "aprobada", "rechazada", "aplicada", "parcial", "fallo", "todos"] } } } },
       { name: "leer_odoo", description: "Lectura directa de Odoo (search_read) con un dominio. SOLO LECTURA. Modelos útiles: bdt.invoice.email (buzón), account.move (asientos; e_key es la clave de Hacienda), account.move.line, res.partner (vat = cédula), res.company, account.account. OJO: en account.account el campo code depende de la compañía; pasá siempre compania o vendrá code=false. Máximo 200 filas; para conteos usa agrupar_odoo.",
         input_schema: { type: "object", properties: { modelo: { type: "string" }, dominio: { type: "array", description: "dominio Odoo, p. ej. [[\"state\",\"=\",\"done\"],[\"company_id\",\"=\",126]]" }, campos: { type: "array", items: { type: "string" } }, limite: { type: "integer" }, orden: { type: "string" }, compania: { type: "integer", description: "id de compañía para leer en su contexto (códigos de cuenta, campos por compañía)" } }, required: ["modelo", "dominio", "campos"] } },
       { name: "agrupar_odoo", description: "Conteos y agregados en Odoo (read_group). SOLO LECTURA. Ej.: correos por estado y compañía: modelo bdt.invoice.email, agrupar [\"company_id\",\"state\"].",
@@ -142,6 +150,10 @@ export class DirectorLLM {
       case "asientos": return db.asientos({ estado: args.estado || "abiertos", companiaId: args.compania || null, limite: 60 })
         .map(a => ({ id: a.id, compania: a.compania, fecha: a.fecha, diario: a.diario, referencia: a.referencia, motivo: a.motivo, total: a.total, estado: a.estado, porDefinir: a.porDefinir,
           lineas: a.lineas.map(l => ({ cuenta: l.cuenta, debito: l.debito, credito: l.credito })), asientoOdoo: a.move_name || null }));
+      case "proponer_cambio_masivo": return cambiosSrv.proponer({ corridas: this.corridas, db, propuso: `director:${quien}`, instruccion: { tipo: args.tipo, codigo: args.codigo,
+        nombreActual: args.nombre_actual, nuevoCodigo: args.nuevo_codigo, nuevoNombre: args.nuevo_nombre, tipoCuenta: args.tipo_cuenta, companias: args.companias, excluir: args.excluir, motivo: args.motivo } });
+      case "cambios_masivos": return db.cambios({ estado: args.estado || "abiertos", limite: 20 }).map(c => ({ id: c.id, tipo: c.tipo, instruccion: c.instruccion, motivo: c.motivo, estado: c.estado,
+        propuso: c.propuso, resumen: cambiosSrv.resumen(c.items), revisar: c.items.filter(i => i.estado !== "listo" && i.estado !== "aplicado").slice(0, 10).map(i => `${i.compania}: ${i.estado}${i.motivo ? ` — ${i.motivo}` : ""}`) }));
       case "proponer_asiento": return asientosSrv.proponer({ corridas: this.corridas, db, compania: args.compania, fecha: args.fecha, diario: args.diario || null,
         referencia: args.referencia || "", motivo: args.motivo || "", lineas: args.lineas || [], propuso: `director:${quien}` });
       case "leer_odoo": {
@@ -296,6 +308,7 @@ Reglas:
 2. Si la instrucción puede ser de dos agentes, preguntá cuál. Si falta la compañía para Cuentas, pedila (buscá primero con "companias" si dieron un nombre).
 3. No existe herramienta para escribir en Odoo ni para enviar correos, y así debe ser. Nunca le digas a la persona que lo cambie a mano en Odoo «para que el agente aprenda»: el agente aprende de reglas, no de ediciones.
    - Si dicta una decisión contable que vale de ahora en adelante («este tipo de gasto siempre va a 5.04.17.01», «todo lo de este proveedor va a…»), llamá a "proponer_regla" en el mismo turno. Si dice «este tipo de gastos» refiriéndose a una factura: si habla del tipo de gasto (comida de restaurante, combustible…) usá naturaleza; si habla de ese proveedor, proveedor_id; decí qué alcance usaste. Luego explicá: quedó en Aprobaciones → Reglas; al aprobarla, Cuentas propone cada línea afectada; aplicar en Odoo requiere que se habilite la escritura.
+   - Si pide un cambio al plan de cuentas en varias compañías (renombrar, recodificar, crear u obsoletar una cuenta), llamá a "proponer_cambio_masivo" y contá el resumen (cuántas listas, cuántas a revisar y por qué).
    - Si dicta un asiento puntual (un pago, una reclasificación, una provisión), llamá a "proponer_asiento": queda en Aprobaciones → Asientos. Si pregunta qué asientos hay pendientes o qué propuso Cierre, usá "asientos".
    - Si pide corregir, publicar, enviar o borrar algo puntual, explicá exactamente qué se cambiaría y terminá con: "Esto requiere aprobación humana en la pestaña Aprobaciones; no lo ejecuté."
 4. Respondé en español, breve, con las cifras y, cuando sea útil, el agente y la herramienta que usaste. Podés usar **negrita** y listas con "- "; la app las muestra formateadas.

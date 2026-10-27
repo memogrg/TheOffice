@@ -18,6 +18,7 @@ import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
+import * as cambios from "./cambios.js";
 import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
@@ -42,7 +43,7 @@ export function crearApi(opciones) {
     inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
-    escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
+    escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), escrituraCuentas: cambios.escrituraCuentas(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
@@ -60,6 +61,7 @@ export function crearApi(opciones) {
       reglas: ctx.db.reglas().length,
       asientos: ctx.db.asientos({ estado: "propuesta" }).length,
       asientosAprobados: ctx.db.asientos({ estado: "aprobada" }).length,
+      cambios: ctx.db.cambios({ estado: "propuesta" }).length,
       consultas: ctx.db.consultas().length
     }
   }), AMBOS);
@@ -205,6 +207,26 @@ export function crearApi(opciones) {
   ruta("POST", "/api/asientos/:id/rechazar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirAsiento(Number(p.id), "rechazada", quien, cuerpo.motivo || null) }));
   ruta("POST", "/api/asientos/:id/aplicar", async (q, p, cuerpo, quien, ctx) => {
     const r = await asientos.aplicar({ corridas: ctx.corridas, db: ctx.db, id: p.id, quien });
+    return r.error ? error(r.codigo || 400, r.error) : r;
+  });
+
+  // --- cambios masivos al plan de cuentas (objetivo 5)
+  ruta("GET", "/api/cambios", (q, p, c, quien, ctx) => ctx.db.cambios({ estado: q.estado || "abiertos" }));
+  ruta("POST", "/api/cambios", async (q, p, cuerpo, quien, ctx) => {
+    const r = await cambios.proponer({ corridas: ctx.corridas, db: ctx.db, instruccion: cuerpo, propuso: quien });
+    return r.error ? error(400, r.error) : r;
+  });
+  ruta("POST", "/api/cambios/:id/incluir", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.incluirEnCambio(Number(p.id), Number(cuerpo.compania), cuerpo.incluido !== false, quien) }));
+  ruta("POST", "/api/cambios/:id/aprobar", (q, p, cuerpo, quien, ctx) => {
+    const c = ctx.db.cambio(Number(p.id));
+    if (!c) return error(404, "No existe ese cambio.");
+    if (!c.items.some(i => i.incluido)) return error(400, "No hay ninguna compañía incluida.");
+    return { ok: ctx.db.decidirCambio(c.id, "aprobada", quien, cuerpo.nota || null),
+      mensaje: cambios.escrituraCuentas(ctx.cfg) ? "Aprobado. Ya se puede ejecutar en Odoo." : "Aprobado. Ejecutarlo en Odoo requiere PERMITIR_ESCRITURA_CUENTAS=si." };
+  });
+  ruta("POST", "/api/cambios/:id/rechazar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.decidirCambio(Number(p.id), "rechazada", quien, cuerpo.motivo || null) }));
+  ruta("POST", "/api/cambios/:id/aplicar", async (q, p, cuerpo, quien, ctx) => {
+    const r = await cambios.aplicar({ corridas: ctx.corridas, db: ctx.db, id: p.id, quien });
     return r.error ? error(r.codigo || 400, r.error) : r;
   });
 

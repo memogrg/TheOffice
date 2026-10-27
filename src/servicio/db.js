@@ -260,6 +260,57 @@ export class BaseDeDatos {
       resultado   TEXT                  -- JSON: verificación o error al aplicar
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS asientos_estado ON asientos(estado, compania_id)");
+    // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
+    this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo        TEXT NOT NULL,        -- renombrar | recodificar | crear | obsoleta
+      instruccion TEXT NOT NULL,        -- JSON {codigo, nombreActual, nuevoCodigo, nuevoNombre, tipoCuenta, companias, excluir}
+      motivo      TEXT,
+      items       TEXT NOT NULL,        -- JSON, uno por compañía: actual, nuevo, estado, incluido
+      propuso     TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      estado      TEXT NOT NULL DEFAULT 'propuesta',  -- propuesta | aprobada | rechazada | aplicada | parcial | fallo
+      decidio     TEXT,
+      decidido_en TEXT,
+      nota        TEXT,
+      aplicado_en TEXT
+    )`);
+  }
+
+  // --- cambios masivos al plan de cuentas
+  #filaCambio(c) { return c ? { ...c, instruccion: JSON.parse(c.instruccion), items: JSON.parse(c.items) } : null; }
+  proponerCambio({ tipo, instruccion, motivo, items }, quien) {
+    const x = this.correr("INSERT INTO cambios (tipo, instruccion, motivo, items, propuso, creado_en) VALUES (?,?,?,?,?,?)",
+      tipo, JSON.stringify(instruccion), motivo ?? null, JSON.stringify(items), quien, this.#ahora());
+    const id = Number(x.lastInsertRowid);
+    this.auditar(quien, "proponer", "cambio", id, { tipo, codigo: instruccion.codigo, companias: items.filter(i => i.incluido).length });
+    return this.cambio(id);
+  }
+  cambio(id) { return this.#filaCambio(this.uno("SELECT * FROM cambios WHERE id=?", id)); }
+  cambios({ estado = "abiertos", limite = 50 } = {}) {
+    const sql = estado === "todos" ? "SELECT * FROM cambios ORDER BY id DESC LIMIT ?"
+      : estado === "abiertos" ? "SELECT * FROM cambios WHERE estado IN ('propuesta','aprobada') ORDER BY id DESC LIMIT ?"
+      : "SELECT * FROM cambios WHERE estado=? ORDER BY id DESC LIMIT ?";
+    return (estado === "todos" || estado === "abiertos" ? this.todos(sql, limite) : this.todos(sql, estado, limite)).map(c => this.#filaCambio(c));
+  }
+  // Incluir o dejar fuera una compañía, solo mientras el cambio está propuesto.
+  incluirEnCambio(id, companiaId, incluido, quien) {
+    const c = this.cambio(id);
+    if (!c || c.estado !== "propuesta") return false;
+    const it = c.items.find(i => i.companiaId === Number(companiaId));
+    if (!it || (incluido && !["listo", "revisar"].includes(it.estado))) return false;
+    it.incluido = Boolean(incluido);
+    this.correr("UPDATE cambios SET items=? WHERE id=?", JSON.stringify(c.items), id);
+    this.auditar(quien, incluido ? "incluir" : "excluir", "cambio", id, { companiaId: Number(companiaId) });
+    return true;
+  }
+  decidirCambio(id, decision, quien, nota = null) {
+    const r = this.correr("UPDATE cambios SET estado=?, decidio=?, decidido_en=?, nota=? WHERE id=? AND estado='propuesta'", decision, quien, this.#ahora(), nota, id);
+    if (r.changes) this.auditar(quien, decision === "aprobada" ? "aprobar" : "rechazar", "cambio", id, nota ? { nota } : null);
+    return r.changes > 0;
+  }
+  marcarCambio(id, estado, items) {
+    this.correr("UPDATE cambios SET estado=?, items=?, aplicado_en=? WHERE id=?", estado, JSON.stringify(items), this.#ahora(), id);
   }
 
   // --- asientos propuestos (fase 3B)
