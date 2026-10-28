@@ -265,6 +265,7 @@ export class BaseDeDatos {
     this.#tablaDiferidos();
     this.#tablaActivos();
     this.#tablaCierres();
+    this.#tablaExtractos();
     if (!columnas("correos").has("responder_a")) this.db.exec("ALTER TABLE correos ADD COLUMN responder_a TEXT");
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
@@ -281,6 +282,123 @@ export class BaseDeDatos {
       nota        TEXT,
       aplicado_en TEXT
     )`);
+  }
+
+  // --- extractos bancarios (fase 3C): lo que se sube queda aquí, línea por línea, con su estado
+  #tablaExtractos() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS extractos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      diario_id   INTEGER NOT NULL,
+      diario      TEXT,
+      cuenta_id   INTEGER,
+      moneda      TEXT,
+      archivo     TEXT,
+      formato     TEXT,
+      desde       TEXT,
+      hasta       TEXT,
+      saldo_inicial REAL,
+      saldo_final REAL,
+      cuadra      INTEGER,
+      movimientos INTEGER NOT NULL DEFAULT 0,
+      repetidos   INTEGER NOT NULL DEFAULT 0,
+      estado      TEXT NOT NULL DEFAULT 'activo',   -- activo | anulado
+      subio       TEXT NOT NULL,
+      creado_en   TEXT NOT NULL,
+      nota        TEXT
+    )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS extracto_lineas (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      extracto_id INTEGER NOT NULL,
+      compania_id INTEGER NOT NULL,
+      diario_id   INTEGER NOT NULL,
+      fecha       TEXT NOT NULL,
+      descripcion TEXT,
+      referencia  TEXT,
+      monto       REAL NOT NULL,
+      saldo       REAL,
+      huella      TEXT NOT NULL,
+      estado      TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente | en-libros | propuesta | registrada | ignorada
+      tipo        TEXT,                 -- cargo | interes | transferencia | cobro | pago | entrada | salida
+      emparejado  TEXT,                 -- JSON: apunte de Odoo, candidatos o la otra cuenta
+      asiento_clave TEXT,
+      nota        TEXT,
+      actualizado_en TEXT,
+      UNIQUE (diario_id, huella)
+    )`);
+    this.db.exec("CREATE INDEX IF NOT EXISTS extracto_lineas_diario ON extracto_lineas (diario_id, estado, fecha)");
+  }
+  // e: {companiaId, compania, diarioId, diario, cuentaId, moneda, archivo, formato, desde, hasta, saldoInicial, saldoFinal, cuadra}
+  registrarExtracto(e, movimientos, quien) {
+    let id, nuevos = 0;
+    this.transaccion(() => {
+      const x = this.correr(`INSERT INTO extractos (compania_id, compania, diario_id, diario, cuenta_id, moneda, archivo, formato, desde, hasta, saldo_inicial, saldo_final, cuadra, subio, creado_en)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, e.companiaId, e.compania ?? null, e.diarioId, e.diario ?? null, e.cuentaId ?? null, e.moneda ?? null, e.archivo ?? null, e.formato ?? null,
+        e.desde ?? null, e.hasta ?? null, e.saldoInicial ?? null, e.saldoFinal ?? null, e.cuadra == null ? null : (e.cuadra ? 1 : 0), quien, this.#ahora());
+      id = Number(x.lastInsertRowid);
+      for (const m of movimientos) {
+        const r = this.correr(`INSERT OR IGNORE INTO extracto_lineas (extracto_id, compania_id, diario_id, fecha, descripcion, referencia, monto, saldo, huella)
+          VALUES (?,?,?,?,?,?,?,?,?)`, id, e.companiaId, e.diarioId, m.fecha, m.descripcion ?? null, m.referencia ?? null, m.monto, m.saldo ?? null, m.huella);
+        nuevos += r.changes;
+      }
+      this.correr("UPDATE extractos SET movimientos=?, repetidos=? WHERE id=?", nuevos, movimientos.length - nuevos, id);
+    });
+    this.auditar(quien, "importar", "extracto", id, { diario: e.diario, compania: e.compania, archivo: e.archivo, movimientos: nuevos, repetidos: movimientos.length - nuevos });
+    return { id, nuevos, repetidos: movimientos.length - nuevos };
+  }
+  // Huellas ya importadas de un diario (para la vista previa).
+  huellasExtracto(diarioId) { return new Set(this.todos("SELECT huella FROM extracto_lineas WHERE diario_id=?", diarioId).map(x => x.huella)); }
+  extractos({ estado = "activo", companiaId = null } = {}) {
+    const cond = [], p = [];
+    if (estado !== "todos") { cond.push("e.estado=?"); p.push(estado); }
+    if (companiaId) { cond.push("e.compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT e.*,
+        (SELECT COUNT(*) FROM extracto_lineas l WHERE l.extracto_id=e.id AND l.estado='pendiente') AS pendientes,
+        (SELECT COUNT(*) FROM extracto_lineas l WHERE l.extracto_id=e.id AND l.estado='en-libros') AS en_libros,
+        (SELECT COUNT(*) FROM extracto_lineas l WHERE l.extracto_id=e.id AND l.estado IN ('propuesta','registrada')) AS con_asiento,
+        (SELECT COUNT(*) FROM extracto_lineas l WHERE l.extracto_id=e.id AND l.estado='ignorada') AS ignoradas
+      FROM extractos e${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY e.compania, e.diario, e.desde DESC, e.id DESC`, ...p);
+  }
+  extracto(id) { return this.uno("SELECT * FROM extractos WHERE id=?", id); }
+  lineasExtracto({ extractoId = null, diarioId = null, estados = null, limite = 5000 } = {}) {
+    const cond = ["e.estado='activo'"], p = [];
+    if (extractoId) { cond.push("l.extracto_id=?"); p.push(extractoId); }
+    if (diarioId) { cond.push("l.diario_id=?"); p.push(diarioId); }
+    if (estados) { cond.push(`l.estado IN (${estados.map(() => "?").join(",")})`); p.push(...estados); }
+    return this.todos(`SELECT l.* FROM extracto_lineas l JOIN extractos e ON e.id=l.extracto_id WHERE ${cond.join(" AND ")} ORDER BY l.diario_id, l.fecha, l.id LIMIT ?`, ...p, limite)
+      .map(l => ({ ...l, emparejado: l.emparejado ? JSON.parse(l.emparejado) : null }));
+  }
+  // Resultado del emparejamiento: [{id, estado, tipo, emparejado, asientoClave}]. Las ignoradas no se tocan.
+  actualizarLineasExtracto(cambios) {
+    const ahora = this.#ahora();
+    let n = 0;
+    this.transaccion(() => {
+      for (const c of cambios) n += this.correr(`UPDATE extracto_lineas SET estado=?, tipo=?, emparejado=?, asiento_clave=?, actualizado_en=? WHERE id=? AND estado!='ignorada'`,
+        c.estado, c.tipo ?? null, c.emparejado ? JSON.stringify(c.emparejado) : null, c.asientoClave ?? null, ahora, c.id).changes;
+    });
+    return n;
+  }
+  ignorarLineaExtracto(id, quien, nota = null, ignorar = true) {
+    const r = ignorar
+      ? this.correr("UPDATE extracto_lineas SET estado='ignorada', nota=?, actualizado_en=? WHERE id=? AND estado IN ('pendiente','propuesta')", nota, this.#ahora(), id)
+      : this.correr("UPDATE extracto_lineas SET estado='pendiente', nota=NULL, actualizado_en=? WHERE id=? AND estado='ignorada'", this.#ahora(), id);
+    if (r.changes) this.auditar(quien, ignorar ? "ignorar" : "reabrir", "linea-extracto", id, nota ? { nota } : null);
+    return r.changes > 0;
+  }
+  anularExtracto(id, quien, nota = null) {
+    const r = this.correr("UPDATE extractos SET estado='anulado', nota=? WHERE id=? AND estado='activo'", nota, id);
+    if (r.changes) {
+      this.correr("DELETE FROM extracto_lineas WHERE extracto_id=? AND estado IN ('pendiente','en-libros','ignorada')", id);
+      this.auditar(quien, "anular", "extracto", id, nota ? { nota } : null);
+    }
+    return r.changes > 0;
+  }
+  // Estado de los asientos que salieron de líneas de extracto, por clave.
+  estadoAsientosPorClave(origen) {
+    const out = new Map();
+    for (const a of this.todos("SELECT clave, estado, move_name FROM asientos WHERE origen=? ORDER BY id", origen)) out.set(a.clave, { estado: a.estado, asiento: a.move_name });
+    return out;
   }
 
   // --- gastos diferidos (ítem 15): el registro vive aquí; las cuotas, en la cola de asientos

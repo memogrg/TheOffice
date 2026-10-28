@@ -21,6 +21,8 @@ import * as asientos from "./asientos.js";
 import { esRemota, ipDe, Limitador, cabeceras, origenAjeno, esJSON, RUTAS_CON_SESION } from "./seguridad.js";
 import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
+import * as extractosSrv from "./extractos.js";
+import * as comprobantesSrv from "./comprobantes.js";
 import * as activosSrv from "./activos.js";
 import * as cierreMes from "./cierreMes.js";
 import { avance, calendario } from "../lib/diferidos.js";
@@ -54,7 +56,7 @@ export function crearApi(opciones) {
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -117,7 +119,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente);
     return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
   });
@@ -285,6 +287,39 @@ export function crearApi(opciones) {
   ruta("POST", "/api/activos/:id/baja", (q, p, cuerpo, quien, ctx) => {
     if (!/^\d{4}-\d{2}$/.test(String(cuerpo.mes || ""))) return error(400, "Indique el mes de la baja (AAAA-MM).");
     return { ok: ctx.db.darDeBajaActivo(Number(p.id), cuerpo.mes, quien, cuerpo.nota || null) };
+  });
+
+  // --- extractos bancarios (fase 3C): subir, ver cómo se leyó, importar; el agente Extractos empareja
+  ruta("GET", "/api/extractos", (q, p, c, quien, ctx) => ctx.db.extractos({ estado: q.estado || "activo", companiaId: q.compania ? Number(q.compania) : null }));
+  ruta("GET", "/api/extractos/diarios", (q, p, c, quien, ctx) => extractosSrv.diarios({ corridas: ctx.corridas }));
+  ruta("POST", "/api/extractos/vista-previa", async (q, p, cuerpo, quien, ctx) => extractosSrv.vistaPrevia({ corridas: ctx.corridas, db: ctx.db, cuerpo }));
+  ruta("POST", "/api/extractos", async (q, p, cuerpo, quien, ctx) => {
+    const r = await extractosSrv.importar({ corridas: ctx.corridas, db: ctx.db, cuerpo, quien });
+    if (r.error) return error(400, r.error);
+    // Empareja enseguida si no hay otra corrida en curso; si la hay, queda para la próxima.
+    let emparejado = null;
+    if (r.nuevos && !ctx.corridas.enCurso) {
+      try { const c = await ctx.corridas.correr("extractos", [], { quienPide: quien }); emparejado = { corridaId: c.corridaId, resumen: c.resumen, totales: c.resultado.totales }; }
+      catch (e) { emparejado = { error: e.message }; }
+    }
+    return { ...r, emparejado };
+  });
+  ruta("GET", "/api/extractos/:id/lineas", (q, p, c, quien, ctx) => {
+    const e = ctx.db.extracto(Number(p.id));
+    if (!e) return error(404, "No existe ese extracto.");
+    return { extracto: e, lineas: ctx.db.lineasExtracto({ extractoId: e.id }) };
+  });
+  ruta("POST", "/api/extractos/lineas/:id/ignorar", (q, p, cuerpo, quien, ctx) => {
+    if (cuerpo.ignorar !== false && !String(cuerpo.nota || "").trim()) return error(400, "Diga por qué se ignora (por ejemplo: ya registrado en otra cuenta).");
+    return { ok: ctx.db.ignorarLineaExtracto(Number(p.id), quien, cuerpo.nota || null, cuerpo.ignorar !== false) };
+  });
+  ruta("POST", "/api/extractos/:id/anular", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.anularExtracto(Number(p.id), quien, cuerpo.nota || null) }));
+  // comprobantes en zip (PDF + XML): qué son y si ya están en Odoo; no se guardan
+  ruta("POST", "/api/comprobantes/revisar", async (q, p, cuerpo, quien, ctx) => {
+    const r = await comprobantesSrv.revisar({ corridas: ctx.corridas, archivo: cuerpo.archivo });
+    if (r.error) return error(400, r.error);
+    ctx.db.auditar(quien, "revisar", "comprobantes", null, { archivo: String(cuerpo.archivo?.nombre || "").slice(0, 120), ...r.totales });
+    return r;
   });
 
   // --- cierre de mes por compañía (junta lo de todos los agentes y la cola)
@@ -509,7 +544,7 @@ export function crearApi(opciones) {
           return responder(res, 403, { error: "Desde fuera de la PC del servicio, ejecutar en Odoo o enviar correos requiere entrar con su enlace personal (pestaña Usuarios): así la auditoría lleva su nombre verificado." });
         }
         let cuerpo = {};
-        if (req.method === "POST") cuerpo = await leerCuerpo(req);
+        if (req.method === "POST") cuerpo = await leerCuerpo(req, /^\/api\/(extractos|comprobantes)(\/|$)/.test(pathname) ? 30e6 : 1e6);
         const quien = usuario ? (usuario.nombre ? `${usuario.nombre} <${usuario.correo}>` : usuario.correo) : String(req.headers["x-quien"] || cuerpo.quien || "anónimo").slice(0, 120);
         const params = pathname.match(r.re).groups || {};
         const out = await r.fn(q, params, cuerpo, quien, ctx);
@@ -566,10 +601,11 @@ function responder(res, codigo, obj) {
   res.writeHead(codigo, cabeceras({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }));
   res.end(JSON.stringify(obj));
 }
-function leerCuerpo(req) {
+// Hasta 1 MB; las rutas que reciben archivos (extractos, comprobantes) hasta 30 MB.
+function leerCuerpo(req, max = 1e6) {
   return new Promise((ok, mal) => {
     let s = "";
-    req.on("data", c => { s += c; if (s.length > 1e6) { mal(new Error("Cuerpo demasiado grande")); req.destroy(); } });
+    req.on("data", c => { s += c; if (s.length > max) { mal(new Error("Cuerpo demasiado grande")); req.destroy(); } });
     req.on("end", () => { try { ok(s ? JSON.parse(s) : {}); } catch { mal(new Error("JSON inválido")); } });
     req.on("error", mal);
   });

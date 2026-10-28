@@ -26,13 +26,14 @@ import * as diferidos from "./agents/diferidos.js";
 import * as depreciacion from "./agents/depreciacion.js";
 import * as cartera from "./agents/cartera.js";
 import * as datos from "./agents/datos.js";
+import * as extractos from "./agents/extractos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "./reporte.js";
 import { enviar } from "./mailer.js";
 import { Director } from "./director.js";
 import { escribirOficina } from "./oficina.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
-const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos };
+const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos, extractos };
 
 const hhmmss = () => new Date().toLocaleTimeString("es-CR", { hour12: false });
 const bitacora = [];

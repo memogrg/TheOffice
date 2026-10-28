@@ -21,11 +21,12 @@ import * as diferidos from "../agents/diferidos.js";
 import * as depreciacion from "../agents/depreciacion.js";
 import * as cartera from "../agents/cartera.js";
 import * as datos from "../agents/datos.js";
+import * as extractos from "../agents/extractos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos, extractos };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -124,6 +125,14 @@ export class Corridas {
         casos: x.documentos, companias: [x.compania], responderA: x.responderA })));
       r.recordatorios = r.recordatorios.map(({ html, ...x }) => x);
       return { recordatorios: ids.length, obsoletos };
+    }
+    // Extractos: los asientos propuestos (cargos, intereses, transferencias) van a la cola y cada línea
+    // del extracto queda con su estado. La lista de cambios no se guarda en la corrida.
+    if (quien === "extractos" && Array.isArray(r.cambios)) {
+      const asientos = this.db.sincronizarAsientos(corridaId, r.asientosSugeridos || [], { origen: "extractos" });
+      const lineas = this.db.actualizarLineasExtracto(r.cambios);
+      delete r.cambios;
+      return { asientos, lineas };
     }
     if (quien === "depreciacion" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "depreciacion", reemplazarAnteriores: true }) };

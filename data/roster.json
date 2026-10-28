@@ -422,6 +422,33 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "extractos",
+      "nombre": "EXTRACTOS",
+      "rol": "EXTRACTOS",
+      "modo": "lectura",
+      "hace": "Empareja los extractos bancarios que se suben en la app (CSV, TXT o Excel de cualquier banco) con los apuntes de la cuenta del banco en Odoo. Lo que falta en libros lo clasifica: cargos bancarios e intereses (propone el asiento del mes), transferencias entre cuentas propias (propone el asiento), cobros y pagos (sugiere la factura abierta que calza). Compara el saldo del extracto con el de libros y dice qué explica la diferencia.",
+      "noHace": "No registra pagos contra facturas ni escribe en la conciliación de TecnoDEM.",
+      "responde": [
+        "qué movimientos del extracto no están en libros",
+        "qué cargos bancarios faltan",
+        "cuadra el saldo del banco con libros"
+      ],
+      "palabras": {
+        "extracto": 8,
+        "extractos": 8,
+        "estado de cuenta": 5,
+        "cargos bancarios": 9,
+        "comision bancaria": 9,
+        "comisiones": 4,
+        "saldo del banco": 5,
+        "movimientos del banco": 9,
+        "transferencia": 3,
+        "en transito": 5
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

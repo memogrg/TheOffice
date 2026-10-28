@@ -17,6 +17,7 @@ export const ITEMS = [
   { id: "cuentas", titulo: "Cuentas de gasto revisadas (consultas y propuestas)", vista: "aprobaciones", agente: "cuentas" },
   { id: "borradores", titulo: "Documentos del mes publicados (sin borradores)", vista: "hallazgos", agente: "estados" },
   { id: "bancos", titulo: "Bancos conciliados", vista: "hallazgos", agente: "bancos" },
+  { id: "extractos", titulo: "Movimientos del banco del mes en libros (extractos)", vista: "extractos", agente: "extractos" },
   { id: "puente", titulo: "Cuentas puente liquidadas (salarios, CCSS, IVA, retenciones)", vista: "hallazgos", agente: "cierre" },
   { id: "iva", titulo: "IVA del mes sin observaciones", vista: "hallazgos", agente: "cierre" },
   { id: "cambiario", titulo: "Diferencial cambiario registrado", vista: "aprobaciones", agente: "cambiario" },
@@ -42,6 +43,7 @@ function contexto(db, mes) {
   ctx.propuestas = db.propuestas({ estado: "propuesta", limite: 100000 });
   ctx.diferidosReg = db.diferidos({ estado: "activo" });
   ctx.activosReg = db.activos({ estado: "activo" });
+  ctx.lineasExtracto = db.lineasExtracto({ limite: 200000 });
   return ctx;
 }
 const delMes = (res, mes) => res && res.mes === mes;
@@ -90,6 +92,12 @@ function evaluar(it, cia, ctx) {
       if (!b.length) return na("Sin cuentas de banco.");
       const mal = b.filter(x => ["atrasada", "solo-borradores", "nunca-conciliada"].includes(x.estado));
       return mal.length ? pend(mal.map(x => `${x.diario}: ${x.estado === "atrasada" ? `hasta ${x.ultimaConciliada}` : x.estado.replace("-", " ")}`).join("; ") + ".") : ok();
+    }
+    case "extractos": {
+      const ls = ctx.lineasExtracto.filter(l => l.compania_id === cia.id && l.fecha.startsWith(mes));
+      if (!ls.length) return na("Sin extracto del mes subido.");
+      const p = ls.filter(l => l.estado === "pendiente").length, a = ls.filter(l => l.estado === "propuesta").length;
+      return p || a ? pend([p ? `${plural(p, "movimiento del banco sin registrar", "movimientos del banco sin registrar")}` : null, a ? `${plural(a, "con asiento por decidir", "con asiento por decidir")}` : null].filter(Boolean).join(", ") + ".") : ok(`${plural(ls.length, "movimiento", "movimientos")} en libros.`);
     }
     case "puente": {
       if (!delMes(ctx.cierre, mes)) return sinDatos("Cierre");

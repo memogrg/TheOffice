@@ -85,6 +85,7 @@ a{color:var(--sello)}
     <button data-v="aprobaciones">Aprobaciones</button>
     <button data-v="diferidos">Diferidos</button>
     <button data-v="activos">Activos fijos</button>
+    <button data-v="extractos">Extractos</button>
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
     <button data-v="auditoria">Auditoría</button>
@@ -190,6 +191,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="depreciacion">Depreciación</button>'+
     '<button class="b gh" data-correr="cartera">Cartera y cobros</button>'+
     '<button class="b gh" data-correr="datos">Calidad de datos</button>'+
+    '<button class="b gh" data-correr="extractos">Extractos contra libros</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -275,6 +277,7 @@ var HALLAZGOS = [
   { id:"cambiario", titulo:"Diferencial cambiario — saldos en dólares", ayuda:"Revalúa a fin de mes los bancos en dólares y los documentos abiertos de clientes y proveedores con el tipo de cambio de Odoo, y propone el asiento (se revierte solo el día 1). Los asientos quedan en Aprobaciones." },
   { id:"cartera", titulo:"Cartera — antigüedad de cobros y pagos", ayuda:"Cuánto se debe a cada compañía y cuánto debe, por tramos de vencimiento; clientes con facturas vencidas y pagos que vencen pronto. Redacta un recordatorio de cobro por cliente (en nombre de la compañía) que queda en Correos para aprobar." },
   { id:"datos", titulo:"Calidad de datos — contactos", ayuda:"Cédulas repetidas en la misma compañía (frenan el buzón), posibles duplicados por nombre, cédulas inválidas, terceros con documentos y sin cédula, clientes facturados sin correo. Se corrige en Odoo; el agente dice qué contacto conservar al fusionar." },
+  { id:"extractos", titulo:"Extractos — banco contra libros", ayuda:"Por cada cuenta con extractos subidos (pestaña Extractos): cuántos movimientos están en libros, cuáles tienen asiento propuesto y cuáles faltan; el saldo del banco contra el de libros y lo que queda sin explicar. Cobros y pagos sin registrar, con la factura que calza." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
 ];
 V.hallazgos = function(){
@@ -313,6 +316,7 @@ function pintarHallazgo(id, r){
   }
   if (id==="cierre") h += pintarCierre(r);
   if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
+  if (id==="extractos") h += pintarExtractosHz(r);
   if (id==="datos"){
     var ctc=function(c){ return esc(c.nombre)+' <span class="sub mono">#'+c.id+'</span><div class="sub">'+esc(c.cedula||"sin cédula")+' · '+n(c.ventas)+' ventas · '+n(c.compras)+' compras</div>'; };
     if ((r.duplicados||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Cédulas repetidas en la misma compañía</h3>'+tabla(["Compañía","Cédula","Contactos","Conservar"], r.duplicados.slice(0,80).map(function(d){
@@ -459,12 +463,12 @@ function pintarAsientos(lista){
   if(!lista.length){ el.innerHTML='<div class="sub">Nada aquí. Los propone Cierre al correr (Hallazgos) o se dictan al Director: «registrá el pago de la CCSS de enero de [compañía] contra el BNCR».</div>'; return; }
   el.innerHTML = lista.map(function(a){ var e=EST_ASIENTO[a.estado]||[a.estado,"neutro"];
     var faltaBanco = a.lineas.some(function(l){ return !l.cuentaId && l.rol==="contrapartida"; }) && a.origen!=="cambiario";
-    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?(faltaBanco?"Elegir banco":"Completar"):(a.origen==="cierre"?"Cambiar banco o fecha":"Cambiar fecha o diario"))+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
+    var acciones = a.estado==="propuesta" ? '<button class="b gh" data-elegir-banco="'+a.id+'">'+(a.porDefinir?(faltaBanco?"Elegir banco":"Completar"):(a.origen==="cierre"?"Cambiar banco o fecha":a.origen==="extractos"?"Cambiar cuenta o fecha":"Cambiar fecha o diario"))+'</button> '+(a.porDefinir?'':'<button class="b" data-aprobar-asiento="'+a.id+'">Aprobar</button> ')+'<button class="b rj" data-rechazar-asiento="'+a.id+'">Rechazar</button>'
       : a.estado==="aprobada" ? (S.estado.escrituraAsientos?'<button class="b" data-aplicar-asiento="'+a.id+'">Crear en Odoo</button>':'<span class="sub">Aprobado. Crear en Odoo requiere PERMITIR_ESCRITURA_ASIENTOS=si.</span>')
       : a.move_name ? '<span class="sub">Asiento '+esc(a.move_name)+(a.resultado&&a.resultado.estadoOdoo?' ('+esc(a.resultado.estadoOdoo==="posted"?"publicado":"borrador")+')':'')+'</span>'
       : a.resultado&&a.resultado.error ? '<span class="sub" style="color:var(--critico)">'+esc(a.resultado.error)+'</span>' : (a.nota?'<span class="sub">'+esc(a.nota)+'</span>':'');
     return '<div style="border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:10px">'+
-      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.origen==="diferidos"?"Diferidos":a.origen==="depreciacion"?"Depreciación":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
+      '<div class="fila" style="margin-bottom:4px"><b>'+esc(a.compania)+'</b><span class="est '+e[1]+'">'+esc(e[0])+'</span><span class="sub">#'+a.id+' · '+esc(a.fecha)+(a.reversa?' · se revierte el '+esc(a.reversa):'')+' · diario '+esc(a.diario||"por definir")+' · '+esc(a.origen==="cierre"?"Cierre":a.origen==="cambiario"?"Diferencial cambiario":a.origen==="diferidos"?"Diferidos":a.origen==="depreciacion"?"Depreciación":a.origen==="extractos"?"Extracto bancario":a.propuso)+'</span><span style="flex:1"></span><b class="mono">'+n(a.total)+'</b></div>'+
       '<div style="font-size:13px">'+esc(a.referencia||"")+'</div><div class="sub" style="margin-bottom:6px">'+esc(a.motivo||"")+'</div>'+
       tabla(["Cuenta","Descripción",{t:"Débito",n:1},{t:"Crédito",n:1}], a.lineas.map(function(l){
         return [(l.cuentaId?esc(l.cuenta):'<span class="est alto">'+esc(l.cuenta)+'</span>')+(l.fuente?'<div class="sub">'+esc(l.fuente)+'</div>':''), '<span class="sub">'+esc(l.descripcion||"")+'</span>', l.debito?n(l.debito):"", l.credito?n(l.credito):""]; }))+
@@ -605,6 +609,112 @@ function importarDiferidos(probar){
     }).catch(function(e){ msg(e.message,true); });
   }; rd.readAsText(f);
 }
+/* ---------- Extractos (fase 3C): subir, emparejar con libros; comprobantes en zip ---------- */
+var CAMPOS_EX = [["fecha","Fecha"],["descripcion","Descripción"],["referencia","Referencia"],["debito","Débito"],["credito","Crédito"],["monto","Monto (con signo)"],["tipo","Tipo D/C"],["saldo","Saldo"]];
+var EST_LINEA = { "en-libros":["en libros","ok"], propuesta:["asiento propuesto","alto"], registrada:["asiento en Odoo","ok"], pendiente:["pendiente","critico"], ignorada:["ignorada","neutro"] };
+var TIPO_LINEA = { cargo:"cargo bancario", interes:"intereses", transferencia:"transferencia propia", cobro:"cobro", pago:"pago", entrada:"entrada", salida:"salida" };
+V.extractos = function(){
+  return '<section><h2>Subir un extracto bancario</h2><div class="aviso">Descargue del banco el estado de cuenta en <b>CSV, TXT o Excel (.xlsx)</b> y súbalo aquí eligiendo su cuenta. La app reconoce las columnas (fecha, descripción, débito y crédito o monto, saldo); si no, se indican a mano. Al importar, el agente <b>Extractos</b> compara cada movimiento con los libros: lo que falta y es <b>cargo bancario, intereses o transferencia entre cuentas propias</b> queda como asiento en <b>Aprobaciones → Asientos</b>; los <b>cobros y pagos</b> muestran la factura que calza. Nada se escribe en Odoo desde aquí.</div>'+
+    '<div class="fila"><select id="exDiario" style="min-width:320px"><option value="">Cargando cuentas de banco…</option></select><input type="file" id="exArchivo" accept=".csv,.txt,.xlsx,text/csv,text/plain">'+
+    '<button class="b gh" id="exVer">Ver cómo se lee</button></div><div id="exVista"></div></section>'+
+    '<section><h2>Extractos importados</h2><div class="fila"><span class="sub" style="flex:1">Movimientos por estado. «Emparejar ahora» vuelve a comparar todo con los libros (después de registrar algo en Odoo, por ejemplo).</span><button class="b gh" data-correr="extractos">Emparejar ahora</button></div><div id="exTabla">Cargando…</div><div id="exLineas"></div></section>'+
+    '<section><h2>Revisar comprobantes (zip de PDF y XML)</h2><div class="aviso">Para los clientes que mandan sus facturas en un zip: suba el zip y la app dice de cada XML de Hacienda a qué compañía corresponde, si Hacienda lo aceptó y si <b>ya está en Odoo</b>, en el buzón sin registrar o <b>falta</b>. No carga nada en Odoo (eso espera a la confirmación de TecnoDEM) ni guarda el archivo.</div>'+
+    '<div class="fila"><input type="file" id="cbArchivo" accept=".zip,.xml"><button class="b gh" id="cbRevisar">Revisar</button></div><div id="cbResultado"></div></section>';
+};
+function aBase64(buf){ var b=new Uint8Array(buf), s="", i; for(i=0;i<b.length;i+=0x8000) s+=String.fromCharCode.apply(null, b.subarray(i,i+0x8000)); return btoa(s); }
+function leerArchivo(input, cb){
+  var f=input.files[0]; if(!f) return msg("Elija el archivo.", true);
+  if(f.size>20*1024*1024) return msg("El archivo pasa de 20 MB: divídalo.", true);
+  var rd=new FileReader(); rd.onload=function(){ cb({ nombre:f.name, base64:aBase64(rd.result) }); }; rd.onerror=function(){ msg("No se pudo leer el archivo.", true); }; rd.readAsArrayBuffer(f);
+}
+function cargarExtractos(){
+  if(!S.diariosBanco) api("/api/extractos/diarios").then(function(ds){ S.diariosBanco=ds; pintarDiariosBanco(); }).catch(function(e){ msg(e.message,true); }); else pintarDiariosBanco();
+  api("/api/extractos").then(pintarExtractos).catch(function(e){ msg(e.message,true); });
+}
+function pintarDiariosBanco(){ var s=$("#exDiario"); if(!s) return;
+  s.innerHTML='<option value="">cuenta de banco…</option>'+S.diariosBanco.map(function(d){ return '<option value="'+d.id+'">'+esc(d.compania)+' — '+esc(d.nombre)+(d.moneda?' ('+esc(d.moneda)+')':'')+(d.numero?' · '+esc(d.numero):'')+'</option>'; }).join(""); }
+function pintarExtractos(lista){
+  var el=$("#exTabla"); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="sub">Todavía no se ha importado ningún extracto.</div>'; return; }
+  el.innerHTML = tabla(["Compañía","Banco","Periodo",{t:"Mov.",n:1},{t:"En libros",n:1},{t:"Con asiento",n:1},{t:"Pendientes",n:1},{t:"Saldo final",n:1},"Cuadra",""], lista.map(function(e){
+    return [esc(e.compania), esc(e.diario)+'<div class="sub">'+esc(e.archivo||"")+'</div>', '<span class="sub">'+esc(e.desde||"")+' a '+esc(e.hasta||"")+'</span>', n(e.movimientos)+(e.repetidos?'<div class="sub">'+n(e.repetidos)+' repetidos</div>':''),
+      n(e.en_libros), n(e.con_asiento), e.pendientes?'<b style="color:var(--critico)">'+n(e.pendientes)+'</b>':'0', mon(e.saldo_final),
+      e.cuadra==null?'<span class="sub">sin saldo</span>':e.cuadra?'<span class="est ok">sí</span>':'<span class="est critico">no</span>',
+      '<a href="#" data-ver-extracto="'+e.id+'">líneas</a> · <a href="#" data-anular-extracto="'+e.id+'">anular</a>']; }));
+}
+function opcionesEx(){ return { diarioId:Number($("#exDiario").value), archivo:S.exArchivo }; }
+function verExtracto(extra){
+  var c=opcionesEx(); if(!c.diarioId) return msg("Elija la cuenta de banco.", true); if(!c.archivo) return msg("Elija el archivo.", true);
+  msg("Leyendo…"); api("/api/extractos/vista-previa", Object.assign(c, extra||{})).then(pintarVistaEx).catch(function(e){ msg(e.message,true); });
+}
+function pintarVistaEx(v){
+  S.exVista=v; var el=$("#exVista"); var enc=v.encabezados&&v.encabezados.length?v.encabezados:[];
+  var ncol=Math.max(enc.length, (v.muestra||[]).reduce(function(m,f){ return Math.max(m,f.length); },0), 1);
+  var col=function(i){ return enc[i]?esc(enc[i]):'columna '+(i+1); };
+  var mapa='<details'+(v.error?' open':'')+' style="margin:8px 0"><summary class="sub" style="cursor:pointer">Columnas reconocidas (cámbielas si algo se leyó mal)</summary><div class="fila" style="flex-wrap:wrap">'+
+    CAMPOS_EX.map(function(c){ var sel=v.mapa?v.mapa[c[0]]:null; return '<label class="sub">'+c[1]+' <select data-ex-campo="'+c[0]+'"><option value="">—</option>'+Array.from({length:ncol},function(_,i){ return '<option value="'+i+'"'+(sel===i?' selected':'')+'>'+col(i)+'</option>'; }).join("")+'</select></label>'; }).join("")+
+    '<label class="sub">Fila de encabezados <input class="f" id="exFila" type="number" min="1" style="width:60px" value="'+(v.filaEncabezados!=null?v.filaEncabezados+1:"")+'"></label>'+
+    '<label class="sub">Fechas <select id="exFormato"><option value="dmy"'+(v.formatoFecha!=="mdy"?" selected":"")+'>día/mes/año</option><option value="mdy"'+(v.formatoFecha==="mdy"?" selected":"")+'>mes/día/año</option></select></label>'+
+    '<label class="sub"><input type="checkbox" id="exInvertir"> invertir signos</label><button class="b gh" id="exReleer">Volver a leer</button></div></details>';
+  if(v.error){ el.innerHTML='<div class="aviso" style="border-color:var(--critico)">'+esc(v.error)+'</div>'+mapa+(v.muestra&&v.muestra.length?'<div class="sub">Primeras filas del archivo (para ubicar los encabezados):</div>'+tabla(["#"].concat(Array.from({length:ncol},function(_,i){ return 'col. '+(i+1); })), v.muestra.map(function(f,i){ return [n(i+1)].concat(Array.from({length:ncol},function(_,k){ return '<span class="sub">'+esc(f[k]==null?"":f[k])+'</span>'; })); })):''); return; }
+  el.innerHTML='<div class="aviso">'+esc(v.diario.compania)+' — <b>'+esc(v.diario.nombre)+'</b> · '+esc(v.formato.toUpperCase())+' · <b>'+n(v.total)+' movimientos</b> del '+esc(v.desde)+' al '+esc(v.hasta)+
+    ' · entradas '+mon(v.entradas)+' · salidas '+mon(v.salidas)+(v.saldoFinal!=null?' · saldo inicial '+mon(v.saldoInicial)+' → final '+mon(v.saldoFinal)+' · '+(v.cuadra?'<span class="est ok">cuadra</span>':'<span class="est critico">no cuadra</span>'):' · el archivo no trae saldo')+
+    (v.repetidos?' · '+n(v.repetidos)+' ya importados':'')+'</div>'+
+    (v.avisos||[]).map(function(a){ return '<div class="sub" style="color:var(--alto)">• '+esc(a)+'</div>'; }).join("")+
+    ((v.errores||[]).length?'<details><summary class="sub" style="cursor:pointer">'+v.errores.length+' filas no leídas</summary>'+tabla(["Fila","Motivo"], v.errores.map(function(e){ return [n(e.fila), esc(e.motivo)]; }))+'</details>':'')+mapa+
+    tabla(["Fila","Fecha","Descripción","Ref.",{t:"Monto",n:1},{t:"Saldo",n:1}], v.movimientos.concat(v.ultimos||[]).map(function(m){ return [n(m.fila), esc(m.fecha), esc(m.descripcion), '<span class="sub">'+esc(m.referencia)+'</span>', '<span style="color:'+(m.monto<0?'var(--critico)':'inherit')+'">'+n(m.monto)+'</span>', m.saldo==null?'':n(m.saldo)]; }))+
+    (v.total>40?'<div class="sub">Se muestran los primeros 40 y los últimos 5.</div>':'')+
+    '<div class="fila" style="margin-top:8px">'+(v.nuevos?'<button class="b" id="exImportar">Importar '+n(v.nuevos)+' movimientos</button>':'<span class="sub">No hay movimientos nuevos.</span>')+'</div>';
+}
+function opcionesMapa(){ var m={}; [].slice.call(document.querySelectorAll("[data-ex-campo]")).forEach(function(s){ if(s.value!=="") m[s.dataset.exCampo]=Number(s.value); });
+  var f=$("#exFila"); return { mapa:m, filaEncabezados:f&&f.value?Number(f.value)-1:null, formatoFecha:$("#exFormato")?$("#exFormato").value:null, invertir:$("#exInvertir")?$("#exInvertir").checked:false }; }
+function importarExtracto(){
+  var c=Object.assign(opcionesEx(), opcionesMapa()); msg("Importando y emparejando…");
+  api("/api/extractos", c).then(function(j){
+    var e=j.emparejado; $("#exVista").innerHTML='<div class="aviso">Importados <b>'+n(j.nuevos)+'</b> movimientos'+(j.repetidos?' ('+n(j.repetidos)+' ya estaban)':'')+'.'+
+      (e&&e.totales?' Emparejados: '+n(e.totales.enLibros)+' en libros, '+n(e.totales.propuestas)+' con asiento propuesto, '+n(e.totales.pendientes)+' pendientes.':e&&e.error?' No se pudo emparejar ahora ('+esc(e.error)+'): pulse «Emparejar ahora».':'')+'</div>';
+    S.exArchivo=null; $("#exArchivo").value=""; msg("Importado."); cargarExtractos();
+  }).catch(function(e){ msg(e.message,true); });
+}
+function verLineasExtracto(id){
+  api("/api/extractos/"+id+"/lineas").then(function(j){ var x=j.extracto;
+    $("#exLineas").innerHTML='<h3 style="margin:14px 0 6px;font-size:13px">'+esc(x.compania)+' — '+esc(x.diario)+' · '+esc(x.desde)+' a '+esc(x.hasta)+'</h3>'+
+      tabla(["Fecha","Descripción",{t:"Monto",n:1},"Estado","Qué es",""], j.lineas.map(function(l){ var e=EST_LINEA[l.estado]||[l.estado,"neutro"], m=l.emparejado||{};
+        var det = m.asiento?'asiento '+esc(m.asiento)+(m.dias?' ('+m.dias+(m.dias===1?' día':' días')+' de diferencia)':'')+(m.borrador?' · en borrador':'')
+          : m.candidatos?'factura '+m.candidatos.map(function(c){ return esc(c.factura)+' ('+esc(c.tercero)+')'; }).join(" o ")
+          : m.otraCuenta?'contra '+esc(m.otraCuenta)+' del '+esc(m.fecha) : '';
+        return [esc(l.fecha), esc(l.descripcion)+(l.referencia?'<div class="sub">ref. '+esc(l.referencia)+'</div>':'')+(l.nota?'<div class="sub">'+esc(l.nota)+'</div>':''), '<span style="color:'+(l.monto<0?'var(--critico)':'inherit')+'">'+n(l.monto)+'</span>',
+          '<span class="est '+e[1]+'">'+esc(e[0])+'</span>', esc(TIPO_LINEA[l.tipo]||"")+(det?'<div class="sub">'+det+'</div>':''),
+          l.estado==="pendiente"||l.estado==="propuesta"?'<a href="#" data-ignorar-linea="'+l.id+'" data-ext="'+x.id+'">ignorar</a>':l.estado==="ignorada"?'<a href="#" data-reabrir-linea="'+l.id+'" data-ext="'+x.id+'">reabrir</a>':'']; }));
+  }).catch(function(e){ msg(e.message,true); });
+}
+var EST_CB = { falta:["falta en Odoo","critico"], "en-buzon":["en el buzón","alto"], registrado:["en Odoo","ok"], ajeno:["no es de ninguna compañía","neutro"] };
+function revisarComprobantes(){
+  leerArchivo($("#cbArchivo"), function(a){ msg("Revisando…");
+    api("/api/comprobantes/revisar", { archivo:a }).then(function(r){ var t=r.totales;
+      $("#cbResultado").innerHTML='<div class="aviso"><b>'+n(t.documentos)+' comprobantes</b>: '+n(t.registrados)+' en Odoo, '+n(t.enBuzon)+' en el buzón, <b>'+n(t.faltan)+' faltan</b>'+(t.ajenos?', '+n(t.ajenos)+' de otra cédula':'')+(t.rechazadosHacienda?', <b style="color:var(--critico)">'+n(t.rechazadosHacienda)+' rechazados por Hacienda</b>':'')+(t.pdfSinXML?', '+n(t.pdfSinXML)+' PDF sin XML':'')+'.</div>'+
+        r.alertas.map(alerta).join("")+
+        tabla(["Compañía","Emisor","Documento",{t:"Total",n:1},"Estado","Archivos"], r.documentos.map(function(d){ var e=EST_CB[d.estado]||[d.estado,"neutro"];
+          return [esc(d.compania||"—")+(d.lado?'<div class="sub">'+esc(d.lado)+'</div>':''), esc(d.emisor||"")+'<div class="sub mono">'+esc(d.cedulaEmisor||"")+'</div>', esc(d.tipo)+' '+esc(d.consecutivo||"")+'<div class="sub">'+esc(d.fecha||"")+(d.hacienda?' · Hacienda: '+esc(d.hacienda):'')+'</div>',
+            esc(d.moneda)+' '+n(d.total), '<span class="est '+e[1]+'">'+esc(e[0])+'</span>'+(d.odoo?'<div class="sub">'+esc(d.odoo.asiento)+' ('+esc(d.odoo.estadoOdoo)+')</div>':'')+(d.buzon?'<div class="sub">'+esc(d.buzon.estado)+(d.buzon.error?': '+esc(d.buzon.error):'')+'</div>':''),
+            '<span class="sub">'+esc(d.xml.split("/").pop())+(d.pdf?'<br>'+esc(d.pdf.split("/").pop()):'<br>sin PDF')+'</span>']; }));
+      msg("Revisión lista.");
+    }).catch(function(e){ msg(e.message,true); });
+  });
+}
+function pintarExtractosHz(r){
+  var h='';
+  if((r.bancos||[]).length) h += tabla(["Compañía","Banco","Periodo",{t:"Líneas",n:1},{t:"En libros",n:1},{t:"Con asiento",n:1},{t:"Pendientes",n:1},{t:"Saldo banco",n:1},{t:"Saldo libros",n:1},{t:"Sin explicar",n:1}], r.bancos.map(function(b){
+    return [esc(b.compania), esc(b.banco)+(b.moneda?' <span class="sub">'+esc(b.moneda)+'</span>':''), '<span class="sub">'+esc(b.desde)+' a '+esc(b.hasta)+'</span>', n(b.lineas), n(b.enLibros), n(b.propuestas+b.registradas), b.pendientes?'<b style="color:var(--critico)">'+n(b.pendientes)+'</b>':'0',
+      b.saldoExtracto==null?'<span class="sub">—</span>':mon(b.saldoExtracto)+'<div class="sub">al '+esc(b.alDia)+'</div>', b.saldoLibros==null?'—':mon(b.saldoLibros),
+      b.sinExplicar==null?'—':Math.abs(b.sinExplicar)>0.01?'<b style="color:var(--critico)">'+mon(b.sinExplicar)+'</b>':'<span class="est ok">0</span>']; }));
+  var mov=function(t,xs){ return xs.length?'<h3 style="margin:12px 0 6px;font-size:13px">'+t+'</h3>'+tabla(["Compañía","Banco","Fecha","Descripción",{t:"Monto",n:1},"Factura que calza"], xs.slice(0,80).map(function(c){
+    return [esc(c.compania), esc(c.banco), esc(c.fecha), esc(c.descripcion), n(c.monto), c.candidatos.length?c.candidatos.map(function(f){ return esc(f.factura)+' <span class="sub">'+esc(f.tercero)+'</span>'; }).join("<br>"):'<span class="sub">ninguna: identificar</span>']; })):''; };
+  h += mov("Cobros sin registrar", r.cobros||[]) + mov("Pagos y salidas sin registrar", r.pagos||[]);
+  var tr=(r.bancos||[]).filter(function(b){ return b.transito&&b.transito.length; });
+  if(tr.length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">En libros y no en el banco (en tránsito)</summary>'+tabla(["Banco","Fecha","Asiento","Detalle",{t:"Monto",n:1}], [].concat.apply([], tr.map(function(b){ return b.transito.map(function(a){ return [esc(b.compania)+' — '+esc(b.banco), esc(a.fecha), esc(a.asiento||""), esc(a.detalle)+(a.tercero?' <span class="sub">'+esc(a.tercero)+'</span>':''), n(a.monto)]; }); })))+'</details>';
+  return h;
+}
 /* ---------- Activos fijos (ítem 16): registro en la app, depreciación a la cola de asientos ---------- */
 V.activos = function(){
   return '<section><h2>Activos fijos</h2><div class="aviso">En IASIMA los activos no están cargados en Odoo y la depreciación se hace a mano. Registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
@@ -645,10 +755,10 @@ function importarActivos(probar){
   }; rd.readAsText(f);
 }
 /* ---------- Cierre de mes por cliente ---------- */
-var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
+var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", extractos:"Extract.", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
 var EST_ITEM_CM = { ok:["✓","ok","al día"], pendiente:["!","alto","pendiente"], "sin-datos":["?","critico","sin corrida del mes"], na:["–","neutro","no aplica"], revisado:["✓","neutro","dado por bueno"] };
 var EST_CM = { abierto:["con pendientes","alto"], listo:["listo para cerrar","ok"], cerrado:["cerrado","neutro"] };
-var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","cierre","estados","cambiario","diferidos","depreciacion"];
+var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","extractos","cierre","estados","cambiario","diferidos","depreciacion"];
 V.cierremes = function(){
   return '<section><h2>Cierre de mes por cliente</h2><div class="aviso">Junta lo que encontraron los agentes en su última corrida y lo que espera en Aprobaciones. Cada ítem pendiente se resuelve en su pestaña o se <b>da por bueno</b> con una nota (queda en la auditoría). Sin pendientes, el mes del cliente se <b>cierra</b> y queda una foto de la lista. «?» quiere decir que el agente no ha corrido para ese mes.</div>'+
     '<div class="fila"><input class="f" type="month" id="cmMes" value="'+esc(S.cmMes||"")+'"><button class="b gh" id="cmVer">Ver</button>'+
@@ -753,6 +863,7 @@ function pintar(){
   if (S.vista==="correos") cargarCorreos();
   if (S.vista==="diferidos") cargarDiferidos();
   if (S.vista==="activos") cargarActivos();
+  if (S.vista==="extractos") cargarExtractos();
   if (S.vista==="cierremes") cargarCierreMes();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -865,10 +976,10 @@ $("#main").addEventListener("click", function(ev){
     api("/api/cambios/"+d.aplicarCambio+"/aplicar",{}).then(function(j){ msg(j.mensaje); cargarCambios(); }).catch(function(e){ t.disabled=false; msg(e.message,true); cargarCambios(); }); }
   else if (d.elegirBanco){ var ed=$("#ed-"+d.elegirBanco), as=(S.asientos||[]).find(function(x){ return String(x.id)===d.elegirBanco; }); ed.innerHTML='<div class="sub">Cargando bancos…</div>';
     api("/api/asientos/"+d.elegirBanco+"/opciones").then(function(ops){
-      var faltan = as.lineas.map(function(l,i){ return [l,i]; }).filter(function(x){ return !x[0].cuentaId || (/^contrapartida-perdida|^contrapartida$/.test(x[0].rol||"") && as.origen==="cambiario"); });
+      var faltan = as.lineas.map(function(l,i){ return [l,i]; }).filter(function(x){ return !x[0].cuentaId || (/^contrapartida-perdida|^contrapartida$/.test(x[0].rol||"") && as.origen==="cambiario") || (/^contrapartida-(gasto|ingreso)$/.test(x[0].rol||"") && as.origen==="extractos"); });
       var inputs = faltan.map(function(x){ return '<input class="f" data-ed-cuenta="'+x[1]+'" placeholder="código para «'+esc(x[0].descripcion||x[0].cuenta)+'»" style="width:230px"'+(x[0].cuentaId?' value=""':'')+'>'; }).join("");
       ed.innerHTML='<div class="fila" style="margin-top:8px">'+inputs+'<select id="edD-'+as.id+'">'+ops.map(function(o){ return '<option value="'+o.id+'"'+(o.id===as.diario_id?" selected":"")+'>'+esc(o.nombre)+' ('+esc(o.tipo==="bank"?"banco":o.tipo==="cash"?"caja":"general")+(o.cuenta?" · "+esc(o.cuenta):"")+')</option>'; }).join("")+'</select>'+
-        '<input class="f" type="date" id="edF-'+as.id+'" value="'+esc(as.fecha)+'"><button class="b" data-guardar-asiento="'+as.id+'">Guardar</button></div><div class="sub">'+(as.origen==="cambiario"?'Escriba el código de la cuenta de ganancia o pérdida cambiaria de esta compañía y elija el diario. Mejor aún: configúrelas en Odoo (Ajustes de contabilidad → diferencias de cambio) y el agente las tomará solo.':'Un banco elegido pasa a la línea de contrapartida y su diario al asiento.')+'</div>';
+        '<input class="f" type="date" id="edF-'+as.id+'" value="'+esc(as.fecha)+'"><button class="b" data-guardar-asiento="'+as.id+'">Guardar</button></div><div class="sub">'+(as.origen==="cambiario"?'Escriba el código de la cuenta de ganancia o pérdida cambiaria de esta compañía y elija el diario. Mejor aún: configúrelas en Odoo (Ajustes de contabilidad → diferencias de cambio) y el agente las tomará solo.':as.origen==="extractos"?'Para usar otra cuenta de gasto o ingreso, escriba su código. Deje el diario del banco: es la cuenta del extracto.':'Un banco elegido pasa a la línea de contrapartida y su diario al asiento.')+'</div>';
     }).catch(function(e){ ed.innerHTML=''; msg(e.message,true); }); }
   else if (d.guardarAsiento){ var id=d.guardarAsiento; var cs=[].slice.call(document.querySelectorAll("#ed-"+id+" [data-ed-cuenta]")).filter(function(i){ return i.value.trim(); }).map(function(i){ return {indice:Number(i.dataset.edCuenta), codigo:i.value.trim()}; });
     api("/api/asientos/"+id+"/editar",{diarioId:Number($("#edD-"+id).value), fecha:$("#edF-"+id).value, cuentas:cs}).then(function(){ msg("Guardado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
@@ -876,6 +987,14 @@ $("#main").addEventListener("click", function(ev){
   else if (d.rechazarAsiento){ var mo=prompt("¿Por qué se rechaza? (queda en la auditoría; si el pago se registró contra otra cuenta, dígalo)", ""); if(mo===null) return; api("/api/asientos/"+d.rechazarAsiento+"/rechazar",{motivo:mo}).then(function(){ msg("Rechazado."); cargarAsientos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.aplicarAsiento){ if(!confirm("Esto CREA el asiento en Odoo"+(S.estado.publicarAsientos?" y lo publica":" en borrador")+". ¿Continuar?")) return; t.disabled=true; msg("Creando en Odoo…");
     api("/api/asientos/"+d.aplicarAsiento+"/aplicar",{}).then(function(j){ msg(j.mensaje); cargarAsientos(); }).catch(function(e){ t.disabled=false; msg(e.message,true); cargarAsientos(); }); }
+  else if (t.id==="exVer"){ leerArchivo($("#exArchivo"), function(a){ S.exArchivo=a; verExtracto(); }); }
+  else if (t.id==="exReleer"){ verExtracto(opcionesMapa()); }
+  else if (t.id==="exImportar"){ importarExtracto(); }
+  else if (t.id==="cbRevisar"){ revisarComprobantes(); }
+  else if (d.verExtracto){ ev.preventDefault(); verLineasExtracto(d.verExtracto); }
+  else if (d.anularExtracto){ ev.preventDefault(); var na=prompt("¿Por qué se anula este extracto? (se borran sus líneas sin asiento; lo ya propuesto o creado en Odoo no se toca)", ""); if(na===null) return; api("/api/extractos/"+d.anularExtracto+"/anular",{nota:na}).then(function(){ msg("Anulado."); $("#exLineas").innerHTML=""; cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.ignorarLinea){ ev.preventDefault(); var ni=prompt("¿Por qué se ignora este movimiento? (p. ej. ya registrado en otra cuenta)", ""); if(!ni) return; api("/api/extractos/lineas/"+d.ignorarLinea+"/ignorar",{nota:ni}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.reabrirLinea){ ev.preventDefault(); api("/api/extractos/lineas/"+d.reabrirLinea+"/ignorar",{ignorar:false}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }
