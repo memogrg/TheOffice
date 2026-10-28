@@ -250,7 +250,8 @@ var LEGD={M:"#2E2E3C",g:"#4A4A66",W:"#C9A063",k:"#E8E6DF",o:"#E8E6DF",E:"#A87F42
 var LEGP={g:"#4E9B4E",t:"#B5714A"}, LEGB={c:"#C9A063"};
 
 /* ================= plano ================= */
-var ESCRITORIOS=[[110,120],[110,380],[300,380],[490,380],[680,380],[870,380],[110,545],[300,545],[490,545],[680,545]];
+// El del jefe arriba a la izquierda; tres filas de seis; uno libre arriba a la derecha.
+var ESCRITORIOS=[[110,120]].concat([290,420,550].reduce(function(t,y){ return t.concat([110,250,390,530,670,810].map(function(x){ return [x,y]; })); },[])).concat([[830,140]]);
 function silla(i){ var p=ESCRITORIOS[i]; return {x:p[0]+21, y:p[1]+58}; }
 var LUGARES={
   cafe:{x:1040,y:200,etq:"CAFÉ"}, agua:{x:1140,y:130,etq:""},
@@ -300,7 +301,7 @@ function fondo(){
   s+='<rect x="1128" y="104" width="24" height="42" fill="#D8D5CC" stroke="#A9A498" stroke-width="3"/>';
   s+='<rect x="1132" y="96" width="16" height="12" fill="#9FD3E8"/>';
   /* plantas, basurero */
-  s+=pinta(MATA,LEGP,24,300,5)+pinta(MATA,LEGP,930,660,5)+pinta(MATA,LEGP,368,74,4);
+  s+=pinta(MATA,LEGP,24,232,5)+pinta(MATA,LEGP,930,660,5)+pinta(MATA,LEGP,368,74,4);
   s+='<rect x="612" y="656" width="22" height="28" fill="#B9B5A8" stroke="#8F8B80" stroke-width="3"/>';
   /* escritorios */
   ESCRITORIOS.forEach(function(p){ s+=pinta(ESCRITORIO,LEGD,p[0],p[1],3)+pinta(BANCO,LEGB,p[0]+21,p[1]+58,3); });
@@ -331,17 +332,44 @@ var BASE=[
   {id:"diagnostico",nm:"DIAGNÓSTICO",rl:"Explica los errores",col:"#B07908",col2:"#8A5F06",h:2,sk:2,st:"idle",prog:0},
   {id:"correccion",nm:"CORRECCIÓN",rl:"Arregla — con permiso",col:"#A8362A",col2:"#832820",h:4,sk:1,st:"hold",prog:0},
   {id:"cuentas",nm:"CUENTAS",rl:"Revisa las cuentas de cada línea",col:"#7A4DA8",col2:"#5E3B82",h:2,sk:3,st:"idle",prog:0},
-  {id:"reporte",nm:"REPORTE",rl:"Entrega afuera",col:"#566B77",col2:"#41525C",h:0,sk:0,st:"idle",prog:0}
+  {id:"reporte",nm:"REPORTE",rl:"Entrega afuera",col:"#566B77",col2:"#41525C",h:0,sk:0,st:"idle",prog:0},
+  {id:"recurrentes",nm:"RECURRENTES",rl:"Lo que llega todos los meses",col:"#2E7D32",col2:"#225E26",h:1,sk:1,st:"idle",prog:0,
+   doing:"Sabe qué proveedores le facturan cada mes a cada compañía y avisa si faltó la factura del último mes cerrado o si el monto se salió de lo normal."},
+  {id:"bancos",nm:"BANCOS",rl:"Vigila las conciliaciones",col:"#1565C0",col2:"#0F4C91",h:4,sk:0,st:"idle",prog:0,
+   doing:"Mira en el módulo de TecnoDEM hasta qué mes está conciliada cada cuenta de banco, qué quedó en borrador y qué cuentas nunca se conciliaron."},
+  {id:"extractos",nm:"EXTRACTOS",rl:"El banco contra los libros",col:"#00838F",col2:"#00666F",h:0,sk:2,st:"idle",prog:0,
+   doing:"Lee los estados de cuenta que se suben en la app, encuentra cada movimiento en libros y propone el asiento de las comisiones, intereses y transferencias que faltan."},
+  {id:"documentos",nm:"DOCUMENTOS",rl:"Notas de crédito y consecutivos",col:"#6D4C41",col2:"#543A32",h:2,sk:1,st:"idle",prog:0,
+   doing:"Encuentra notas de crédito sin ligar a la factura que corrigen (y propone cuál es) y huecos en los consecutivos de venta."},
+  {id:"cierre",nm:"CIERRE",rl:"Cuentas puente e IVA del mes",col:"#AD1457",col2:"#870F44",h:3,sk:3,st:"idle",prog:0,
+   doing:"Revisa salarios, CCSS, IVA y retenciones por pagar que no se liquidaron, cuadra el IVA del mes y propone el asiento que falta."},
+  {id:"estados",nm:"ESTADOS",rl:"Balance y resultados",col:"#283593",col2:"#1F2A73",h:1,sk:2,st:"idle",prog:0,
+   doing:"Arma el balance de situación y el estado de resultados de cada compañía y avisa cajas en negativo, cuentas del lado contrario y años sin cerrar."},
+  {id:"cambiario",nm:"CAMBIARIO",rl:"Diferencial cambiario",col:"#EF6C00",col2:"#BF5600",h:2,sk:0,st:"idle",prog:0,
+   doing:"A fin de mes revalúa lo que está en dólares con el tipo de cambio de Odoo y propone el asiento, que se revierte solo el día 1."},
+  {id:"diferidos",nm:"DIFERIDOS",rl:"Pólizas y pagos por adelantado",col:"#558B2F",col2:"#446F25",h:4,sk:3,st:"idle",prog:0,
+   doing:"Lleva el calendario de cada póliza, alquiler o licencia pagada por adelantado y propone cada mes la cuota que toca."},
+  {id:"depreciacion",nm:"DEPRECIACIÓN",rl:"Activos fijos",col:"#5D4037",col2:"#4A332C",h:0,sk:1,st:"idle",prog:0,
+   doing:"Deprecia los activos registrados en la app y no propone nada en el mes en que la compañía ya depreció a mano."},
+  {id:"cartera",nm:"CARTERA",rl:"Cobros y pagos por antigüedad",col:"#C62828",col2:"#9E2020",h:3,sk:0,st:"idle",prog:0,
+   doing:"Ordena lo que deben los clientes y lo que se debe a proveedores por días de vencido y redacta los recordatorios de cobro, que esperan aprobación en Correos."},
+  {id:"datos",nm:"DATOS",rl:"Calidad de los contactos",col:"#455A64",col2:"#37474F",h:2,sk:2,st:"idle",prog:0,
+   doing:"Busca cédulas repetidas o mal escritas, terceros sin cédula y clientes sin correo, y dice qué contacto conservar al fusionar."}
 ];
 
-var AG=[], sel="recepcion", tab="a", CHAT=[], CONV=null, movimiento=true;
+var DESPEDIDOS=[], AG=[], sel="recepcion", tab="a", CHAT=[], CONV=null, movimiento=true;
 
 function cargar(){
-  try{ var raw=localStorage.getItem("iasima_oficina_v3");
-       if(raw){ var d=JSON.parse(raw); if(d&&d.AG&&d.AG.length){ AG=d.AG; return; } } }catch(e){}
+  try{ var raw=localStorage.getItem("iasima_oficina_v4");
+       if(raw){ var d=JSON.parse(raw); if(d&&d.AG&&d.AG.length){ AG=d.AG;
+         // un agente construido después de guardar la oficina entra solo a su escritorio
+         BASE.forEach(function(b){
+           var ya=AG.some(function(x){ return x.id===b.id; }), fuera=(d.despedidos||[]).indexOf(b.id)>=0;
+           if(!ya && !fuera && AG.length<ESCRITORIOS.length) AG.push(JSON.parse(JSON.stringify(b))); });
+         DESPEDIDOS=d.despedidos||[]; return; } } }catch(e){}
   AG=BASE.map(function(a){ return JSON.parse(JSON.stringify(a)); });
 }
-function guardar(){ try{ localStorage.setItem("iasima_oficina_v3", JSON.stringify({AG:AG})); }catch(e){} }
+function guardar(){ try{ localStorage.setItem("iasima_oficina_v4", JSON.stringify({AG:AG, despedidos:DESPEDIDOS})); }catch(e){} }
 cargar();
 
 /* fusionar la corrida real del agente */
@@ -368,15 +396,19 @@ function hhmm(){ var d=new Date(); return ("0"+d.getHours()).slice(-2)+":"+("0"+
 
 /* ================= vida de oficina ================= */
 var FRASES_TRABAJO=["van 9.518 registradas","otra vez el periodo fiscal cerrado","esto es tiquete, no factura",
-  "clave tipo 04, lo aparto","512 sin asiento, no cuadra","el buzón de Puuk lleva meses quieto",
-  "todos los buzones caídos","IVA al 11 %, sin mapear","reenviaron el mismo XML 14 veces","512 sin asiento en 30 compañías","otra vez Gastos generales","esto es Agua, no gasto general","esta ya está publicada, no la toco"];
+  "clave tipo 04, lo aparto","512 sin asiento, no cuadra","este buzón lleva meses quieto",
+  "todos los buzones caídos","IVA al 11 %, sin mapear","reenviaron el mismo XML 14 veces","512 sin asiento en 30 compañías","otra vez Gastos generales","esto es Agua, no gasto general","esta ya está publicada, no la toco",
+  "IVA por pagar sin liquidar","cuota 7 de 12 de la póliza","dos cédulas iguales: fusionar","comisión SINPE sin registrar","cliente con 120 días vencido","el diferencial se revierte el 1"];
 var FRASES_CAFE=["¿alguien más quiere?","necesitaba esto","este café sabe a agua","cinco minutos y sigo"];
 var CHARLAS=[
-  ["¿viste lo de Colina Hermanos?","mandaron el mismo XML 14 veces"],
+  ["¿viste lo de ese proveedor?","mandaron el mismo XML 14 veces"],
   ["¿abrimos los periodos fiscales?","no sin que él lo apruebe"],
   ["¿cuántos tiquetes van?","180, todos bien apartados"],
   ["¿y el buzón caído?","todos, desde marzo"],
-  ["International Animal Rescue está feo","573 sin registrar, sí"],
+  ["esa compañía está fea","573 sin registrar, sí"],
+  ["¿la CCSS de enero?","sigue sin liquidar, ya propuse el asiento"],
+  ["¿cuadró el banco?","faltan dos comisiones, van en el asiento"],
+  ["¿le damos autonomía al diferencial?","dos meses limpios, decide él"]
   ["¿el reporte ya salió?","falta el correo del cliente"]
 ];
 var elegir=function(a){ return a[Math.floor(Math.random()*a.length)]; };
@@ -500,7 +532,7 @@ function panelAgente(){
     h+='<div class="blk"><div class="k">Hable con el jefe</div><p class="doing" style="font-size:12.5px;color:var(--ink2)">Dele la instrucción a él. Él decide qué agente la ejecuta.</p></div>'+
       '<div class="chat" id="chat">'+(CHAT.length?CHAT:[{w:"ceo",t:"Buenos días. Recepción ya corrió"+(corrida?" a las "+new Date(corrida.actualizado).toLocaleTimeString("es-CR",{hour:"2-digit",minute:"2-digit"}):"")+". ¿Qué necesita?"}])
       .map(function(m){return '<div class="msg '+m.w+'" style="white-space:pre-wrap"><span class="w">'+(m.w==="me"?"Usted":"Director")+"</span>"+(m.w==="me"?esc(m.t):md(m.t))+"</div>";}).join("")+"</div>"+
-      '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: revisá el buzón de International Animal Rescue" aria-label="Instrucción"><button class="b" type="submit">Enviar</button>'+
+      '<form class="row" id="cf"><input type="text" id="ci" placeholder="Ej.: qué le falta a [compañía] para cerrar febrero" aria-label="Instrucción"><button class="b" type="submit">Enviar</button>'+
       (CONV?'<button class="b" type="button" id="cNueva" title="Cierra esta conversación y empieza otra; la anterior queda guardada">Nueva</button>':"")+'</form>'+
       (/^https?:$/.test(location.protocol)?'<p class="doing" style="font-size:11.5px;color:var(--ink2);margin:6px 15px 0">Es la misma conversación que la pestaña Director de la app, con memoria de 30 días.</p>':"");
   }
@@ -538,6 +570,14 @@ function panelReportes(){
     if(rec.alertas) h+='<div class="blk"><div class="k">Alertas</div>'+
       rec.alertas.map(function(al){return '<div class="al '+esc(al.nivel)+'"><div class="t">'+esc(al.texto)+"</div>"+
         (al.detalle&&al.detalle.length?'<div class="d">'+al.detalle.slice(0,8).map(esc).join("<br>")+"</div>":"")+"</div>";}).join("")+"</div>";
+  }
+  var vivos=(corrida.agentes||[]).filter(function(x){ return x.id!=="recepcion"; });
+  if(vivos.length){
+    var peso={critico:0,alto:1,info:2,ok:3};
+    h+='<div class="blk"><div class="k">Lo más importante de cada agente</div>'+vivos.map(function(x){
+      var a=porId(x.id), al=(x.alertas||[]).slice().sort(function(p,q){ return (peso[p.nivel]??9)-(peso[q.nivel]??9); })[0];
+      return '<div class="rrow" style="align-items:flex-start"><span class="l"><a href="#" data-ver="'+esc(x.id)+'" style="color:inherit"><b>'+esc(a?a.nm:x.nombre)+'</b></a></span>'+
+        '<span class="v" style="text-align:right;font-weight:400;max-width:70%;color:'+(al&&(al.nivel==="alto"||al.nivel==="critico")?"var(--hold)":"var(--ink2)")+'">'+esc(al?al.texto:"sin alertas")+"</span></div>"; }).join("")+"</div>";
   }
   h+='<div class="blk"><div class="k">Reporte por correo</div><p class="doing" style="font-size:13px">'+
      (corrida.correo? "Se envía a <b>"+esc(corrida.correo)+"</b>." : "Todavía sin SMTP configurado: el reporte se guarda en la carpeta <code style=\"font-family:var(--m)\">reportes/</code> pero no sale por correo.")+"</p></div>";
@@ -619,6 +659,7 @@ function pintar(){
   var ch=document.getElementById("chat"); if(ch) ch.scrollTop=ch.scrollHeight;
 }
 function cablear(){
+  Array.prototype.forEach.call(document.querySelectorAll("[data-ver]"), function(x){ x.addEventListener("click", function(e){ e.preventDefault(); sel=x.getAttribute("data-ver"); tab="a"; pintar(); }); });
   var cf=document.getElementById("cf");
   if(cf) cf.addEventListener("submit",function(e){ e.preventDefault();
     var i=document.getElementById("ci"), v=i.value.trim(); if(!v) return;
@@ -646,6 +687,7 @@ function cablear(){
   var fx=document.getElementById("fx"); if(fx) fx.addEventListener("click",function(){ porId(sel).fire=true; pintar(); });
   var fn=document.getElementById("fn"); if(fn) fn.addEventListener("click",function(){ porId(sel).fire=false; pintar(); });
   var fy=document.getElementById("fy"); if(fy) fy.addEventListener("click",function(){
+    if(DESPEDIDOS.indexOf(sel)<0) DESPEDIDOS.push(sel);
     AG=AG.filter(function(a){return a.id!==sel;}); sel=AG.length?AG[0].id:""; guardar(); sembrar(); pintar(); });
 }
 
@@ -663,8 +705,8 @@ var chip=document.getElementById("chipDatos");
 if(corrida){ chip.innerHTML='<i></i>corrida real · '+new Date(corrida.actualizado).toLocaleDateString("es-CR"); }
 else { chip.className="tbchip grey"; chip.innerHTML='<i></i>sin corrida — cifras de ejemplo'; }
 document.getElementById("pie").innerHTML = corrida
-  ? '<b>Las cifras de MARTA (recepción) son reales</b>, escritas por el agente al terminar su corrida del '+
-    new Date(corrida.actualizado).toLocaleString("es-CR")+'. Los demás puestos existen en la oficina pero todavía no corren contra Odoo. El movimiento de los agentes es ambientación.'
+  ? '<b>Las cifras son reales</b>, escritas por cada agente al terminar su corrida (la última, del '+
+    new Date(corrida.actualizado).toLocaleString("es-CR")+'). Los agentes marcados <b>REAL</b> muestran su última corrida; Corrección y Reporte son puestos que todavía no se construyen. El movimiento de los agentes es ambientación.'
   : '<b>Sin corrida todavía.</b> Corra <code>npm run recepcion</code> y este archivo se reescribe con las cifras reales.';
 
 if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) movimiento=false;
