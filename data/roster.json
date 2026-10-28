@@ -368,6 +368,35 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "cartera",
+      "nombre": "CARTERA",
+      "rol": "CARTERA",
+      "modo": "lectura",
+      "hace": "Arma la antigüedad de cuentas por cobrar y por pagar de cada compañía a una fecha de corte, lista los clientes con facturas vencidas y los pagos a proveedores que vencen pronto, y redacta un recordatorio de cobro por cliente (en nombre de la compañía) que queda en Correos para aprobar.",
+      "noHace": "No envía los recordatorios ni registra cobros o pagos.",
+      "responde": [
+        "quién le debe a una compañía",
+        "cuánto está vencido",
+        "qué pagos vencen esta semana",
+        "a quién mandarle recordatorio de cobro"
+      ],
+      "palabras": {
+        "cobro": 5,
+        "cobrar": 5,
+        "cobranza": 6,
+        "cartera": 6,
+        "antiguedad": 6,
+        "vencid": 5,
+        "moroso": 6,
+        "por pagar": 3,
+        "por cobrar": 4,
+        "recordatorio": 4,
+        "deuda": 4
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

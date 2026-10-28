@@ -188,6 +188,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="cambiario">Diferencial cambiario</button>'+
     '<button class="b gh" data-correr="diferidos">Diferidos</button>'+
     '<button class="b gh" data-correr="depreciacion">Depreciación</button>'+
+    '<button class="b gh" data-correr="cartera">Cartera y cobros</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -271,6 +272,7 @@ var HALLAZGOS = [
   { id:"cierre", titulo:"Cierre — cuentas puente e IVA del mes", ayuda:"Salarios, CCSS, IVA, retenciones y transitorias que no quedaron liquidados (lo más viejo que el plazo), y el IVA del mes por compañía: débito, crédito, neto, IVA en cuentas equivocadas y facturas en borrador." },
   { id:"estados", titulo:"Estados financieros — balance y resultados", ayuda:"Balance de situación y estado de resultados de cada compañía al cierre del mes, con los últimos meses. Pulse «ver» para el detalle e «Imprimir» para entregarlo." },
   { id:"cambiario", titulo:"Diferencial cambiario — saldos en dólares", ayuda:"Revalúa a fin de mes los bancos en dólares y los documentos abiertos de clientes y proveedores con el tipo de cambio de Odoo, y propone el asiento (se revierte solo el día 1). Los asientos quedan en Aprobaciones." },
+  { id:"cartera", titulo:"Cartera — antigüedad de cobros y pagos", ayuda:"Cuánto se debe a cada compañía y cuánto debe, por tramos de vencimiento; clientes con facturas vencidas y pagos que vencen pronto. Redacta un recordatorio de cobro por cliente (en nombre de la compañía) que queda en Correos para aprobar." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
 ];
 V.hallazgos = function(){
@@ -309,6 +311,19 @@ function pintarHallazgo(id, r){
   }
   if (id==="cierre") h += pintarCierre(r);
   if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
+  if (id==="cartera"){
+    var tr=r.tramos||[];
+    h += '<div class="sub" style="margin:6px 0">Corte al <b>'+esc(r.corte||"")+'</b>. Montos en colones.</div>';
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Por cobrar</h3>'+tabla(["Compañía"].concat(tr.map(function(t){ return {t:t.titulo,n:1}; })).concat([{t:"Total",n:1}]),
+      (r.companias||[]).filter(function(c){ return c.totalCobrar; }).map(function(c){ return [esc(c.compania)].concat(tr.map(function(t){ var v=c.cobrar[t.id]; return v?(t.id==="91-180"||t.id==="mas-180"?'<b style="color:var(--critico)">'+mon(v)+'</b>':mon(v)):'<span class="sub">—</span>'; })).concat(['<b>'+mon(c.totalCobrar)+'</b>']); }));
+    h += '<h3 style="margin:12px 0 6px;font-size:13px">Por pagar</h3>'+tabla(["Compañía"].concat(tr.map(function(t){ return {t:t.titulo,n:1}; })).concat([{t:"Total",n:1}]),
+      (r.companias||[]).filter(function(c){ return c.totalPagar; }).sort(function(a,b){ return b.vencidoPagar-a.vencidoPagar; }).map(function(c){ return [esc(c.compania)].concat(tr.map(function(t){ var v=c.pagar[t.id]; return v?mon(v):'<span class="sub">—</span>'; })).concat(['<b>'+mon(c.totalPagar)+'</b>']); }));
+    if ((r.morosos||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Clientes con facturas vencidas</h3>'+tabla(["Compañía","Cliente",{t:"Vencido",n:1},{t:"Facturas",n:1},{t:"Días (máx.)",n:1},"Recordatorio"],
+      r.morosos.slice(0,80).map(function(m){ var rec=(r.recordatorios||[]).find(function(x){ return x.companiaId===m.companiaId && x.partnerId===m.partnerId; });
+        return [esc(m.compania), esc(m.cliente), mon(m.vencido), n(m.documentos), n(m.maxDias), rec?'<span class="sub">en Correos → '+esc(rec.para)+'</span>':'<span class="est alto">sin correo</span>']; }));
+    if ((r.pagosProximos||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+r.pagosProximos.length+' facturas de proveedor que vencen pronto</summary>'+tabla(["Compañía","Proveedor","Factura","Vence",{t:"Saldo",n:1}],
+      r.pagosProximos.slice().sort(function(a,b){ return a.enDias-b.enDias; }).slice(0,80).map(function(p){ return [esc(p.compania), esc(p.proveedor), esc(p.numero), esc(p.vence)+' <span class="sub">('+(p.enDias?'en '+p.enDias+' días':'hoy')+')</span>', mon(p.saldo)]; }))+'</details>';
+  }
   if (id==="cambiario"){
     h += '<div class="sub" style="margin:6px 0">Revaluación al <b>'+esc(r.fecha||"")+'</b>, reversión el '+esc(r.reversa||"")+'.</div>'+((r.companias||[]).length?tabla(["Compañía","Tipo de cambio",{t:"Saldos",n:1},{t:"Ganancia",n:1},{t:"Pérdida",n:1},{t:"Neto",n:1},"Avisos"], r.companias.map(function(c){
       var av=[]; if(c.sinConfiguracion) av.push("sin cuentas o diario de diferencial"); if(c.sinTasa) av.push("sin tipo de cambio");
@@ -534,7 +549,7 @@ function pintarCorreos(lista){
   var el=$("#corrTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Comunicación» en el tablero.</div>'; return; }
   el.innerHTML = tabla(["Para","Asunto",{t:"Casos",n:1},"Estado",""], lista.map(function(c){
-    return ['<div><span class="mono">'+esc(c.para)+'</span><div class="sub">'+(c.frente==="afuera"?"al establecimiento":"revisión interna")+' · '+esc((c.companias||[]).join(", "))+'</div></div>',
+    return ['<div><span class="mono">'+esc(c.para)+'</span><div class="sub">'+(c.frente==="afuera"?"al establecimiento":/^cobro:/.test(c.frente)?"recordatorio de cobro":"revisión interna")+' · '+esc((c.companias||[]).join(", "))+'</div></div>',
       '<a href="#" data-ver-correo="'+c.id+'">'+esc(c.asunto)+'</a>', n(c.casos),
       '<span class="est '+({borrador:"neutro",aprobado:"ok",enviado:"ok",rechazado:"critico",fallo:"critico",obsoleto:"neutro"}[c.estado]||"neutro")+'">'+esc(c.estado)+'</span>'+(c.enviado_a?'<div class="sub">→ '+esc(c.enviado_a)+'</div>':"")+(c.error?'<div class="sub">'+esc(c.error)+'</div>':""),
       c.estado==="borrador" ? '<button class="b" data-aprobar-correo="'+c.id+'">Aprobar</button> <button class="b rj" data-rechazar-correo="'+c.id+'">Rechazar</button>' : ""];

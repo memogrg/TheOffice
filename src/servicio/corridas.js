@@ -19,11 +19,12 @@ import * as estados from "../agents/estados.js";
 import * as cambiario from "../agents/cambiario.js";
 import * as diferidos from "../agents/diferidos.js";
 import * as depreciacion from "../agents/depreciacion.js";
+import * as cartera from "../agents/cartera.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -114,6 +115,15 @@ export class Corridas {
     if (quien === "diferidos" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "diferidos", reemplazarAnteriores: true }) };
     }
+    // Cartera: los recordatorios de cobro van a Correos como borradores; los de la corrida anterior
+    // que no se enviaron quedan obsoletos. El HTML no se guarda dos veces en la corrida.
+    if (quien === "cartera" && Array.isArray(r.recordatorios)) {
+      const obsoletos = this.db.obsoletarCorreos("cobro:");
+      const ids = this.db.registrarCorreos(corridaId, r.recordatorios.map(x => ({ frente: `cobro:${x.companiaId}`, para: x.para, asunto: x.asunto, html: x.html,
+        casos: x.documentos, companias: [x.compania], responderA: x.responderA })));
+      r.recordatorios = r.recordatorios.map(({ html, ...x }) => x);
+      return { recordatorios: ids.length, obsoletos };
+    }
     if (quien === "depreciacion" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "depreciacion", reemplazarAnteriores: true }) };
     }
@@ -169,7 +179,7 @@ export class Corridas {
       const para = prueba ? destinoPrueba : c.para;
       if (!para) { fallos.push({ id: c.id, motivo: "sin destinatario" }); this.db.marcarCorreo(c.id, "fallo", { error: "sin destinatario" }); continue; }
       try {
-        await enviarCorreo({ cfg: this.cfg, para, asunto: (prueba ? `[PRUEBA · iba a ${c.para}] ` : "") + c.asunto, html: completo.html });
+        await enviarCorreo({ cfg: this.cfg, para, asunto: (prueba ? `[PRUEBA · iba a ${c.para}] ` : "") + c.asunto, html: completo.html, responderA: completo.responder_a || null });
         this.db.marcarCorreo(c.id, "enviado", { enviadoA: para });
         this.db.auditar(quienPide, "enviar", "correo", c.id, { para, prueba });
         enviados.push(c.id);

@@ -265,6 +265,7 @@ export class BaseDeDatos {
     this.#tablaDiferidos();
     this.#tablaActivos();
     this.#tablaCierres();
+    if (!columnas("correos").has("responder_a")) this.db.exec("ALTER TABLE correos ADD COLUMN responder_a TEXT");
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -773,16 +774,20 @@ export class BaseDeDatos {
   }
 
   // --- correos de Victor
+  // Los borradores sin enviar de un tipo (p. ej. todos los recordatorios de cobro) quedan obsoletos.
+  obsoletarCorreos(prefijoFrente) {
+    return this.correr("UPDATE correos SET estado='obsoleto' WHERE frente LIKE ? AND estado IN ('borrador','aprobado')", `${prefijoFrente}%`).changes;
+  }
   registrarCorreos(corridaId, piezas) {
     const ahora = this.#ahora();
     const ids = [];
     this.transaccion(() => {
       // Un borrador nuevo para el mismo receptor y frente deja obsoleto al anterior no enviado.
       const obs = this.db.prepare("UPDATE correos SET estado='obsoleto' WHERE para=? AND frente=? AND estado IN ('borrador','aprobado')");
-      const ins = this.db.prepare("INSERT INTO correos (corrida_id, frente, para, asunto, html, casos, companias, creado_en) VALUES (?,?,?,?,?,?,?,?)");
+      const ins = this.db.prepare("INSERT INTO correos (corrida_id, frente, para, asunto, html, casos, companias, creado_en, responder_a) VALUES (?,?,?,?,?,?,?,?,?)");
       for (const p of piezas) {
         obs.run(p.para, p.frente);
-        const r = ins.run(corridaId, p.frente, p.para, p.asunto, p.html, p.casos ?? null, JSON.stringify(p.companias || []), ahora);
+        const r = ins.run(corridaId, p.frente, p.para, p.asunto, p.html, p.casos ?? null, JSON.stringify(p.companias || []), ahora, p.responderA ?? null);
         ids.push(Number(r.lastInsertRowid));
       }
     });
