@@ -14,22 +14,22 @@ function clave({ fecha = "110326", cedula = "3101123456", tipo = "01", numero = 
 }
 
 const companias = [
-  { id: 144, name: "Puuk" },
-  { id: 126, name: "International Animal Rescue" },
-  { id: 82, name: "Aurora" }
+  { id: 144, name: "Ceiba" },
+  { id: 126, name: "Refugio Verde" },
+  { id: 82, name: "Lirio" }
 ];
 const cia = id => [id, companias.find(c => c.id === id).name];
 
 const partners = [
-  { id: 1, name: "Colina Hermanos S.A.", vat: "3101123456" },
+  { id: 1, name: "Bodegas del Valle S.A.", vat: "3101123456" },
   { id: 2, name: "Ferretería El Mar", vat: "3101222222" },
   { id: 3, name: "Distribuidora Vega", vat: "3101333333" },
-  { id: 4, name: "Puuk", vat: "3101444444" }
+  { id: 4, name: "Ceiba", vat: "3101444444" }
 ];
 
 let n = 0;
 const correos = [];
-function correo({ cia: c, estado, tipo = "01", cedula = "3101123456", to = "contabilidad@puuk.cr", from = '"Colina Hermanos" <facturas@colina.cr>', fecha = "2026-03-11 14:00:00", error = "", sinClave = false, numero }) {
+function correo({ cia: c, estado, tipo = "01", cedula = "3101123456", to = "contabilidad@ceiba.cr", from = '"Bodegas del Valle" <facturas@bodegasdelvalle.cr>', fecha = "2026-03-11 14:00:00", error = "", sinClave = false, numero }) {
   n++;
   const k = sinClave ? null : clave({ tipo, cedula, numero: numero ?? n });
   correos.push({
@@ -41,7 +41,7 @@ function correo({ cia: c, estado, tipo = "01", cedula = "3101123456", to = "cont
   return k;
 }
 
-// Puuk: mezcla completa
+// Ceiba: mezcla completa
 const kDone1 = correo({ cia: 144, estado: "done", numero: 1 });
 const kDone2 = correo({ cia: 144, estado: "done", numero: 2 });
 const kDone3 = correo({ cia: 144, estado: "done", cedula: "3101222222", numero: 3 });   // sin asiento en libros
@@ -55,22 +55,22 @@ correo({ cia: 144, estado: "error", numero: 9, error: "No se puede registrar: el
 correo({ cia: 144, estado: "duplicate", numero: 1 });
 correo({ cia: 144, estado: "vatiderror", sinClave: true, from: '"Distribuidora Vega" <ventas@vega.cr>' });
 correo({ cia: 144, estado: "process", numero: 10, fecha: "2026-03-11 15:00:00" });
-correo({ cia: 144, estado: "rejected", sinClave: true, from: "noreply@hacienda.go.cr", to: "contabilidad@puuk.cr, gerencia@puuk.cr" });
+correo({ cia: 144, estado: "rejected", sinClave: true, from: "noreply@hacienda.go.cr", to: "contabilidad@ceiba.cr, gerencia@ceiba.cr" });
 
-// IAR: dos receptores, buzón sano
-const kIar = correo({ cia: 126, estado: "done", cedula: "3101333333", to: "admin@iar.org", numero: 20 });
-correo({ cia: 126, estado: "done", cedula: "3101333333", to: "admin@iar.org", numero: 21 });
-correo({ cia: 126, estado: "isticket", tipo: "04", cedula: "3101333333", to: "admin@iar.org; finanzas@iar.org", numero: 22 });
+// RV: dos receptores, buzón sano
+const kRv = correo({ cia: 126, estado: "done", cedula: "3101333333", to: "admin@refugioverde.org", numero: 20 });
+correo({ cia: 126, estado: "done", cedula: "3101333333", to: "admin@refugioverde.org", numero: 21 });
+correo({ cia: 126, estado: "isticket", tipo: "04", cedula: "3101333333", to: "admin@refugioverde.org; finanzas@refugioverde.org", numero: 22 });
 
-// Aurora: buzón caído (último correo hace semanas) y correo sin receptor
-correo({ cia: 82, estado: "done", to: "aurora@aurora.cr", fecha: "2026-02-05 09:00:00", numero: 30 });
+// Lirio: buzón caído (último correo hace semanas) y correo sin receptor
+correo({ cia: 82, estado: "done", to: "lirio@lirio.cr", fecha: "2026-02-05 09:00:00", numero: 30 });
 correo({ cia: 82, estado: "error", to: "", fecha: "2026-02-05 09:30:00", numero: 31, error: "Proveedor no existe" });
 
-const asientos = [kDone1, kDone2, kIar].map((k, i) => ({
+const asientos = [kDone1, kDone2, kRv].map((k, i) => ({
   id: 100 + i, e_key: k, company_id: i < 2 ? cia(144) : cia(126), move_type: "in_invoice", state: "posted"
 }));
 
-// Plan de cuentas y facturas de Puuk para el agente CUENTAS
+// Plan de cuentas y facturas de Ceiba para el agente CUENTAS
 const cuentas = [
   { id: 500, code: "5.04.002.002", name: "Electricidad", account_type: "expense", deprecated: false, company_ids: [144] },
   { id: 501, code: "5.04.002.001", name: "Agua", account_type: "expense", deprecated: false, company_ids: [144] },
@@ -79,7 +79,7 @@ const cuentas = [
   { id: 504, code: "2.01.001", name: "Proveedores", account_type: "liability_payable", deprecated: false, company_ids: [144] }
 ];
 const facturas = [
-  { id: 900, name: "FAC/2026/001", state: "draft", payment_state: "not_paid", partner_id: [1, "Colina Hermanos S.A."], invoice_date: "2026-03-01", amount_total: 50000, ref: "", move_type: "in_invoice", company_id: cia(144) },
+  { id: 900, name: "FAC/2026/001", state: "draft", payment_state: "not_paid", partner_id: [1, "Bodegas del Valle S.A."], invoice_date: "2026-03-01", amount_total: 50000, ref: "", move_type: "in_invoice", company_id: cia(144) },
   { id: 901, name: "FAC/2026/002", state: "posted", payment_state: "not_paid", partner_id: [2, "Ferretería El Mar"], invoice_date: "2026-03-02", amount_total: 80000, ref: "", move_type: "in_invoice", company_id: cia(144) },
   { id: 902, name: "FAC/2026/003", state: "posted", payment_state: "paid", partner_id: [2, "Ferretería El Mar"], invoice_date: "2026-03-03", amount_total: 10000, ref: "", move_type: "in_invoice", company_id: cia(144) }
 ];

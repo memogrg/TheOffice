@@ -72,12 +72,12 @@ test("Excel con débitos y créditos; y signos al revés que se corrigen con el 
 });
 
 // --- Odoo de prueba: una compañía con dos bancos
-const C1 = [1, "Puuk"], CRC = [3, "CRC"];
+const C1 = [1, "Ceiba"], CRC = [3, "CRC"];
 function instancia() {
   const ml = (id, cuenta, fecha, balance, nombre, extra = {}) => ({ id, account_id: cuenta, date: fecha, balance, amount_currency: 0, name: nombre, ref: false, move_id: [id + 1000, `BNK/${id}`],
     partner_id: false, parent_state: "posted", company_id: C1, journal_id: [50, "BCR"], ...extra });
   return {
-    "res.company": [{ id: 1, name: "Puuk", currency_id: CRC, vat: "3101000001" }],
+    "res.company": [{ id: 1, name: "Ceiba", currency_id: CRC, vat: "3101000001" }],
     "account.journal": [
       { id: 50, name: "BCR Colones", type: "bank", company_id: C1, default_account_id: [500, "1-01-01 BCR"], currency_id: false, bank_acc_number: "CR01" },
       { id: 51, name: "BN Colones", type: "bank", company_id: C1, default_account_id: [501, "1-01-02 BN"], currency_id: false, bank_acc_number: "CR02" },
@@ -175,7 +175,7 @@ test("Emparejamiento: en libros, cargos e intereses del mes, transferencia propi
   assert.equal(db.lineasExtracto({}).find(l => l.descripcion === "COMISION SINPE").estado, "registrada");
 
   // en el cierre de mes de la compañía
-  const item = cierreMes.lista(db, { mes: "2026-02", companias: [{ id: 1, name: "Puuk" }] }).companias[0].items.find(i => i.id === "extractos");
+  const item = cierreMes.lista(db, { mes: "2026-02", companias: [{ id: 1, name: "Ceiba" }] }).companias[0].items.find(i => i.id === "extractos");
   assert.equal(item.estado, "pendiente");
   assert.match(item.detalle, /movimientos del banco sin registrar/);
 
@@ -200,7 +200,7 @@ const k = n => `50610022600310100000200100001010000000${String(n).padStart(3, "0
 test("Comprobantes en zip: cuáles faltan en Odoo, cuáles están en el buzón, rechazados por Hacienda y PDF sin XML", async () => {
   const [k1, k2, k3, k4] = [1, 2, 3, 4].map(k);
   assert.equal(k1.length, 50);
-  const yo = ["Puuk S.A.", "3101000001"], prov = ["Proveedor Uno", "3102000002"];
+  const yo = ["Ceiba S.A.", "3101000001"], prov = ["Proveedor Uno", "3102000002"];
   const zip = crearZip({
     [`${k1}.xml`]: factura(k1, prov, yo), [`${k1}.pdf`]: "%PDF-1.4",
     [`${k2}.xml`]: factura(k2, prov, yo),
@@ -212,7 +212,7 @@ test("Comprobantes en zip: cuáles faltan en Odoo, cuáles están en el buzón, 
   assert.equal(leerComprobante(factura(k1, prov, yo)).total, 11300);
   const raiz = mkdtempSync(join(tmpdir(), "comprobantes-"));
   writeFileSync(join(raiz, "sim.json"), JSON.stringify({
-    "res.company": [{ id: 1, name: "Puuk", vat: "3-101-000001" }],
+    "res.company": [{ id: 1, name: "Ceiba", vat: "3-101-000001" }],
     "account.move": [{ id: 1, name: "FC-1", state: "posted", move_type: "in_invoice", company_id: C1, partner_id: [5, "Proveedor Uno"], amount_total: 11300, e_key: k1 }],
     "bdt.invoice.email": [{ id: 1, company_id: C1, state: "error", error: "Periodo fiscal cerrado", e_invoice_name: `${k2}.xml`, date: "2026-02-11" }]
   }));

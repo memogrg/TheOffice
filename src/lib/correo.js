@@ -3,7 +3,7 @@
 
 // to_mail viene sucio: '"alea@x.com" <alea@x.com>' o dos direcciones separadas por coma.
 // equivalencias: Map dominio viejo → dominio nuevo (ver dominiosEquivalentes). Así, cuando los
-// receptores cambian de dominio, iar@viejo.com e iar@nuevo.com son un solo receptor y no reciben
+// receptores cambian de dominio, rv@viejo.com e rv@nuevo.com son un solo receptor y no reciben
 // dos cartas (error 5 del log del 25/10).
 export function receptores(toMail, equivalencias = null) {
   return [...new Set(String(toMail || "")
@@ -53,7 +53,7 @@ export function dominiosSospechosos(receptoresConCompanias) {
   return pares;
 }
 
-// '"Colina Hermanos" <facturas@colina.com>' -> nombre "Colina Hermanos", dominio colina.com
+// '"Bodegas del Valle" <facturas@bodegasdelvalle.com>' -> nombre "Bodegas del Valle", dominio bodegasdelvalle.com
 export function remitenteVisible(fromMail) {
   const s = String(fromMail || "");
   const nom = s.match(/^\s*"?([^"<]+?)"?\s*</);

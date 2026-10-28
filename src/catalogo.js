@@ -8,7 +8,7 @@ export function norm(s){
     .replace(/�/g, " ")                      // el caracter roto de la extraccion
     .normalize("NFKD").replace(/[̀-ͯ]/g, "")
     .toUpperCase()
-    .replace(/\[[^\]]*\]/g, " ")                  // quita prefijos tipo [PUUK]
+    .replace(/\[[^\]]*\]/g, " ")                  // quita prefijos tipo [CEIBA]
     .replace(/[^A-Z0-9]+/g, " ")
     .trim();
 }

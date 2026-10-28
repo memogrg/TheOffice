@@ -2,7 +2,7 @@
 //   node src/run.js recepcion
 //   node src/run.js cuentas --empresa=144 [--aplicar]
 //   node src/run.js comunicacion [--enviar] [--a-los-receptores]
-//   node src/run.js director "revisá las cuentas de Puuk"
+//   node src/run.js director "revisá las cuentas de Ceiba"
 //
 // Con ODOO_SIMULADO=<archivo.json> no se toca la red: el cliente responde con los datos
 // de ese archivo (ver test/simulado/). Sirve para probar la cadena completa sin credenciales.
@@ -79,7 +79,7 @@ async function main() {
   // El Director: recibe la instruccion en palabras y decide quien la ejecuta.
   if (quien === "director") {
     const instruccion = process.argv.slice(3).join(" ");
-    if (!instruccion) { console.error('Uso: node src/run.js director "revisá las cuentas de Puuk"'); process.exit(1); }
+    if (!instruccion) { console.error('Uso: node src/run.js director "revisá las cuentas de Ceiba"'); process.exit(1); }
     const dir = new Director(join(RAIZ, "data", "roster.json"), join(RAIZ, "data", "companias.json"));
     const d = dir.decidir(instruccion);
     console.log(`\n  Usted: ${instruccion}`);

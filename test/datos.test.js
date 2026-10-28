@@ -24,7 +24,7 @@ test("Reglas: cédula por tipo, nombre normalizado y correo", () => {
 });
 
 test("Calidad de datos: lo que frena el buzón y lo que deja clientes sin factura ni recordatorio", async () => {
-  const C1 = [1, "Puuk"], C2 = [2, "Aurora"];
+  const C1 = [1, "Ceiba"], C2 = [2, "Lirio"];
   const p = (id, name, vat, cia, extra = {}) => ({ id, name, vat, type_vat: vat && String(vat).replace(/\D/g, "").length === 9 ? "01" : "02", email: false, company_id: cia, active: true, parent_id: false, ...extra });
   const odoo = new OdooSimulado({
     "res.partner": [
@@ -48,7 +48,7 @@ test("Calidad de datos: lo que frena el buzón y lo que deja clientes sin factur
   assert.equal(r.duplicados.length, 1, "la misma cédula en otra compañía no es duplicado");
   assert.equal(r.duplicados[0].conservar, 1, "se conserva el que tiene más documentos");
   assert.equal(r.parecidos.length, 1);
-  assert.equal(r.parecidos[0].compania, "Puuk");
+  assert.equal(r.parecidos[0].compania, "Ceiba");
   assert.deepEqual(r.cedulas.map(c => c.nombre).sort(), ["FERRETERIA EL MAR S.A.", "Juan Mora"], "con guiones y con un dígito de menos");
   assert.deepEqual(r.sinCedula.map(s => [s.nombre, s.rol]), [["Distribuidora Perez", "proveedor"]]);
   assert.deepEqual(r.sinCorreo.map(s => s.nombre), ["Cliente Sin Correo"]);

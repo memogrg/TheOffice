@@ -2,7 +2,7 @@
   "_comentario": "Catálogo pequeño para pruebas. El real se construye con scripts/construir-catalogo.js",
   "cuentas": { "5.04.002.002": "Electricidad", "5.04.002.001": "Agua", "5.01.001": "Costo de ventas" },
   "porCliente": {
-    "PUUK": {
+    "CEIBA": {
       "SERVICIO ELECTRICO": ["5.04.002.002", "Electricidad", 40],
       "SERVICIO DE AGUA": ["5.04.002.001", "Agua", 12]
     }

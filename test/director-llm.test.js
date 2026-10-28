@@ -21,7 +21,7 @@ function raizTemporal() {
   for (const f of ["reglas.json", "roster.json"]) copyFileSync(join(RAIZ, "data", f), join(r, "data", f));
   copyFileSync(join(AQUI, "simulado", "catalogo-cuentas.json"), join(r, "data", "catalogo-cuentas.json"));
   copyFileSync(join(AQUI, "simulado", "instancia.json"), join(r, "test", "simulado", "instancia.json"));
-  writeFileSync(join(r, "data", "companias.json"), JSON.stringify([{ id: 144, name: "Puuk" }, { id: 126, name: "International Animal Rescue" }, { id: 82, name: "Aurora" }]));
+  writeFileSync(join(r, "data", "companias.json"), JSON.stringify([{ id: 144, name: "Ceiba" }, { id: 126, name: "Refugio Verde" }, { id: 82, name: "Lirio" }]));
   writeFileSync(join(r, "ui", "app", "index.html"), "<!doctype html>");
   return r;
 }
@@ -80,7 +80,7 @@ test("leer_odoo y agrupar_odoo pasan por el candado de lectura del cliente", asy
 test("bucle de herramientas: el modelo pide estado, luego casos, y responde con cifras", async () => {
   const api = apiFalsa([
     usar("correr_agente", { agente: "recepcion" }, "a"),
-    usar("casos", { frente: "afuera", receptor: "contabilidad@puuk.cr" }, "b"),
+    usar("casos", { frente: "afuera", receptor: "contabilidad@ceiba.cr" }, "b"),
     b => {
       // el último mensaje del usuario trae los resultados de la herramienta
       const ult = b.messages[b.messages.length - 1];
@@ -88,11 +88,11 @@ test("bucle de herramientas: el modelo pide estado, luego casos, y responde con 
       assert.equal(ult.content[0].type, "tool_result");
       assert.equal(ult.content[0].tool_use_id, "b");
       const casos = JSON.parse(ult.content[0].content);
-      return textoFinal(`Hay ${casos.length} documentos por reclamar afuera para contabilidad@puuk.cr.`);
+      return textoFinal(`Hay ${casos.length} documentos por reclamar afuera para contabilidad@ceiba.cr.`);
     }
   ]);
   const { director, db } = armar({ CLAUDE_API_KEY: "clave" }, api);
-  const r = await director.responder("¿qué le reclamo a los proveedores de Puuk?", { quien: "memo" });
+  const r = await director.responder("¿qué le reclamo a los proveedores de Ceiba?", { quien: "memo" });
   assert.equal(r.modo, "llm");
   assert.match(r.respuesta, /4 documentos por reclamar afuera/);
   assert.deepEqual(r.pasos.map(p => p.herramienta), ["correr_agente", "casos"]);
@@ -134,7 +134,7 @@ test("revisar_factura: una factura con el criterio de Cuentas, sin escribir", as
   const { director, db } = armar({ CLAUDE_API_KEY: "x", PERMITIR_ESCRITURA: "si" });
   const r = await director.ejecutarHerramienta("revisar_factura", { factura: 901 }, "memo");
   assert.equal(r.factura.nombre, "FAC/2026/002");
-  assert.equal(r.factura.compania, "Puuk");
+  assert.equal(r.factura.compania, "Ceiba");
   assert.equal(r.lineas.length, 2);
   const luz = r.lineas.find(l => l.articulo === "SERVICIO ELECTRICO");
   assert.equal(luz.esComodin, true);
@@ -145,7 +145,7 @@ test("revisar_factura: una factura con el criterio de Cuentas, sin escribir", as
   assert.ok(luz.pasos.some(p => /historial de esta compañía/.test(p)), "explica los pasos de la guía");
   const tornillos = r.lineas.find(l => /TORNILLOS/.test(l.articulo));
   assert.equal(tornillos.naturaleza, "Materiales y servicios de mantenimiento del local u oficina", "naturaleza por la palabra, con plural");
-  assert.match(tornillos.veredicto, /consulta/, "Mantenimiento de local no existe en el plan simulado de Puuk");
+  assert.match(tornillos.veredicto, /consulta/, "Mantenimiento de local no existe en el plan simulado de Ceiba");
   assert.equal(db.propuestas({ estado: "todas" }).length, 0, "no registra propuestas: solo cuenta lo que haría");
 
   // por número o proveedor; ambigua → lista
@@ -160,11 +160,11 @@ test("revisar_factura: una factura con el criterio de Cuentas, sin escribir", as
 
 test("proponer_regla: valida la cuenta en el plan, no toca Odoo; al aprobar se guarda y Cuentas propone las líneas", async () => {
   const { director, db, corridas, cfg, raiz } = armar({ CLAUDE_API_KEY: "x" });
-  // cuenta inexistente en el plan de Puuk
+  // cuenta inexistente en el plan de Ceiba
   const mala = await director.ejecutarHerramienta("proponer_regla", { compania: 144, codigo: "5.04.17.01", proveedor_id: 2, motivo: "x" }, "memo");
   assert.match(mala.error, /no existe/);
   assert.match((await director.ejecutarHerramienta("proponer_regla", { compania: 144, codigo: "5.01.001", motivo: "x" }, "memo")).error, /alcance/);
-  // por proveedor: todo lo de Ferretería El Mar en Puuk va a Costo de ventas
+  // por proveedor: todo lo de Ferretería El Mar en Ceiba va a Costo de ventas
   const r = await director.ejecutarHerramienta("proponer_regla", { compania: 144, codigo: "5.01.1", proveedor_id: 2, motivo: "Lo de ferretería es costo de venta", factura: 901 }, "memo");
   assert.equal(r.propuestas.length, 1);
   assert.match(r.propuestas[0].alcance, /Ferretería El Mar/);
@@ -184,7 +184,7 @@ test("proponer_regla: valida la cuenta en el plan, no toca Odoo; al aprobar se g
     assert.equal(j.propuestas, 2, "las dos líneas de la factura no pagada; la pagada va a revisión humana");
     const reglas = JSON.parse(readFileSync(join(raiz, "data", "reglas.json"), "utf8")).reglas;
     const nueva = reglas[reglas.length - 1];
-    assert.deepEqual([nueva.proveedorId, nueva.codigo, nueva.alcance, nueva.decidio], [2, "5.01.001", "Puuk", "Victor"]);
+    assert.deepEqual([nueva.proveedorId, nueva.codigo, nueva.alcance, nueva.decidio], [2, "5.01.001", "Ceiba", "Victor"]);
     const props = db.propuestas({ estado: "propuesta", companiaId: 144 }).filter(p => p.factura_id === 901);   // la 900 trae su propia regla (bomberos)
     assert.ok(props.length === 2 && props.every(p => p.fuente === "regla-humana" && /^5\.01\.001/.test(p.cuenta_nueva)), JSON.stringify(props.map(p => [p.fuente, p.cuenta_nueva])));
     assert.equal(db.corridas({ agente: "cuentas" })[0].modo, "solo lectura (propuesta)");
@@ -209,9 +209,9 @@ test("leer_odoo con compania: esa compañía va primera en el contexto (códigos
 test("sin CLAUDE_API_KEY cae al Director de palabras", async () => {
   const { director } = armar({});
   assert.equal(director.disponible, false);
-  const r = await director.responder("revisá las cuentas de Puuk");
+  const r = await director.responder("revisá las cuentas de Ceiba");
   assert.equal(r.modo, "palabras");
-  assert.match(r.respuesta, /CUENTAS para Puuk/);
+  assert.match(r.respuesta, /CUENTAS para Ceiba/);
   assert.equal(r.pasos.length, 0);
 });
 

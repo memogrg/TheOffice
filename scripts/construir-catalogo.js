@@ -12,7 +12,7 @@
 //
 // Formato de salida (el que espera src/catalogo.js):
 //   { cuentas: { "5.04.002.002": "Electricidad" },
-//     porCliente: { "PUUK": { "SERVICIO ELECTRICO": ["5.04.002.002", "Electricidad", 40] } },
+//     porCliente: { "CEIBA": { "SERVICIO ELECTRICO": ["5.04.002.002", "Electricidad", 40] } },
 //     global:     { "SERVICIO ELECTRICO": ["5.04.002.002", "Electricidad", 218] } }
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";

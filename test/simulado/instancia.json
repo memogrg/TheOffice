@@ -2,21 +2,21 @@
   "res.company": [
     {
       "id": 144,
-      "name": "Puuk"
+      "name": "Ceiba"
     },
     {
       "id": 126,
-      "name": "International Animal Rescue"
+      "name": "Refugio Verde"
     },
     {
       "id": 82,
-      "name": "Aurora"
+      "name": "Lirio"
     }
   ],
   "res.partner": [
     {
       "id": 1,
-      "name": "Colina Hermanos S.A.",
+      "name": "Bodegas del Valle S.A.",
       "vat": "3101123456"
     },
     {
@@ -31,7 +31,7 @@
     },
     {
       "id": 4,
-      "name": "Puuk",
+      "name": "Ceiba",
       "vat": "3101444444"
     }
   ],
@@ -40,11 +40,11 @@
       "id": 1,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "done",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000001",
       "e_invoice_name": "50611032600310112345600100001010000000001112345678.xml",
@@ -54,11 +54,11 @@
       "id": 2,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "done",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000002",
       "e_invoice_name": "50611032600310112345600100001010000000002112345678.xml",
@@ -68,11 +68,11 @@
       "id": 3,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "done",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000003",
       "e_invoice_name": "50611032600310122222200100001010000000003112345678.xml",
@@ -82,11 +82,11 @@
       "id": 4,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "done",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001040000000004",
       "e_invoice_name": "50611032600310112345600100001040000000004112345678.xml",
@@ -96,11 +96,11 @@
       "id": 5,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "isticket",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001040000000005",
       "e_invoice_name": "50611032600310112345600100001040000000005112345678.xml",
@@ -110,11 +110,11 @@
       "id": 6,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "isticket",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001040000000005",
       "e_invoice_name": "50611032600310112345600100001040000000005112345678.xml",
@@ -124,11 +124,11 @@
       "id": 7,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "isticket",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000006",
       "e_invoice_name": "50611032600310112345600100001010000000006112345678.xml",
@@ -138,11 +138,11 @@
       "id": 8,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "rejected",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000007",
       "e_invoice_name": "50611032600310122222200100001010000000007112345678.xml",
@@ -152,11 +152,11 @@
       "id": 9,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "error",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000008",
       "e_invoice_name": "50611032600310112345600100001010000000008112345678.xml",
@@ -166,11 +166,11 @@
       "id": 10,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "error",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000009",
       "e_invoice_name": "50611032600310112345600100001010000000009112345678.xml",
@@ -180,11 +180,11 @@
       "id": 11,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "duplicate",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000001",
       "e_invoice_name": "50611032600310112345600100001010000000001112345678.xml",
@@ -194,10 +194,10 @@
       "id": 12,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "vatiderror",
-      "to_mail": "contabilidad@puuk.cr",
+      "to_mail": "contabilidad@ceiba.cr",
       "from_mail": "\"Distribuidora Vega\" <ventas@vega.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Documento sin clave legible",
@@ -208,11 +208,11 @@
       "id": 13,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "process",
-      "to_mail": "contabilidad@puuk.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "contabilidad@ceiba.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 15:00:00",
       "name": "Factura 00100001010000000010",
       "e_invoice_name": "50611032600310112345600100001010000000010112345678.xml",
@@ -222,10 +222,10 @@
       "id": 14,
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "state": "rejected",
-      "to_mail": "contabilidad@puuk.cr, gerencia@puuk.cr",
+      "to_mail": "contabilidad@ceiba.cr, gerencia@ceiba.cr",
       "from_mail": "noreply@hacienda.go.cr",
       "date": "2026-03-11 14:00:00",
       "name": "Documento sin clave legible",
@@ -236,11 +236,11 @@
       "id": 15,
       "company_id": [
         126,
-        "International Animal Rescue"
+        "Refugio Verde"
       ],
       "state": "done",
-      "to_mail": "admin@iar.org",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "admin@refugioverde.org",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000020",
       "e_invoice_name": "50611032600310133333300100001010000000020112345678.xml",
@@ -250,11 +250,11 @@
       "id": 16,
       "company_id": [
         126,
-        "International Animal Rescue"
+        "Refugio Verde"
       ],
       "state": "done",
-      "to_mail": "admin@iar.org",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "admin@refugioverde.org",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001010000000021",
       "e_invoice_name": "50611032600310133333300100001010000000021112345678.xml",
@@ -264,11 +264,11 @@
       "id": 17,
       "company_id": [
         126,
-        "International Animal Rescue"
+        "Refugio Verde"
       ],
       "state": "isticket",
-      "to_mail": "admin@iar.org; finanzas@iar.org",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "admin@refugioverde.org; finanzas@refugioverde.org",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-03-11 14:00:00",
       "name": "Factura 00100001040000000022",
       "e_invoice_name": "50611032600310133333300100001040000000022112345678.xml",
@@ -278,11 +278,11 @@
       "id": 18,
       "company_id": [
         82,
-        "Aurora"
+        "Lirio"
       ],
       "state": "done",
-      "to_mail": "aurora@aurora.cr",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "to_mail": "lirio@lirio.cr",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-02-05 09:00:00",
       "name": "Factura 00100001010000000030",
       "e_invoice_name": "50611032600310112345600100001010000000030112345678.xml",
@@ -292,11 +292,11 @@
       "id": 19,
       "company_id": [
         82,
-        "Aurora"
+        "Lirio"
       ],
       "state": "error",
       "to_mail": "",
-      "from_mail": "\"Colina Hermanos\" <facturas@colina.cr>",
+      "from_mail": "\"Bodegas del Valle\" <facturas@bodegasdelvalle.cr>",
       "date": "2026-02-05 09:30:00",
       "name": "Factura 00100001010000000031",
       "e_invoice_name": "50611032600310112345600100001010000000031112345678.xml",
@@ -309,7 +309,7 @@
       "e_key": "50611032600310112345600100001010000000001112345678",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "move_type": "in_invoice",
       "state": "posted"
@@ -319,7 +319,7 @@
       "e_key": "50611032600310112345600100001010000000002112345678",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ],
       "move_type": "in_invoice",
       "state": "posted"
@@ -329,7 +329,7 @@
       "e_key": "50611032600310133333300100001010000000020112345678",
       "company_id": [
         126,
-        "International Animal Rescue"
+        "Refugio Verde"
       ],
       "move_type": "in_invoice",
       "state": "posted"
@@ -341,7 +341,7 @@
       "payment_state": "not_paid",
       "partner_id": [
         1,
-        "Colina Hermanos S.A."
+        "Bodegas del Valle S.A."
       ],
       "invoice_date": "2026-03-01",
       "amount_total": 50000,
@@ -349,7 +349,7 @@
       "move_type": "in_invoice",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -367,7 +367,7 @@
       "move_type": "in_invoice",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -385,7 +385,7 @@
       "move_type": "in_invoice",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     }
   ],
@@ -460,7 +460,7 @@
       "parent_state": "draft",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -481,7 +481,7 @@
       "parent_state": "draft",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -502,7 +502,7 @@
       "parent_state": "draft",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -523,7 +523,7 @@
       "parent_state": "posted",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -544,7 +544,7 @@
       "parent_state": "posted",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     },
     {
@@ -565,7 +565,7 @@
       "parent_state": "posted",
       "company_id": [
         144,
-        "Puuk"
+        "Ceiba"
       ]
     }
   ],

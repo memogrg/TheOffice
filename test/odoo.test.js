@@ -76,7 +76,7 @@ test("cargarEnv() ignora comentarios y quita comillas", () => {
 });
 
 test("el Odoo simulado entiende los dominios que usan los agentes", () => {
-  const r = { id: 1, state: "done", company_id: [144, "Puuk"], name: "Factura X", vat: "3101" };
+  const r = { id: 1, state: "done", company_id: [144, "Ceiba"], name: "Factura X", vat: "3101" };
   assert.ok(cumple(r, [["state", "=", "done"]]));
   assert.ok(cumple(r, [["state", "!=", "draft"], ["company_id", "=", 144]]));
   assert.ok(cumple(r, [["company_id", "in", [1, 144]]]));

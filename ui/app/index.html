@@ -213,7 +213,7 @@ V.director = function(){
   var d = S.estado.director || {};
   return '<section><h2>El Director</h2>'+
     '<div class="aviso">'+(d.modo==="llm"
-      ? 'Modelo de lenguaje <b>'+esc(d.modelo)+'</b> con los agentes como herramientas. Solo lee y propone: no existe herramienta que escriba en Odoo ni que envíe correos. Pregunte como le preguntaría a una persona: «¿cómo está el buzón?», «¿qué le reclamo a los proveedores de IAR?», «revisá las cuentas de Puuk».'
+      ? 'Modelo de lenguaje <b>'+esc(d.modelo)+'</b> con los agentes como herramientas. Solo lee y propone: no existe herramienta que escriba en Odoo ni que envíe correos. Pregunte como le preguntaría a una persona: «¿cómo está el buzón?», «¿qué le reclamo a los proveedores de RV?», «revisá las cuentas de Ceiba».'
       : 'Director de <b>palabras clave</b>: dice a qué agente va cada instrucción. Para que además ejecute y responda con cifras, configure <code>CLAUDE_API_KEY</code> en el .env y reinicie el servicio.')+'</div>'+
     (!$("#quien").value || $("#quien").value==="anónimo" ? '<div class="aviso" style="border-color:var(--critico)">Escriba su nombre en <b>Soy</b> (arriba a la derecha) y pulse Enter: la memoria del Director es por persona, y sin nombre todos comparten la conversación «anónimo».</div>' : '')+
     (S.directorCargado?'':'<div class="sub">Cargando la conversación…</div>')+
@@ -250,7 +250,7 @@ V.tableroReceptor = function(){
 V.usuarios = function(){
   return '<section><h2>Usuarios</h2><div class="aviso">Los <b>receptores</b> entran con un enlace y ven solo los casos de su propio correo (el que recibe las facturas en el buzón). Los <b>contables</b> ven todo y, desde fuera de la PC del servicio, son los únicos que pueden crear asientos o cambiar el plan de cuentas en Odoo (con el token solo se puede ver y aprobar). '+
     (S.estado.smtp?'El enlace se envía por correo y también queda aquí para copiarlo.':'Sin SMTP configurado, el enlace no se envía: cópielo y mándelo usted (WhatsApp, Teams). Vale 3 días y una sola vez.')+'</div>'+
-    '<form class="fila" id="uNuevo"><input class="f" id="uCorreo" type="email" placeholder="correo (el del buzón, p. ej. contabilidad@puuk.cr)" style="flex:2" required><input class="f" id="uNombre" placeholder="nombre" style="flex:1">'+
+    '<form class="fila" id="uNuevo"><input class="f" id="uCorreo" type="email" placeholder="correo (el del buzón, p. ej. contabilidad@ceiba.cr)" style="flex:2" required><input class="f" id="uNombre" placeholder="nombre" style="flex:1">'+
     '<select id="uRol"><option value="receptor">receptor</option><option value="contable">contable</option></select><button class="b" type="submit">Agregar e invitar</button></form>'+
     '<div id="uEnlace"></div><div id="usuTabla">Cargando…</div></section>';
 };
@@ -506,7 +506,7 @@ function pintarCambios(lista){
 }
 function pintarReglas(lista){
   var el=$("#reglasTabla"); if(!el) return;
-  if(!lista.length){ el.innerHTML='<div class="sub">No hay reglas por decidir. Se proponen desde el Director: «todo lo de Rostipollos en Alfonso Llorca va a 5.04.17.01».</div>'; return; }
+  if(!lista.length){ el.innerHTML='<div class="sub">No hay reglas por decidir. Se proponen desde el Director: «todo lo de Rostipollos en Mario Brenes va a 5.04.17.01».</div>'; return; }
   el.innerHTML = tabla(["Compañía","Alcance","Cuenta",{t:"Líneas hoy",n:1},"Motivo",""], lista.map(function(r){
     return [esc(r.compania||"todas"), r.naturaleza?'todo gasto tipo <b>'+esc(NATURALEZA[r.naturaleza]||r.naturaleza)+'</b>':r.proveedor?'todo lo de <b>'+esc(r.proveedor)+'</b>':'artículo «'+esc(r.articulo)+'»',
       '<b style="color:var(--ok)">'+esc(r.codigo)+' '+esc(r.cuenta)+'</b>', r.lineas==null?"—":n(r.lineas),

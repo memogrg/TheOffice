@@ -44,23 +44,23 @@ test("Recepción: cuenta estados, verifica tiquetes, consolida por receptor y de
   assert.equal(r.verificacionTiquetes.inconsistentes.length, 1);
   assert.equal(r.verificacionTiquetes.coladosComoFactura.length, 1);
 
-  // Aurora no recibe desde el 5 de febrero; medido contra el último correo (11 de marzo) está caída
+  // Lirio no recibe desde el 5 de febrero; medido contra el último correo (11 de marzo) está caída
   const caida = r.alertas.find(a => /buzones sin un correo/.test(a.texto));
   assert.ok(caida && /1 de 3/.test(caida.texto), caida?.texto);
-  assert.equal(r.companias[0].nombre, "Puuk", "la de peor tasa va primero (4 de 14 registradas)");
+  assert.equal(r.companias[0].nombre, "Ceiba", "la de peor tasa va primero (4 de 14 registradas)");
   assert.equal(r.companias[0].pctOk, 28.6);
 
   // el mismo tiquete reenviado se reclama una vez, diciendo que llegó dos veces
-  const puuk = r.paraVictor.externo.find(x => x.receptor === "contabilidad@puuk.cr");
-  assert.ok(puuk);
-  assert.equal(puuk.correosTiquete, 3);
-  assert.equal(puuk.tiquetes, 2, "dos tiquetes distintos aunque llegaron tres correos");
-  const colina = puuk.establecimientos.find(e => e.establecimiento === "Colina Hermanos S.A.");
-  assert.ok(colina, "el establecimiento se identifica por la cédula de la clave");
-  assert.ok(colina.documentos.some(d => d.veces === 2));
+  const ceiba = r.paraVictor.externo.find(x => x.receptor === "contabilidad@ceiba.cr");
+  assert.ok(ceiba);
+  assert.equal(ceiba.correosTiquete, 3);
+  assert.equal(ceiba.tiquetes, 2, "dos tiquetes distintos aunque llegaron tres correos");
+  const bodegas = ceiba.establecimientos.find(e => e.establecimiento === "Bodegas del Valle S.A.");
+  assert.ok(bodegas, "el establecimiento se identifica por la cédula de la clave");
+  assert.ok(bodegas.documentos.some(d => d.veces === 2));
 
   // sin clave, el remitente es la pista (y se dice que es pista)
-  const interno = r.paraVictor.interno.find(x => x.receptor === "contabilidad@puuk.cr");
+  const interno = r.paraVictor.interno.find(x => x.receptor === "contabilidad@ceiba.cr");
   const vat = interno.porEstado.find(e => e.estado === "vatiderror").detalle[0];
   assert.equal(vat.establecimiento, "Distribuidora Vega");
   // Hacienda nunca es el emisor
@@ -89,7 +89,7 @@ test("Conciliación: encuentra los correos done sin asiento en libros", async ()
   assert.equal(r.totales.clavesUnicas, 7);
   assert.equal(r.totales.conAsiento, 3);
   assert.equal(r.totales.sinAsiento, 4);
-  assert.equal(r.companias[0].compania, "Puuk");
+  assert.equal(r.companias[0].compania, "Ceiba");
   assert.ok(r.porTipoDocumento.some(t => t.tipo === "Tiquete electrónico"), "el 04 colado aparece como tiquete sin asiento");
   assert.equal(odoo.escrituras, 0);
 });
@@ -105,8 +105,8 @@ test("Comunicación: redacta un correo por receptor y no envía sin --enviar", a
   const carpeta = readdirSync(join(raiz, "reportes")).find(d => d.startsWith("borradores-victor-"));
   const archivos = readdirSync(join(raiz, "reportes", carpeta));
   assert.equal(archivos.length, 5);
-  const html = readFileSync(join(raiz, "reportes", carpeta, archivos.find(a => a.includes("afuera-contabilidad_puuk_cr"))), "utf8");
-  assert.match(html, /Colina Hermanos S\.A\./);
+  const html = readFileSync(join(raiz, "reportes", carpeta, archivos.find(a => a.includes("afuera-contabilidad_ceiba_cr"))), "utf8");
+  assert.match(html, /Bodegas del Valle S\.A\./);
   assert.match(html, /llegó 2 veces/);
 
   // con --enviar pero sin SMTP tampoco sale nada
@@ -119,8 +119,8 @@ test("Cuentas: propone sin tocar; aplica solo con --aplicar y PERMITIR_ESCRITURA
   // 1. propuesta
   let raiz = raizTemporal();
   let odoo = new OdooSimulado(instancia(), { permitirEscritura: true });
-  let r = await cuentas.ejecutar({ odoo, cfg: {}, log: silencio, raiz, args: ["--empresa=Puuk"] });
-  assert.equal(r.compania, "Puuk");
+  let r = await cuentas.ejecutar({ odoo, cfg: {}, log: silencio, raiz, args: ["--empresa=Ceiba"] });
+  assert.equal(r.compania, "Ceiba");
   assert.equal(r.modo, "solo lectura (propuesta)");
   assert.equal(odoo.escrituras, 0);
   assert.equal(r.totales.aCorregir, 2);     // bomberos (regla humana), eléctrico en cajón de sastre (publicada)

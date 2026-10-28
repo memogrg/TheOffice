@@ -14,14 +14,14 @@ function catalogo({ porCliente = {}, global = {}, reglas = [] } = {}) {
   writeFileSync(join(d, "reglas.json"), JSON.stringify({ reglas }));
   return new Catalogo(join(d, "cat.json"), join(d, "reglas.json"));
 }
-const ALFONSO = "ALFONSO LLORCA CASTRO";
+const ALFONSO = "MARIO BRENES VEGA";
 const cafeteria = "5610.0 CAFETERIAS";
 
 test("ejemplo resuelto de la guía: Rostipollos → Relaciones públicas (naturaleza + historial)", () => {
   const cl = new Clasificador({ catalogo: catalogo({ porCliente: { [ALFONSO]: {
     "MEDIO POLLO 2 ACOMP": ["5.04.17.01", "Relaciones publicas", 3], "ROSTER MILANESA CRU": ["5.04.17.01", "Relaciones publicas", 4] } } }) });
   for (const art of ["Ensalada Pollo, Agu", "Medio Pollo+2 acomp", "Roster Milanesa Cru"]) {
-    const r = cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: art, actividad: cafeteria });
+    const r = cl.clasificar({ compania: "Mario Brenes Vega", articulo: art, actividad: cafeteria });
     assert.equal(r.decision, "proponer", art);
     assert.equal(r.codigo, "5.04.17.01", art);
     assert.equal(r.naturaleza.id, "alimentacion-restaurante", art);
@@ -35,19 +35,19 @@ test("ejemplo resuelto de la guía: Rostipollos → Relaciones públicas (natura
 test("paso 0: la regla propia del cliente gana sobre naturaleza e historial", () => {
   const cl = new Clasificador({ catalogo: catalogo({
     porCliente: { [ALFONSO]: { "ENSALADA POLLO AGU": ["7.01.01", "Gastos no justificados", 9] } },
-    reglas: [{ proveedorId: 77, proveedor: "Rostipollos Escazu", codigo: "5.04.17.01", cuenta: "Relaciones publicas", alcance: "Alfonso Llorca Castro", decidio: "Victor" }] }) });
-  const r = cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "Ensalada Pollo, Agu", proveedor: { id: 77, nombre: "Rostipollos Escazu" }, actividad: cafeteria });
+    reglas: [{ proveedorId: 77, proveedor: "Rostipollos Escazu", codigo: "5.04.17.01", cuenta: "Relaciones publicas", alcance: "Mario Brenes Vega", decidio: "Victor" }] }) });
+  const r = cl.clasificar({ compania: "Mario Brenes Vega", articulo: "Ensalada Pollo, Agu", proveedor: { id: 77, nombre: "Rostipollos Escazu" }, actividad: cafeteria });
   assert.equal(r.decision, "proponer");
   assert.equal(r.fuente, "regla-humana");
   assert.equal(r.decidio, "Victor");
   // otra compañía: la regla no aplica
-  const otra = cl.clasificar({ compania: "Puuk", articulo: "Ensalada Pollo, Agu", proveedor: { id: 77 }, actividad: cafeteria });
+  const otra = cl.clasificar({ compania: "Ceiba", articulo: "Ensalada Pollo, Agu", proveedor: { id: 77 }, actividad: cafeteria });
   assert.notEqual(otra.fuente, "regla-humana");
 });
 
-test("paso 3: el historial que choca con la naturaleza va a consulta (el caso IAR: comida en Útiles)", () => {
-  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { "INTERNATIONAL ANIMAL RESCUE": { "CASADO CON POLLO": ["5.04.08.01", "Utiles para oficina", 12] } } }) });
-  const r = cl.clasificar({ compania: "International Animal Rescue", articulo: "CASADO CON POLLO", actividad: "552004 SERVICIO DE RESTAURANTE, CAFETERIAS, SODAS" });
+test("paso 3: el historial que choca con la naturaleza va a consulta (el caso del refugio: comida en Útiles)", () => {
+  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { "REFUGIO VERDE": { "CASADO CON POLLO": ["5.04.08.01", "Utiles para oficina", 12] } } }) });
+  const r = cl.clasificar({ compania: "Refugio Verde", articulo: "CASADO CON POLLO", actividad: "552004 SERVICIO DE RESTAURANTE, CAFETERIAS, SODAS" });
   assert.equal(r.decision, "consulta");
   assert.equal(r.tipo, "choque");
   assert.equal(r.codigo, "5.04.17.01");
@@ -55,11 +55,11 @@ test("paso 3: el historial que choca con la naturaleza va a consulta (el caso IA
 });
 
 test("paso 3: gasto que parece personal va a consulta aunque el historial diga otra cosa", () => {
-  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { PUUK: { "ACETAMINOFEN 500MG": ["5.04.08.01", "Utiles para oficina", 3] } } }) });
-  const porLinea = cl.clasificar({ compania: "Puuk", articulo: "ACETAMINOFEN 500MG", actividad: "4711.1 SUPERMERCADOS" });
+  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { CEIBA: { "ACETAMINOFEN 500MG": ["5.04.08.01", "Utiles para oficina", 3] } } }) });
+  const porLinea = cl.clasificar({ compania: "Ceiba", articulo: "ACETAMINOFEN 500MG", actividad: "4711.1 SUPERMERCADOS" });
   assert.equal(porLinea.decision, "consulta");
   assert.equal(porLinea.tipo, "personal");
-  const porProveedor = cl.clasificar({ compania: "Puuk", articulo: "PRODUCTO VARIOS", actividad: "523101 FARMACIAS" });
+  const porProveedor = cl.clasificar({ compania: "Ceiba", articulo: "PRODUCTO VARIOS", actividad: "523101 FARMACIAS" });
   assert.equal(porProveedor.tipo, "personal");
 });
 
@@ -84,11 +84,11 @@ test("paso 2 sin naturaleza: consenso entre clientes propone; dividido consulta"
 });
 
 test("paso 4: nunca un comodín como destino; lo no identificado se reporta", () => {
-  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { PUUK: { "COSA RARA": ["5.04.999", "Gastos generales", 20] } }, global: { "OTRA COSA": ["7.01.01", "Gastos no justificados", 50] } }) });
-  assert.equal(cl.clasificar({ compania: "Puuk", articulo: "COSA RARA" }).decision, "no-identificado");
-  assert.equal(cl.clasificar({ compania: "Puuk", articulo: "OTRA COSA" }).decision, "no-identificado");
+  const cl = new Clasificador({ catalogo: catalogo({ porCliente: { CEIBA: { "COSA RARA": ["5.04.999", "Gastos generales", 20] } }, global: { "OTRA COSA": ["7.01.01", "Gastos no justificados", 50] } }) });
+  assert.equal(cl.clasificar({ compania: "Ceiba", articulo: "COSA RARA" }).decision, "no-identificado");
+  assert.equal(cl.clasificar({ compania: "Ceiba", articulo: "OTRA COSA" }).decision, "no-identificado");
   // «13 COMPRAS»: la mayoría de clientes lo manda a un comodín
-  const r = cl.clasificar({ compania: "Puuk", articulo: "13 COMPRAS" });
+  const r = cl.clasificar({ compania: "Ceiba", articulo: "13 COMPRAS" });
   assert.equal(r.decision, "no-identificado");
   assert.match(r.motivo, /comodín/);
   assert.ok(cl.esComodin("5.04.999") && cl.esComodin("5.04.099") && cl.esComodin("7.01.001") && !cl.esComodin("5.04.17.01"));
@@ -124,17 +124,17 @@ test("palabras completas con plural, sin falsos positivos por pedazos de palabra
 test("regla por tipo de gasto (corrección 9 del log): toda comida de restaurante de una compañía, de cualquier proveedor", () => {
   const cl = new Clasificador({ catalogo: catalogo({
     porCliente: { [ALFONSO]: { "CASADO": ["7.01.01", "Gastos no justificados", 5] } },
-    reglas: [{ naturaleza: "alimentacion-restaurante", codigo: "5.04.17.01", cuenta: "Relaciones publicas", alcance: "Alfonso Llorca Castro", decidio: "Victor" },
-             { naturaleza: "alimentacion-supermercado", codigo: "5.01.01", cuenta: "Costo de ventas", alcance: "Alfonso Llorca Castro", decidio: "Victor" }] }) });
-  const r = cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "CASADO", actividad: "SODA" });
+    reglas: [{ naturaleza: "alimentacion-restaurante", codigo: "5.04.17.01", cuenta: "Relaciones publicas", alcance: "Mario Brenes Vega", decidio: "Victor" },
+             { naturaleza: "alimentacion-supermercado", codigo: "5.01.01", cuenta: "Costo de ventas", alcance: "Mario Brenes Vega", decidio: "Victor" }] }) });
+  const r = cl.clasificar({ compania: "Mario Brenes Vega", articulo: "CASADO", actividad: "SODA" });
   assert.equal(r.fuente, "regla-humana");
   assert.ok(cl.misma(r.codigo, "5.04.17.01"));
   assert.ok(r.pasos.some(p => /tipo de gasto/.test(p)));
   // la consulta de supermercado se resuelve con su propia regla…
-  assert.ok(cl.misma(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "ARROZ 1KG", actividad: "SUPERMERCADOS" }).codigo, "5.01.01"));
+  assert.ok(cl.misma(cl.clasificar({ compania: "Mario Brenes Vega", articulo: "ARROZ 1KG", actividad: "SUPERMERCADOS" }).codigo, "5.01.01"));
   // …pero no arrastra lo que la línea dice que es otra cosa (cloro en el súper), ni lo personal
-  assert.equal(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "CLORO 1L", actividad: "SUPERMERCADOS" }).decision, "consulta");
-  assert.equal(cl.clasificar({ compania: "Alfonso Llorca Castro", articulo: "SHAMPOO", actividad: "SUPERMERCADOS" }).tipo, "personal");
+  assert.equal(cl.clasificar({ compania: "Mario Brenes Vega", articulo: "CLORO 1L", actividad: "SUPERMERCADOS" }).decision, "consulta");
+  assert.equal(cl.clasificar({ compania: "Mario Brenes Vega", articulo: "SHAMPOO", actividad: "SUPERMERCADOS" }).tipo, "personal");
   // otra compañía: no aplica
-  assert.notEqual(cl.clasificar({ compania: "Puuk", articulo: "CASADO", actividad: "SODA" }).fuente, "regla-humana");
+  assert.notEqual(cl.clasificar({ compania: "Ceiba", articulo: "CASADO", actividad: "SODA" }).fuente, "regla-humana");
 });

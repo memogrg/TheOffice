@@ -56,7 +56,7 @@ test("corridas: Recepción deja casos; la segunda corrida no pisa lo resuelto y 
   assert.equal(r3.resumen.cerrados, 1);
   assert.equal(r3.resumen.nuevos, 1);
   assert.equal(db.casos({ seguimiento: "cerrado" }).length, 1);
-  assert.equal(db.resumenCasos().porReceptor[0].receptor, "contabilidad@puuk.cr");
+  assert.equal(db.resumenCasos().porReceptor[0].receptor, "contabilidad@ceiba.cr");
 });
 
 test("corridas: Comunicación deja borradores con HTML; un borrador nuevo deja obsoleto al anterior", async () => {
@@ -170,7 +170,7 @@ test("API: estado, correr, casos, propuestas, correos, token", async () => {
 
     const r1 = await (await post("/api/corridas/recepcion")).json();
     assert.equal(r1.resumen.nuevos, 12);
-    const casos = await get("/api/casos?receptor=contabilidad%40puuk.cr&frente=adentro");
+    const casos = await get("/api/casos?receptor=contabilidad%40ceiba.cr&frente=adentro");
     assert.equal(casos.length, 5);
     assert.deepEqual(await (await post(`/api/casos/${casos[0].id}/resolver`, { nota: "ok" })).json(), { ok: true });
     assert.equal((await get("/api/casos?seguimiento=resuelto")).length, 1);

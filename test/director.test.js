@@ -9,7 +9,7 @@ import { Director, DirectorCore } from "../src/director.js";
 const require = createRequire(import.meta.url);
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const roster = JSON.parse(readFileSync(join(RAIZ, "data", "roster.json"), "utf8"));
-const companias = [{ id: 144, name: "Puuk" }, { id: 126, name: "International Animal Rescue" }];
+const companias = [{ id: 144, name: "Ceiba" }, { id: 126, name: "Refugio Verde" }];
 
 test("el núcleo se carga igual como CommonJS y en un entorno tipo navegador", () => {
   const core = require("../src/director-core.cjs");
@@ -18,12 +18,12 @@ test("el núcleo se carga igual como CommonJS y en un entorno tipo navegador", (
   new Function("window", readFileSync(join(RAIZ, "src", "director-core.cjs"), "utf8"))(win);
   assert.equal(typeof win.DirectorCore.decidir, "function");
   assert.deepEqual(
-    win.DirectorCore.decidir("revisá las cuentas de Puuk", roster, companias).comando,
-    core.decidir("revisá las cuentas de Puuk", roster, companias).comando);
+    win.DirectorCore.decidir("revisá las cuentas de Ceiba", roster, companias).comando,
+    core.decidir("revisá las cuentas de Ceiba", roster, companias).comando);
 });
 
 test("enruta a Cuentas con la compañía y a Marta para el buzón", () => {
-  const d = DirectorCore.decidir("revisá las cuentas de Puuk", roster, companias);
+  const d = DirectorCore.decidir("revisá las cuentas de Ceiba", roster, companias);
   assert.equal(d.accion, "ejecutar");
   assert.equal(d.agente.id, "cuentas");
   assert.deepEqual(d.args, ["--empresa=144"]);
@@ -50,5 +50,5 @@ test("pide la compañía cuando falta, avisa de puestos no construidos, y dice c
 test("la clase Director lee los archivos y delega", () => {
   const dir = new Director(join(RAIZ, "data", "roster.json"), join(RAIZ, "no-existe.json"));
   assert.equal(dir.companias.length, 0);
-  assert.equal(dir.decidir("revisá las cuentas de Puuk").accion, "falta-dato", "sin compañías no puede resolver la empresa");
+  assert.equal(dir.decidir("revisá las cuentas de Ceiba").accion, "falta-dato", "sin compañías no puede resolver la empresa");
 });

@@ -11,8 +11,8 @@ test("receptores() limpia comillas, ángulos, mayúsculas y duplicados", () => {
 });
 
 test("remitenteVisible() separa nombre, dirección y dominio", () => {
-  assert.deepEqual(remitenteVisible('"Colina Hermanos" <facturas@colina.com>'),
-    { nombre: "Colina Hermanos", direccion: "facturas@colina.com", dominio: "colina.com" });
+  assert.deepEqual(remitenteVisible('"Bodegas del Valle" <facturas@bodegasdelvalle.com>'),
+    { nombre: "Bodegas del Valle", direccion: "facturas@bodegasdelvalle.com", dominio: "bodegasdelvalle.com" });
   assert.deepEqual(remitenteVisible("ventas@vega.cr"),
     { nombre: null, direccion: "ventas@vega.cr", dominio: "vega.cr" });
   assert.equal(remitenteVisible("").dominio, null);
@@ -23,7 +23,7 @@ test("Hacienda y remitentes automáticos se reconocen", () => {
   assert.ok(!DOMINIO_HACIENDA.test("hacienda.go.cr.evil.com"));
   assert.ok(REMITENTE_AUTOMATICO.test("Facturación Electrónica"));
   assert.ok(REMITENTE_AUTOMATICO.test("no-reply"));
-  assert.ok(!REMITENTE_AUTOMATICO.test("Colina Hermanos"));
+  assert.ok(!REMITENTE_AUTOMATICO.test("Bodegas del Valle"));
 });
 
 test("unificarDocumentos() agrupa por clave y, sin clave, por estado+archivo+asunto", () => {
@@ -64,16 +64,16 @@ test("fechaOdoo() interpreta el datetime de Odoo como UTC", () => {
 
 test("cambio de dominio de los receptores (error 5 del log): un solo receptor, y alerta si no se declaró", async () => {
   const { receptores, dominiosEquivalentes, canonizarCorreo, dominiosSospechosos } = await import("../src/lib/correo.js");
-  const eq = dominiosEquivalentes("moraasociados.com=nuevo.cr, @viejo.org=nuevo.cr");
-  assert.equal(eq.get("moraasociados.com"), "nuevo.cr");
+  const eq = dominiosEquivalentes("contadores.example=nuevo.cr, @viejo.org=nuevo.cr");
+  assert.equal(eq.get("contadores.example"), "nuevo.cr");
   assert.equal(eq.get("viejo.org"), "nuevo.cr");
-  assert.deepEqual(receptores("IAR <iar@moraasociados.com>, iar@nuevo.cr", eq), ["iar@nuevo.cr"], "los dos son uno");
-  assert.deepEqual(receptores("iar@moraasociados.com, iar@nuevo.cr"), ["iar@moraasociados.com", "iar@nuevo.cr"], "sin declarar, siguen siendo dos");
-  assert.equal(canonizarCorreo("FE@MoraAsociados.com", eq), "fe@nuevo.cr");
+  assert.deepEqual(receptores("RV <rv@contadores.example>, rv@nuevo.cr", eq), ["rv@nuevo.cr"], "los dos son uno");
+  assert.deepEqual(receptores("rv@contadores.example, rv@nuevo.cr"), ["rv@contadores.example", "rv@nuevo.cr"], "sin declarar, siguen siendo dos");
+  assert.equal(canonizarCorreo("FE@Contadores.Example", eq), "fe@nuevo.cr");
   assert.equal(canonizarCorreo("otro@gmail.com", eq), "otro@gmail.com");
   const sosp = dominiosSospechosos([
-    { receptor: "iar@moraasociados.com", companias: ["IAR"] }, { receptor: "iar@nuevo.cr", companias: ["IAR", "Puuk"] },
+    { receptor: "rv@contadores.example", companias: ["RV"] }, { receptor: "rv@nuevo.cr", companias: ["RV", "Ceiba"] },
     { receptor: "facturas@a.com", companias: ["X"] }, { receptor: "facturas@b.com", companias: ["Y"] }]);
   assert.equal(sosp.length, 1, "misma casilla y mismas compañías; 'facturas@' de compañías distintas no cuenta");
-  assert.deepEqual(sosp[0].companias, ["IAR"]);
+  assert.deepEqual(sosp[0].companias, ["RV"]);
 });

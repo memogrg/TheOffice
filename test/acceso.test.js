@@ -40,12 +40,12 @@ async function servidor() {
 
 test("base: crear usuarios, invitaciones de un solo uso que vencen, sesiones", () => {
   const db = new BaseDeDatos(":memory:");
-  const u = db.crearUsuario({ correo: " Finanzas@IAR.org ", nombre: "Ana", rol: "receptor", quien: "memo" });
-  assert.equal(u.correo, "finanzas@iar.org");
+  const u = db.crearUsuario({ correo: " Finanzas@RefugioVerde.org ", nombre: "Ana", rol: "receptor", quien: "memo" });
+  assert.equal(u.correo, "finanzas@refugioverde.org");
   assert.throws(() => db.crearUsuario({ correo: "no-es-correo" }), /Correo inválido/);
   assert.throws(() => db.crearUsuario({ correo: "x@y.cr", rol: "dios" }), /Rol inválido/);
   // volver a crear el mismo correo actualiza, no duplica
-  const u2 = db.crearUsuario({ correo: "finanzas@iar.org", rol: "contable" });
+  const u2 = db.crearUsuario({ correo: "finanzas@refugioverde.org", rol: "contable" });
   assert.equal(u2.id, u.id); assert.equal(u2.rol, "contable"); assert.equal(db.usuarios().length, 1);
 
   db.crearInvitacion(u.id, "hash-1");
@@ -56,7 +56,7 @@ test("base: crear usuarios, invitaciones de un solo uso que vencen, sesiones", (
   assert.equal(db.canjearInvitacion("no-existe"), null);
 
   db.crearSesion("s1", u.id);
-  assert.equal(db.usuarioDeSesion("s1").correo, "finanzas@iar.org");
+  assert.equal(db.usuarioDeSesion("s1").correo, "finanzas@refugioverde.org");
   db.desactivarUsuario(u.id, "memo");
   assert.equal(db.usuarioDeSesion("s1"), null, "desactivar cierra sesiones");
   db.crearInvitacion(u.id, "hash-2");
@@ -70,7 +70,7 @@ test("API: el contable invita, el receptor entra por enlace y solo ve lo suyo", 
     assert.equal((await llamar("/api/corridas/recepcion", { metodo: "POST", cuerpo: {}, ...admin })).status, 200);
 
     // alta + invitación (sin SMTP: el enlace se devuelve para copiarlo)
-    const alta = await (await llamar("/api/usuarios", { metodo: "POST", cuerpo: { correo: "contabilidad@puuk.cr", nombre: "Pati", rol: "receptor" }, ...admin })).json();
+    const alta = await (await llamar("/api/usuarios", { metodo: "POST", cuerpo: { correo: "contabilidad@ceiba.cr", nombre: "Pati", rol: "receptor" }, ...admin })).json();
     assert.equal(alta.rol, "receptor");
     const inv = await (await llamar(`/api/usuarios/${alta.id}/invitar`, { metodo: "POST", cuerpo: { base: "https://oficina.cr" }, ...admin })).json();
     assert.match(inv.enlace, /^https:\/\/oficina\.cr\/\?t=[A-Za-z0-9_-]{20,}$/);
@@ -89,24 +89,24 @@ test("API: el contable invita, el receptor entra por enlace y solo ve lo suyo", 
 
     // lo que ve el receptor
     const estado = await (await llamar("/api/estado", { cookie: sesion })).json();
-    assert.equal(estado.usuario.correo, "contabilidad@puuk.cr");
+    assert.equal(estado.usuario.correo, "contabilidad@ceiba.cr");
     assert.equal(estado.usuario.rol, "receptor");
     assert.equal(estado.pendientes, undefined, "sin aprobaciones ni cifras globales");
     assert.ok(estado.casos.afuera >= 1 && estado.casos.adentro >= 1);
-    assert.deepEqual(estado.casos.porCompania.map(c => c.compania), ["Puuk"]);
+    assert.deepEqual(estado.casos.porCompania.map(c => c.compania), ["Ceiba"]);
 
-    const casos = await (await llamar("/api/casos?receptor=admin@iar.org", { cookie: sesion })).json();
+    const casos = await (await llamar("/api/casos?receptor=admin@refugioverde.org", { cookie: sesion })).json();
     assert.ok(casos.length > 0);
-    assert.ok(casos.every(c => c.receptor === "contabilidad@puuk.cr"), "el filtro por otro receptor se ignora");
+    assert.ok(casos.every(c => c.receptor === "contabilidad@ceiba.cr"), "el filtro por otro receptor se ignora");
     const cias = await (await llamar("/api/companias", { cookie: sesion })).json();
-    assert.deepEqual(cias.map(c => c.name), ["Puuk"]);
+    assert.deepEqual(cias.map(c => c.name), ["Ceiba"]);
 
     // resolver lo suyo sí, lo ajeno no
-    const ajeno = db.casos({ receptor: "admin@iar.org" })[0];
+    const ajeno = db.casos({ receptor: "admin@refugioverde.org" })[0];
     assert.equal((await llamar(`/api/casos/${ajeno.id}/resolver`, { metodo: "POST", cuerpo: {}, cookie: sesion })).status, 403);
     const r = await llamar(`/api/casos/${casos[0].id}/resolver`, { metodo: "POST", cuerpo: { nota: "listo" }, cookie: sesion });
     assert.equal(r.status, 200);
-    assert.equal(db.casos({ seguimiento: "resuelto" })[0].resuelto_por, "Pati <contabilidad@puuk.cr>", "queda firmado con su nombre");
+    assert.equal(db.casos({ seguimiento: "resuelto" })[0].resuelto_por, "Pati <contabilidad@ceiba.cr>", "queda firmado con su nombre");
 
     // nada de contable
     for (const p of ["/api/propuestas", "/api/corridas", "/api/auditoria", "/api/usuarios", "/api/director"]) {
@@ -118,8 +118,8 @@ test("API: el contable invita, el receptor entra por enlace y solo ve lo suyo", 
     // correos: solo los dirigidos a él y ya aprobados/enviados
     await llamar("/api/corridas/comunicacion", { metodo: "POST", cuerpo: {}, ...admin });
     assert.deepEqual(await (await llamar("/api/correos", { cookie: sesion })).json(), [], "los borradores no se ven");
-    const mio = db.correos({ estado: "borrador" }).find(c => c.para === "contabilidad@puuk.cr");
-    const otro = db.correos({ estado: "borrador" }).find(c => c.para !== "contabilidad@puuk.cr");
+    const mio = db.correos({ estado: "borrador" }).find(c => c.para === "contabilidad@ceiba.cr");
+    const otro = db.correos({ estado: "borrador" }).find(c => c.para !== "contabilidad@ceiba.cr");
     db.decidirCorreo(mio.id, "aprobado", "memo"); db.decidirCorreo(otro.id, "aprobado", "memo");
     const visibles = await (await llamar("/api/correos", { cookie: sesion })).json();
     assert.deepEqual(visibles.map(c => c.id), [mio.id]);

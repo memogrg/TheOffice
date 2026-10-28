@@ -13,14 +13,14 @@ import * as cartera from "../src/agents/cartera.js";
 import { tramoDe } from "../src/agents/cartera.js";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
-const C1 = [1, "Puuk"], CRC = [3, "CRC"], USD = [2, "USD"];
+const C1 = [1, "Ceiba"], CRC = [3, "CRC"], USD = [2, "USD"];
 function instancia() {
   let id = 0;
   const m = (tipo, partner, fecha, vence, saldo, extra = {}) => ({ id: ++id, company_id: C1, partner_id: partner, name: `${tipo}-${id}`, move_type: tipo, state: "posted", payment_state: "not_paid",
     invoice_date: fecha, invoice_date_due: vence, amount_residual_signed: tipo.startsWith("in_") ? -saldo : saldo, amount_residual: saldo, currency_id: CRC, ...extra });
   const A = [10, "Cliente A"], B = [11, "Cliente B"], P = [20, "Proveedor X"];
   return {
-    "res.company": [{ id: 1, name: "Puuk", email: "contabilidad@puuk.cr", currency_id: CRC }],
+    "res.company": [{ id: 1, name: "Ceiba", email: "contabilidad@ceiba.cr", currency_id: CRC }],
     "res.partner": [{ id: 10, email: "pagos@clientea.cr" }, { id: 11, email: false }, { id: 20, email: "x@prov.cr" }],
     "account.move": [
       m("out_invoice", A, "2026-01-05", "2026-01-20", 500000),                 // 39 días
@@ -53,8 +53,8 @@ test("Cartera: antigüedad, morosos, sin correo, pagos próximos, notas sin apli
   assert.equal(r.recordatorios.length, 1);
   const rec = r.recordatorios[0];
   assert.equal(rec.para, "pagos@clientea.cr");
-  assert.equal(rec.responderA, "contabilidad@puuk.cr");
-  assert.match(rec.html, /de parte de <b>Puuk<\/b>/);
+  assert.equal(rec.responderA, "contabilidad@ceiba.cr");
+  assert.match(rec.html, /de parte de <b>Ceiba<\/b>/);
   assert.match(rec.html, /USD 400/, "la factura en dólares va en dólares");
   assert.equal(rec.documentos, 2, "solo las vencidas");
   assert.equal(r.pagosProximos[0].enDias, 5);
@@ -71,7 +71,7 @@ test("Los recordatorios quedan como borradores en Correos y la corrida siguiente
   assert.equal(resultado.recordatorios[0].html, undefined, "el HTML vive en Correos, no dos veces en la corrida");
   const [x] = db.correos({ estado: "borrador" });
   assert.equal(x.frente, "cobro:1");
-  assert.equal(db.correo(x.id).responder_a, "contabilidad@puuk.cr");
+  assert.equal(db.correo(x.id).responder_a, "contabilidad@ceiba.cr");
   const otra = await corridas.correr("cartera");
   assert.deepEqual(otra.resumen, { recordatorios: 1, obsoletos: 1 });
   assert.equal(db.correos({ estado: "borrador" }).length, 1);
