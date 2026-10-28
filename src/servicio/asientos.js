@@ -9,6 +9,7 @@
 // Es un permiso distinto de PERMITIR_ESCRITURA (que gobierna facturas con comprobante): la matriz
 // B1/B2 separa los asientos sin FE porque no los bloquea la confirmación de Hacienda.
 import { canon } from "../catalogo.js";
+import { alFallar } from "./autonomia.js";
 
 const r2 = x => Math.round((Number(x) || 0) * 100) / 100;
 const idDe = v => (Array.isArray(v) ? v[0] : v);
@@ -135,12 +136,14 @@ export async function aplicar({ corridas, db, id, quien }) {
     const resultado = { ok, estadoOdoo: m.estado, publicado: publicar, lineasLeidas: m.lineasLeidas, ...(m.ok ? {} : { esperado: m.esperado, leido: m.leido }),
       ...(rev ? { reversion: { moveId: rev.id, nombre: rev.nombre, fecha: a.reversa, estado: rev.estado, ok: rev.ok } } : {}) };
     db.marcarAsiento(a.id, ok ? "aplicada" : "fallo", { moveId, moveName: m.nombre, resultado });
+    if (!ok) alFallar(db, a, "la verificación al releer no calzó");
     db.auditar(quien, "aplicar", "asiento", a.id, { moveId, reversion: rev?.id ?? null, publicado: publicar, ok });
     return { ok, moveId, asiento: m.nombre, estadoOdoo: m.estado, publicado: publicar, reversion: rev ? rev.nombre || rev.id : null,
       mensaje: ok ? `Asiento ${m.nombre || moveId} creado${rev ? ` con su reversión ${rev.nombre || rev.id} al ${a.reversa}` : ""}${publicar ? " y publicado" : " en borrador (ASIENTOS_PUBLICAR no es 'si': publíquelo en Odoo)"}.`
         : "Se creó pero la verificación no calza: revíselo en Odoo." };
   } catch (e) {
     db.marcarAsiento(a.id, "fallo", { moveId, resultado: { error: e.message } });
+    alFallar(db, a, e.message);
     db.auditar(quien, "aplicar", "asiento", a.id, { error: e.message });
     return { error: `Odoo rechazó el asiento: ${e.message}`, codigo: 502 };
   }

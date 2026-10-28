@@ -17,7 +17,8 @@ La Biblia (v1.0, 25 oct 2026) documenta el estado al **10 de setiembre**. Este a
 | Asientos | — | **Fase 3B**: asientos de diario propuestos (Cierre, diferencial cambiario, diferidos, depreciación o el Director) en Aprobaciones; se crean en Odoo solo aprobados y con `PERMITIR_ESCRITURA_ASIENTOS=si` (por omisión en borrador) |
 | Plan de cuentas | Cambios a mano en cada compañía | **Cambios masivos** (objetivo 5): previsualizar en N compañías → aprobar → ejecutar con `PERMITIR_ESCRITURA_CUENTAS=si` → verificar |
 | Bancos | Conciliación a mano en el módulo de TecnoDEM; sin extractos en Odoo | **Fase 3C (base)**: extractos de cualquier banco (CSV, TXT, Excel) subidos en la app, emparejados con libros; cargos, intereses y transferencias propias como asientos propuestos; cobros y pagos con la factura que calza; saldo del banco contra libros. Revisión de zips de PDF+XML contra Odoo y el buzón |
-| Pruebas | Ninguna automatizada | 106 pruebas (`npm test`) con un Odoo simulado |
+| Autonomía | NIVELES → AUTÓNOMO en la matriz, sin medir | **Fase 4**: historial por tipo × compañía desde la cola y la auditoría; candidato tras dos meses seguidos sin correcciones; una persona la otorga; se aprueba solo lo que pasa las validaciones; se revoca sola si falla en Odoo |
+| Pruebas | Ninguna automatizada | 109 pruebas (`npm test`) con un Odoo simulado |
 
 ## Decisiones que la Biblia todavía no registra (pendientes de Memo)
 

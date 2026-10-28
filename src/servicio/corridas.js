@@ -22,6 +22,8 @@ import * as depreciacion from "../agents/depreciacion.js";
 import * as cartera from "../agents/cartera.js";
 import * as datos from "../agents/datos.js";
 import * as extractos from "../agents/extractos.js";
+import { aprobarAutonomos } from "./autonomia.js";
+const CON_AUTONOMIA = ["cierre", "cambiario", "diferidos", "depreciacion", "extractos", "cuentas"];
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
@@ -65,6 +67,11 @@ export class Corridas {
       r.bitacora = bitacora;
       r.corridaId = corridaId;
       const resumen = this.#persistir(quien, corridaId, r, args);
+      // Fase 4: lo nuevo de un tipo × compañía con autonomía se aprueba solo (si pasa las validaciones).
+      if (CON_AUTONOMIA.includes(quien)) {
+        const aut = await aprobarAutonomos({ db: this.db, corridas: this, odoo, cfg: this.cfg, log });
+        if (aut && resumen && typeof resumen === "object") resumen.autonomia = aut;
+      }
       this.db.cerrarCorrida(corridaId, { ...r, resumenServicio: resumen });
       this.#escribirArchivos(quien, agente, r, bitacora);
       return { corridaId, resultado: r, resumen };

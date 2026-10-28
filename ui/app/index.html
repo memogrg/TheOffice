@@ -83,6 +83,7 @@ a{color:var(--sello)}
     <button data-v="hallazgos">Hallazgos</button>
     <button data-v="cierremes">Cierre de mes</button>
     <button data-v="aprobaciones">Aprobaciones</button>
+    <button data-v="autonomia">Autonomía</button>
     <button data-v="diferidos">Diferidos</button>
     <button data-v="activos">Activos fijos</button>
     <button data-v="extractos">Extractos</button>
@@ -715,6 +716,27 @@ function pintarExtractosHz(r){
   if(tr.length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">En libros y no en el banco (en tránsito)</summary>'+tabla(["Banco","Fecha","Asiento","Detalle",{t:"Monto",n:1}], [].concat.apply([], tr.map(function(b){ return b.transito.map(function(a){ return [esc(b.compania)+' — '+esc(b.banco), esc(a.fecha), esc(a.asiento||""), esc(a.detalle)+(a.tercero?' <span class="sub">'+esc(a.tercero)+'</span>':''), n(a.monto)]; }); })))+'</details>';
   return h;
 }
+/* ---------- Autonomía (fase 4): de NIVELES a AUTÓNOMO por tipo × compañía ---------- */
+var NIVEL_AUT = { candidato:["candidato","alto"], autonomo:["autónomo","ok"], niveles:["con aprobación","neutro"] };
+V.autonomia = function(){
+  return '<section><h2>Autonomía</h2><div class="aviso">Todo empieza <b>con aprobación</b>: cada propuesta pasa por una persona. Cuando un tipo de propuesta en una compañía lleva <b>dos meses seguidos</b> aprobado <b>sin correcciones, rechazos ni fallos</b>, aparece como <b>candidato</b>. Si usted le da autonomía, desde la corrida siguiente lo nuevo de ese tipo se aprueba solo, siempre que pase las mismas validaciones que al aprobar a mano (cuentas vigentes, cuadre, periodo abierto). Lo incompleto sigue esperando a una persona. Lo dictado al Director, los correos y los cambios al plan de cuentas nunca son autónomos. Si un asiento aprobado solo falla al crearse en Odoo, ese tipo pierde la autonomía de inmediato.</div><div id="autParam" class="sub"></div><div id="autTabla">Cargando…</div><div id="autRevocadas"></div></section>';
+};
+function cargarAutonomia(){ api("/api/autonomia").then(pintarAutonomia).catch(function(e){ msg(e.message,true); }); }
+function pintarAutonomia(j){
+  var el=$("#autTabla"); if(!el) return; var p=j.parametros;
+  $("#autParam").innerHTML='Mínimo por mes: <b>'+n(p.minimo)+'</b> aprobación'+(p.minimo===1?'':'es')+' (AUTONOMIA_MINIMO). Lo aprobado solo '+(p.aplicar&&p.escrituraAsientos?'<b>también se crea en Odoo</b> (AUTONOMIA_APLICAR=si).':'<b>no</b> se crea en Odoo por sí mismo: sigue siendo el botón «Crear en Odoo».');
+  if(!j.filas.length){ el.innerHTML='<div class="sub" style="margin-top:8px">Todavía no hay decisiones que medir. Se llena a medida que se aprueban o rechazan asientos y propuestas.</div>'; return; }
+  var meses=[]; j.filas.forEach(function(f){ Object.keys(f.meses).forEach(function(m){ if(meses.indexOf(m)<0) meses.push(m); }); }); meses.sort(); meses=meses.slice(-4);
+  var celda=function(x){ if(!x) return '<span class="sub">—</span>'; var t=[];
+    if(x.aprobadas) t.push('<span title="aprobadas sin cambios">✓'+x.aprobadas+'</span>'); if(x.corregidas) t.push('<b style="color:var(--alto)" title="corregidas antes de aprobar">✎'+x.corregidas+'</b>');
+    if(x.rechazadas) t.push('<b style="color:var(--critico)" title="rechazadas">✗'+x.rechazadas+'</b>'); if(x.fallidas) t.push('<b style="color:var(--critico)" title="fallaron en Odoo">⚠'+x.fallidas+'</b>');
+    if(x.solas) t.push('<span class="sub" title="aprobadas solas">⚙'+x.solas+'</span>'); return t.join(" "); };
+  el.innerHTML=tabla(["Tipo","Compañía"].concat(meses).concat(["Nivel","Por qué",""]), j.filas.map(function(f){ var e=NIVEL_AUT[f.nivel];
+    return [esc(f.titulo), esc(f.compania)].concat(meses.map(function(m){ return celda(f.meses[m]); })).concat(['<span class="est '+e[1]+'">'+e[0]+'</span>', '<span class="sub">'+esc(f.motivo)+'</span>',
+      f.nivel==="candidato"?'<button class="b" data-dar-autonomia="'+esc(f.tipo)+'" data-cia="'+f.companiaId+'">Dar autonomía</button>':f.nivel==="autonomo"?'<button class="b rj" data-revocar-autonomia="'+f.autonomiaId+'">Revocar</button>':'']); }))+
+    '<div class="sub" style="margin-top:6px">✓ aprobadas sin cambios · ✎ corregidas · ✗ rechazadas · ⚠ fallaron en Odoo · ⚙ aprobadas solas</div>';
+  $("#autRevocadas").innerHTML=j.revocadas.length?'<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+j.revocadas.length+' autonomías revocadas</summary>'+tabla(["Tipo","Compañía","Desde","Revocada","Por qué"], j.revocadas.map(function(r){ return [esc(j.tipos[r.tipo]||r.tipo), esc(r.compania), '<span class="sub">'+esc(String(r.otorgada_en).slice(0,10))+' · '+esc(r.otorgo)+'</span>', '<span class="sub">'+esc(String(r.revocada_en).slice(0,10))+' · '+esc(r.revoco)+'</span>', '<span class="sub">'+esc(r.motivo||"")+'</span>']; }))+'</details>':'';
+}
 /* ---------- Activos fijos (ítem 16): registro en la app, depreciación a la cola de asientos ---------- */
 V.activos = function(){
   return '<section><h2>Activos fijos</h2><div class="aviso">En IASIMA los activos no están cargados en Odoo y la depreciación se hace a mano. Registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
@@ -864,6 +886,7 @@ function pintar(){
   if (S.vista==="diferidos") cargarDiferidos();
   if (S.vista==="activos") cargarActivos();
   if (S.vista==="extractos") cargarExtractos();
+  if (S.vista==="autonomia") cargarAutonomia();
   if (S.vista==="cierremes") cargarCierreMes();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -995,6 +1018,10 @@ $("#main").addEventListener("click", function(ev){
   else if (d.anularExtracto){ ev.preventDefault(); var na=prompt("¿Por qué se anula este extracto? (se borran sus líneas sin asiento; lo ya propuesto o creado en Odoo no se toca)", ""); if(na===null) return; api("/api/extractos/"+d.anularExtracto+"/anular",{nota:na}).then(function(){ msg("Anulado."); $("#exLineas").innerHTML=""; cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.ignorarLinea){ ev.preventDefault(); var ni=prompt("¿Por qué se ignora este movimiento? (p. ej. ya registrado en otra cuenta)", ""); if(!ni) return; api("/api/extractos/lineas/"+d.ignorarLinea+"/ignorar",{nota:ni}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.reabrirLinea){ ev.preventDefault(); api("/api/extractos/lineas/"+d.reabrirLinea+"/ignorar",{ignorar:false}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.darAutonomia){ var nt=prompt("Desde la próxima corrida esto se aprobará solo (si pasa las validaciones). Nota para la auditoría (opcional):", ""); if(nt===null) return;
+    api("/api/autonomia/otorgar",{tipo:d.darAutonomia, compania:Number(d.cia), nota:nt}).then(function(j){ msg(j.mensaje); cargarAutonomia(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.revocarAutonomia){ var mr=prompt("¿Por qué se revoca? (vuelve a pasar todo por Aprobaciones)", ""); if(!mr) return;
+    api("/api/autonomia/"+d.revocarAutonomia+"/revocar",{motivo:mr}).then(function(){ msg("Revocada."); cargarAutonomia(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.verCorreo){ ev.preventDefault(); api("/api/correos/"+d.verCorreo).then(function(c){ var f=document.createElement("iframe"); f.className="prev"; f.setAttribute("sandbox",""); f.srcdoc=c.html; var p=$("#corrPrev"); p.innerHTML='<h2 style="margin-top:14px">Vista previa — '+esc(c.para)+'</h2>'; p.appendChild(f); f.scrollIntoView({behavior:"smooth"}); }); }

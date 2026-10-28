@@ -52,7 +52,7 @@ export function origenAjeno(req) {
 export const esJSON = req => /^application\/json\b/i.test(String(req.headers["content-type"] || ""));
 
 // Rutas que escriben en Odoo o mandan correo: desde afuera, solo con sesión personal.
-export const RUTAS_CON_SESION = [/^\/api\/asientos\/[^/]+\/aplicar$/, /^\/api\/cambios\/[^/]+\/aplicar$/, /^\/api\/propuestas\/aplicar$/, /^\/api\/correos\/enviar$/];
+export const RUTAS_CON_SESION = [/^\/api\/asientos\/[^/]+\/aplicar$/, /^\/api\/cambios\/[^/]+\/aplicar$/, /^\/api\/propuestas\/aplicar$/, /^\/api\/correos\/enviar$/, /^\/api\/autonomia\/otorgar$/];
 
 // Avisos al arrancar: lo que conviene corregir antes de exponer el servicio.
 export function avisosDeArranque(cfg) {

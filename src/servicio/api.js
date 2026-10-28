@@ -23,6 +23,7 @@ import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
 import * as extractosSrv from "./extractos.js";
 import * as comprobantesSrv from "./comprobantes.js";
+import * as autonomia from "./autonomia.js";
 import * as activosSrv from "./activos.js";
 import * as cierreMes from "./cierreMes.js";
 import { avance, calendario } from "../lib/diferidos.js";
@@ -320,6 +321,19 @@ export function crearApi(opciones) {
     if (r.error) return error(400, r.error);
     ctx.db.auditar(quien, "revisar", "comprobantes", null, { archivo: String(cuerpo.archivo?.nombre || "").slice(0, 120), ...r.totales });
     return r;
+  });
+
+  // --- autonomía (fase 4): historial por tipo × compañía, otorgar y revocar
+  ruta("GET", "/api/autonomia", (q, p, c, quien, ctx) => ({
+    filas: autonomia.historial(ctx.db, ctx.cfg), tipos: autonomia.TIPOS, revocadas: ctx.db.autonomias({ estado: "revocada" }).slice(0, 50),
+    parametros: { minimo: Math.max(1, Number(ctx.cfg.AUTONOMIA_MINIMO) || 1), aplicar: String(ctx.cfg.AUTONOMIA_APLICAR || "").toLowerCase() === "si", escrituraAsientos: asientos.escrituraAsientos(ctx.cfg) } }));
+  ruta("POST", "/api/autonomia/otorgar", (q, p, cuerpo, quien, ctx) => {
+    const r = autonomia.otorgar({ db: ctx.db, cfg: ctx.cfg, tipo: cuerpo.tipo, companiaId: Number(cuerpo.compania), nota: cuerpo.nota, quien });
+    return r.error ? error(400, r.error) : r;
+  });
+  ruta("POST", "/api/autonomia/:id/revocar", (q, p, cuerpo, quien, ctx) => {
+    if (!String(cuerpo.motivo || "").trim()) return error(400, "Diga por qué se revoca.");
+    return { ok: ctx.db.revocarAutonomia(Number(p.id), quien, String(cuerpo.motivo).slice(0, 300)) };
   });
 
   // --- cierre de mes por compañía (junta lo de todos los agentes y la cola)

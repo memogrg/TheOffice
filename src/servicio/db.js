@@ -266,6 +266,7 @@ export class BaseDeDatos {
     this.#tablaActivos();
     this.#tablaCierres();
     this.#tablaExtractos();
+    this.#tablaAutonomia();
     if (!columnas("correos").has("responder_a")) this.db.exec("ALTER TABLE correos ADD COLUMN responder_a TEXT");
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
@@ -400,6 +401,46 @@ export class BaseDeDatos {
     for (const a of this.todos("SELECT clave, estado, move_name FROM asientos WHERE origen=? ORDER BY id", origen)) out.set(a.clave, { estado: a.estado, asiento: a.move_name });
     return out;
   }
+
+  // --- autonomía (fase 4): qué tipo de propuesta, en qué compañía, se aprueba sola
+  #tablaAutonomia() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS autonomia (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo        TEXT NOT NULL,        -- cierre | cambiario | diferidos | depreciacion | extractos-cargos | … | cuentas
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      estado      TEXT NOT NULL DEFAULT 'activa',   -- activa | revocada
+      otorgo      TEXT NOT NULL,
+      otorgada_en TEXT NOT NULL,
+      nota        TEXT,
+      evidencia   TEXT,                 -- JSON: los meses que la justificaron
+      revoco      TEXT,
+      revocada_en TEXT,
+      motivo      TEXT
+    )`);
+  }
+  autonomias({ estado = "activa" } = {}) {
+    return this.todos(`SELECT * FROM autonomia${estado === "todas" ? "" : " WHERE estado=?"} ORDER BY tipo, compania, id DESC`, ...(estado === "todas" ? [] : [estado]))
+      .map(a => ({ ...a, evidencia: a.evidencia ? JSON.parse(a.evidencia) : null }));
+  }
+  autonomiaActiva(tipo, companiaId) { return this.uno("SELECT * FROM autonomia WHERE tipo=? AND compania_id=? AND estado='activa'", tipo, companiaId) || null; }
+  otorgarAutonomia({ tipo, companiaId, compania, nota = null, evidencia = null }, quien) {
+    if (this.autonomiaActiva(tipo, companiaId)) return null;
+    const x = this.correr("INSERT INTO autonomia (tipo, compania_id, compania, otorgo, otorgada_en, nota, evidencia) VALUES (?,?,?,?,?,?,?)",
+      tipo, companiaId, compania ?? null, quien, this.#ahora(), nota, evidencia ? JSON.stringify(evidencia) : null);
+    const id = Number(x.lastInsertRowid);
+    this.auditar(quien, "otorgar", "autonomia", id, { tipo, compania, nota });
+    return id;
+  }
+  revocarAutonomia(id, quien, motivo = null) {
+    const r = this.correr("UPDATE autonomia SET estado='revocada', revoco=?, revocada_en=?, motivo=? WHERE id=? AND estado='activa'", quien, this.#ahora(), motivo, id);
+    if (r.changes) this.auditar(quien, "revocar", "autonomia", id, motivo ? { motivo } : null);
+    return r.changes > 0;
+  }
+  // Para medir: asientos y propuestas ya decididos, y qué asientos editó una persona.
+  decisionesAsientos() { return this.todos("SELECT id, clave, origen, mes, fecha, compania_id, compania, estado, decidio, decidido_en, lineas, resultado FROM asientos WHERE decidio IS NOT NULL OR estado IN ('aplicada','fallo')"); }
+  decisionesPropuestas() { return this.todos("SELECT id, compania_id, compania, estado, decidio, decidido_en FROM propuestas WHERE decidio IS NOT NULL"); }
+  asientosEditados() { return new Set(this.todos("SELECT DISTINCT objeto_id FROM auditoria WHERE objeto='asiento' AND accion='editar'").map(x => x.objeto_id)); }
 
   // --- gastos diferidos (ítem 15): el registro vive aquí; las cuotas, en la cola de asientos
   #tablaDiferidos() {
