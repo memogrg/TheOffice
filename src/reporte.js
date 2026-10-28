@@ -37,6 +37,9 @@ export const ETIQUETA = {
   activos:"Activos registrados", depreciados:"Totalmente depreciados", bajas:"Dados de baja", yaAMano:"Compañías que ya depreciaron a mano", valorEnLibros:"Valor en libros",
   porCobrar:"Por cobrar", vencidoCobrar:"Vencido por cobrar", porPagar:"Por pagar", vencidoPagar:"Vencido por pagar", clientesMorosos:"Clientes con vencidas",
   recordatorios:"Recordatorios redactados", sinCorreo:"Clientes sin correo", pagosProximos:"Pagos que vencen pronto", notasSinAplicar:"Notas de crédito sin aplicar",
+  contactos:"Contactos activos", gruposDuplicados:"Cédulas repetidas", contactosDuplicados:"Contactos duplicados", posiblesDuplicados:"Posibles duplicados por nombre",
+  cedulasInvalidas:"Cédulas inválidas", sinCedulaConDocumentos:"Con documentos y sin cédula", clientesSinCorreo:"Clientes facturados sin correo", correosInvalidos:"Correos inválidos",
+  archivadosConDocumentos:"Archivados con documentos",
   documentosAfuera:"Documentos distintos a reclamar", documentosAdentro:"Documentos distintos a revisar"
 };
 

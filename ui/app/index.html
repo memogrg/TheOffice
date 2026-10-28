@@ -189,6 +189,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="diferidos">Diferidos</button>'+
     '<button class="b gh" data-correr="depreciacion">Depreciación</button>'+
     '<button class="b gh" data-correr="cartera">Cartera y cobros</button>'+
+    '<button class="b gh" data-correr="datos">Calidad de datos</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -273,6 +274,7 @@ var HALLAZGOS = [
   { id:"estados", titulo:"Estados financieros — balance y resultados", ayuda:"Balance de situación y estado de resultados de cada compañía al cierre del mes, con los últimos meses. Pulse «ver» para el detalle e «Imprimir» para entregarlo." },
   { id:"cambiario", titulo:"Diferencial cambiario — saldos en dólares", ayuda:"Revalúa a fin de mes los bancos en dólares y los documentos abiertos de clientes y proveedores con el tipo de cambio de Odoo, y propone el asiento (se revierte solo el día 1). Los asientos quedan en Aprobaciones." },
   { id:"cartera", titulo:"Cartera — antigüedad de cobros y pagos", ayuda:"Cuánto se debe a cada compañía y cuánto debe, por tramos de vencimiento; clientes con facturas vencidas y pagos que vencen pronto. Redacta un recordatorio de cobro por cliente (en nombre de la compañía) que queda en Correos para aprobar." },
+  { id:"datos", titulo:"Calidad de datos — contactos", ayuda:"Cédulas repetidas en la misma compañía (frenan el buzón), posibles duplicados por nombre, cédulas inválidas, terceros con documentos y sin cédula, clientes facturados sin correo. Se corrige en Odoo; el agente dice qué contacto conservar al fusionar." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
 ];
 V.hallazgos = function(){
@@ -311,6 +313,15 @@ function pintarHallazgo(id, r){
   }
   if (id==="cierre") h += pintarCierre(r);
   if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
+  if (id==="datos"){
+    var ctc=function(c){ return esc(c.nombre)+' <span class="sub mono">#'+c.id+'</span><div class="sub">'+esc(c.cedula||"sin cédula")+' · '+n(c.ventas)+' ventas · '+n(c.compras)+' compras</div>'; };
+    if ((r.duplicados||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Cédulas repetidas en la misma compañía</h3>'+tabla(["Compañía","Cédula","Contactos","Conservar"], r.duplicados.slice(0,80).map(function(d){
+      var k=d.contactos.find(function(c){ return c.id===d.conservar; }); return [esc(d.compania), '<span class="mono">'+esc(d.cedula)+'</span>', d.contactos.map(ctc).join(""), '<b>'+esc(k?k.nombre:"")+'</b> <span class="sub mono">#'+d.conservar+'</span>']; }));
+    if ((r.sinCedula||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Con documentos y sin cédula</h3>'+tabla(["Compañía","Tercero","Rol"], r.sinCedula.slice(0,80).map(function(x){ return [esc(x.compania), ctc(x), esc(x.rol)]; }));
+    if ((r.cedulas||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+r.cedulas.length+' cédulas con formato inválido</summary>'+tabla(["Compañía","Tercero","Tipo","Problema"], r.cedulas.slice(0,150).map(function(x){ return [esc(x.compania), ctc(x), esc(x.tipo), '<span class="sub">'+esc(x.motivo)+'</span>']; }))+'</details>';
+    if ((r.sinCorreo||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+r.sinCorreo.length+' clientes facturados sin correo</summary>'+tabla(["Compañía","Cliente"], r.sinCorreo.slice(0,200).map(function(x){ return [esc(x.compania), ctc(x)]; }))+'</details>';
+    if ((r.parecidos||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+r.parecidos.length+' grupos con el mismo nombre y cédula distinta o vacía</summary>'+tabla(["Compañía","Contactos"], r.parecidos.slice(0,100).map(function(x){ return [esc(x.compania), x.contactos.map(ctc).join("")]; }))+'</details>';
+  }
   if (id==="cartera"){
     var tr=r.tramos||[];
     h += '<div class="sub" style="margin:6px 0">Corte al <b>'+esc(r.corte||"")+'</b>. Montos en colones.</div>';

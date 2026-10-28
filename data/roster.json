@@ -397,6 +397,31 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "datos",
+      "nombre": "CALIDAD DE DATOS",
+      "rol": "CALIDAD DE DATOS",
+      "modo": "lectura",
+      "hace": "Revisa los contactos de todas las compañías: cédulas repetidas en la misma compañía (frenan el buzón), posibles duplicados por nombre, cédulas inválidas para su tipo, terceros con documentos y sin cédula, clientes facturados sin correo, correos inválidos y terceros archivados con documentos. Dice qué contacto conservar al fusionar.",
+      "noHace": "No fusiona ni corrige contactos.",
+      "responde": [
+        "qué proveedores están duplicados",
+        "qué clientes no tienen correo",
+        "qué cédulas están mal"
+      ],
+      "palabras": {
+        "duplicad": 6,
+        "contacto": 4,
+        "contactos": 4,
+        "cedula": 4,
+        "sin correo": 5,
+        "calidad de datos": 6,
+        "fusionar": 5,
+        "proveedor repetido": 6
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

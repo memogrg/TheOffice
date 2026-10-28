@@ -20,11 +20,12 @@ import * as cambiario from "../agents/cambiario.js";
 import * as diferidos from "../agents/diferidos.js";
 import * as depreciacion from "../agents/depreciacion.js";
 import * as cartera from "../agents/cartera.js";
+import * as datos from "../agents/datos.js";
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
