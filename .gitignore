@@ -34,3 +34,4 @@ tmp/
 *.db-shm
 *.db-wal
 parches/
+plugin/*.plugin

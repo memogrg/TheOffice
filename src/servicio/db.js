@@ -267,6 +267,7 @@ export class BaseDeDatos {
     this.#tablaCierres();
     this.#tablaExtractos();
     this.#tablaAutonomia();
+    this.#tablaDeclaraciones();
     if (!columnas("correos").has("responder_a")) this.db.exec("ALTER TABLE correos ADD COLUMN responder_a TEXT");
     // Cambios masivos al plan de cuentas (objetivo 5): una instrucción, N compañías.
     this.db.exec(`CREATE TABLE IF NOT EXISTS cambios (
@@ -441,6 +442,132 @@ export class BaseDeDatos {
   decisionesAsientos() { return this.todos("SELECT id, clave, origen, mes, fecha, compania_id, compania, estado, decidio, decidido_en, lineas, resultado FROM asientos WHERE decidio IS NOT NULL OR estado IN ('aplicada','fallo')"); }
   decisionesPropuestas() { return this.todos("SELECT id, compania_id, compania, estado, decidio, decidido_en FROM propuestas WHERE decidio IS NOT NULL"); }
   asientosEditados() { return new Set(this.todos("SELECT DISTINCT objeto_id FROM auditoria WHERE objeto='asiento' AND accion='editar'").map(x => x.objeto_id)); }
+
+  // --- declaraciones de Hacienda (TRIBU-CR): una fila por compañía × formulario × periodo
+  #tablaDeclaraciones() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS declaraciones (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      clave       TEXT NOT NULL UNIQUE,   -- impuesto|compania|periodo
+      impuesto    TEXT NOT NULL,          -- 150 | 102 | 270
+      compania_id INTEGER NOT NULL,
+      compania    TEXT,
+      periodo     TEXT NOT NULL,          -- AAAA-MM o AAAA
+      corrida_id  INTEGER,
+      estado      TEXT NOT NULL DEFAULT 'preparada',  -- preparada | revisada | cargada | aprobada | presentada | rechazada
+      paquete     TEXT NOT NULL,          -- JSON: casillas, totales, extra
+      juez        TEXT,                   -- JSON: semaforo y observaciones (reglas + IA)
+      ajustes     TEXT,                   -- JSON: lo que una persona fijó (proporción, saldo anterior, tarifa…); sobrevive a las corridas
+      carga       TEXT,                   -- JSON: lo que el plugin dejó en el portal (campos leídos, diferencias, capturas)
+      desactualizada INTEGER NOT NULL DEFAULT 0,  -- 1 si una corrida posterior dio otras cifras después de cargar/aprobar
+      paquete_nuevo TEXT,
+      decidio     TEXT, decidido_en TEXT, nota TEXT,
+      presentada_en TEXT, numero_presentacion TEXT, presento TEXT,
+      notificada_en TEXT,
+      creado_en   TEXT NOT NULL, actualizado_en TEXT
+    )`);
+  }
+  #filaDeclaracion(d) {
+    if (!d) return null;
+    const j = k => (d[k] ? JSON.parse(d[k]) : null);
+    return { ...d, paquete: j("paquete"), juez: j("juez"), ajustes: j("ajustes"), carga: j("carga"), paquete_nuevo: j("paquete_nuevo") };
+  }
+  // Lo que el agente armó. Las preparadas/revisadas se reemplazan; las que ya se cargaron o aprobaron se
+  // marcan desactualizadas si las cifras cambiaron (la persona decide).
+  sincronizarDeclaraciones(corridaId, paquetes) {
+    const ahora = this.#ahora();
+    let nuevas = 0, actualizadas = 0, desactualizadas = 0;
+    const firma = p => JSON.stringify(p.totales);
+    this.transaccion(() => {
+      for (const p of paquetes) {
+        const clave = `${p.impuesto}|${p.companiaId}|${p.periodo}`;
+        const { juez, ...paquete } = p;
+        const v = this.uno("SELECT id, estado, paquete FROM declaraciones WHERE clave=?", clave);
+        if (!v) {
+          this.correr("INSERT INTO declaraciones (clave, impuesto, compania_id, compania, periodo, corrida_id, paquete, juez, creado_en) VALUES (?,?,?,?,?,?,?,?,?)",
+            clave, p.impuesto, p.companiaId, p.compania, p.periodo, corridaId, JSON.stringify(paquete), JSON.stringify(juez), ahora);
+          nuevas++;
+        } else if (["preparada", "revisada", "rechazada"].includes(v.estado)) {
+          // el juicio de la IA (si lo hubo) se conserva solo si las cifras no cambiaron
+          const prev = this.uno("SELECT juez FROM declaraciones WHERE id=?", v.id);
+          const mismo = firma(JSON.parse(v.paquete)) === firma(p), jPrev = prev.juez ? JSON.parse(prev.juez) : null;
+          const juezFinal = mismo && jPrev?.ia ? { ...juez, ia: jPrev.ia, semaforo: jPrev.semaforo } : juez;
+          this.correr("UPDATE declaraciones SET corrida_id=?, paquete=?, juez=?, estado=CASE WHEN estado='rechazada' THEN 'preparada' ELSE (CASE WHEN ? THEN estado ELSE 'preparada' END) END, actualizado_en=? WHERE id=?",
+            corridaId, JSON.stringify(paquete), JSON.stringify(juezFinal), mismo ? 1 : 0, ahora, v.id);
+          actualizadas++;
+        } else if (firma(JSON.parse(v.paquete)) !== firma(p)) {
+          this.correr("UPDATE declaraciones SET desactualizada=1, paquete_nuevo=?, actualizado_en=? WHERE id=?", JSON.stringify({ ...paquete, juez }), ahora, v.id);
+          desactualizadas++;
+        }
+      }
+    });
+    return { nuevas, actualizadas, desactualizadas };
+  }
+  declaraciones({ periodo = null, impuesto = null, estado = null, companiaId = null } = {}) {
+    const cond = [], p = [];
+    if (periodo) { cond.push("(periodo=? OR periodo=?)"); p.push(periodo, String(periodo).slice(0, 4)); }
+    if (impuesto) { cond.push("impuesto=?"); p.push(impuesto); }
+    if (estado) { cond.push(estado === "pendientes" ? "estado IN ('preparada','revisada','cargada')" : "estado=?"); if (estado !== "pendientes") p.push(estado); }
+    if (companiaId) { cond.push("compania_id=?"); p.push(companiaId); }
+    return this.todos(`SELECT * FROM declaraciones${cond.length ? " WHERE " + cond.join(" AND ") : ""} ORDER BY periodo DESC, impuesto, compania`, ...p).map(d => this.#filaDeclaracion(d));
+  }
+  declaracion(id) { return this.#filaDeclaracion(this.uno("SELECT * FROM declaraciones WHERE id=?", id)); }
+  periodosDeclaraciones() { return this.todos("SELECT periodo, COUNT(*) n FROM declaraciones WHERE impuesto='150' GROUP BY periodo ORDER BY periodo DESC").map(x => x.periodo); }
+  ajustesDeclaracion(clave) { const d = this.uno("SELECT ajustes FROM declaraciones WHERE clave=?", clave); return d && d.ajustes ? JSON.parse(d.ajustes) : null; }
+  // La última declaración del mismo impuesto antes de este periodo (para el saldo a favor que arrastra).
+  declaracionAnterior(companiaId, impuesto, periodo) {
+    const d = this.uno("SELECT periodo, paquete FROM declaraciones WHERE compania_id=? AND impuesto=? AND periodo<? AND estado IN ('aprobada','presentada') ORDER BY periodo DESC LIMIT 1", companiaId, impuesto, periodo);
+    return d ? { periodo: d.periodo, favor: JSON.parse(d.paquete).totales.favor || 0 } : null;
+  }
+  ajustarDeclaracion(id, ajustes, quien) {
+    const d = this.uno("SELECT id, estado, ajustes FROM declaraciones WHERE id=?", id);
+    if (!d || !["preparada", "revisada", "rechazada"].includes(d.estado)) return false;
+    const nuevos = { ...(d.ajustes ? JSON.parse(d.ajustes) : {}), ...ajustes };
+    for (const k of Object.keys(nuevos)) if (nuevos[k] == null || nuevos[k] === "") delete nuevos[k];
+    this.correr("UPDATE declaraciones SET ajustes=?, actualizado_en=? WHERE id=?", JSON.stringify(nuevos), this.#ahora(), id);
+    this.auditar(quien, "ajustar", "declaracion", id, ajustes);
+    return true;
+  }
+  // Reemplaza paquete y juez (recalculados con los ajustes) sin tocar el estado.
+  reemplazarPaqueteDeclaracion(id, paquete, juez) {
+    const { juez: _j, ...p } = paquete;
+    this.correr("UPDATE declaraciones SET paquete=?, juez=?, actualizado_en=? WHERE id=?", JSON.stringify(p), JSON.stringify(juez), this.#ahora(), id);
+  }
+  juzgarDeclaracion(id, juez, quien) {
+    const r = this.correr("UPDATE declaraciones SET juez=?, estado=CASE WHEN estado='preparada' THEN 'revisada' ELSE estado END, actualizado_en=? WHERE id=?", JSON.stringify(juez), this.#ahora(), id);
+    if (r.changes) this.auditar(quien, "juzgar", "declaracion", id, { semaforo: juez.semaforo, observaciones: (juez.observaciones || []).length });
+    return r.changes > 0;
+  }
+  cargarDeclaracion(id, carga, quien) {
+    const d = this.uno("SELECT estado FROM declaraciones WHERE id=?", id);
+    if (!d || !["preparada", "revisada", "cargada"].includes(d.estado)) return false;
+    this.correr("UPDATE declaraciones SET carga=?, estado='cargada', actualizado_en=? WHERE id=?", JSON.stringify(carga), this.#ahora(), id);
+    this.auditar(quien, "cargar", "declaracion", id, { diferencias: (carga.diferencias || []).length, capturas: (carga.capturas || []).length });
+    return true;
+  }
+  decidirDeclaracion(id, decision, quien, nota = null) {
+    const d = this.uno("SELECT estado FROM declaraciones WHERE id=?", id);
+    if (!d || !["preparada", "revisada", "cargada"].includes(d.estado)) return false;
+    this.correr("UPDATE declaraciones SET estado=?, decidio=?, decidido_en=?, nota=?, desactualizada=0, paquete_nuevo=NULL, actualizado_en=? WHERE id=?", decision, quien, this.#ahora(), nota, this.#ahora(), id);
+    this.auditar(quien, decision === "aprobada" ? "aprobar" : "rechazar", "declaracion", id, nota ? { nota } : null);
+    return true;
+  }
+  presentarDeclaracion(id, { numero, fecha = null }, quien) {
+    const d = this.uno("SELECT estado FROM declaraciones WHERE id=?", id);
+    if (!d || d.estado !== "aprobada") return false;
+    this.correr("UPDATE declaraciones SET estado='presentada', numero_presentacion=?, presentada_en=?, presento=?, actualizado_en=? WHERE id=?", numero, fecha || this.#ahora(), quien, this.#ahora(), id);
+    this.auditar(quien, "presentar", "declaracion", id, { numero });
+    return true;
+  }
+  // Toma el paquete nuevo que llegó después de cargar/aprobar: vuelve a 'preparada'.
+  tomarPaqueteNuevo(id, quien) {
+    const d = this.#filaDeclaracion(this.uno("SELECT * FROM declaraciones WHERE id=?", id));
+    if (!d || !d.paquete_nuevo) return false;
+    const { juez, ...p } = d.paquete_nuevo;
+    this.correr("UPDATE declaraciones SET paquete=?, juez=?, estado='preparada', carga=NULL, desactualizada=0, paquete_nuevo=NULL, decidio=NULL, decidido_en=NULL, actualizado_en=? WHERE id=?", JSON.stringify(p), JSON.stringify(juez), this.#ahora(), id);
+    this.auditar(quien, "actualizar", "declaracion", id, null);
+    return true;
+  }
+  marcarNotificadas(ids) { const ahora = this.#ahora(); for (const id of ids) this.correr("UPDATE declaraciones SET notificada_en=? WHERE id=?", ahora, id); }
 
   // --- gastos diferidos (ítem 15): el registro vive aquí; las cuotas, en la cola de asientos
   #tablaDiferidos() {

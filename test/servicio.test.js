@@ -125,7 +125,7 @@ test("programador: dispara una vez al día a la hora dicha y no repite tras rein
   const prog = new Programador({ corridas, db, cfg: c, reloj: () => reloj });
   assert.deepEqual(await prog.tick(), []);
   reloj = hoy(7, 0);
-  assert.deepEqual(await prog.tick(), ["recepcion", "comunicacion", "diagnostico", "conciliacion", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos"]);
+  assert.deepEqual(await prog.tick(), ["recepcion", "comunicacion", "diagnostico", "conciliacion", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"]);
   reloj = hoy(9, 30);
   assert.deepEqual(await prog.tick(), [], "ya corrió hoy");
   const prog2 = new Programador({ corridas, db, cfg: c, reloj: () => reloj });

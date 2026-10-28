@@ -22,13 +22,14 @@ import * as depreciacion from "../agents/depreciacion.js";
 import * as cartera from "../agents/cartera.js";
 import * as datos from "../agents/datos.js";
 import * as extractos from "../agents/extractos.js";
+import * as hacienda from "../agents/hacienda.js";
 import { aprobarAutonomos } from "./autonomia.js";
 const CON_AUTONOMIA = ["cierre", "cambiario", "diferidos", "depreciacion", "extractos", "cuentas"];
 import { reporteHTML, resumenTexto, ETIQUETA } from "../reporte.js";
 import { enviar, enviarCorreo } from "../mailer.js";
 import { escribirOficina } from "../oficina.js";
 
-export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos, extractos };
+export const AGENTES = { recepcion, conciliacion, cuentas, comunicacion, diagnostico, recurrentes, bancos, documentos, cierre, estados, cambiario, diferidos, depreciacion, cartera, datos, extractos, hacienda };
 
 export class Corridas {
   constructor({ db, cfg, raiz, raizProyecto = raiz, marca = null, prefijo = "", log = () => {} }) {
@@ -140,6 +141,12 @@ export class Corridas {
       const lineas = this.db.actualizarLineasExtracto(r.cambios);
       delete r.cambios;
       return { asientos, lineas };
+    }
+    // Hacienda: los paquetes van a la tabla de declaraciones; en la corrida queda solo el resumen.
+    if (quien === "hacienda" && Array.isArray(r.paquetes)) {
+      const s = this.db.sincronizarDeclaraciones(corridaId, r.paquetes);
+      delete r.paquetes;
+      return { declaraciones: s };
     }
     if (quien === "depreciacion" && Array.isArray(r.asientosSugeridos)) {
       return { asientos: this.db.sincronizarAsientos(corridaId, r.asientosSugeridos, { origen: "depreciacion", reemplazarAnteriores: true }) };

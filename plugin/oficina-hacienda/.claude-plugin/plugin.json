@@ -1,0 +1,7 @@
+{
+  "name": "oficina-hacienda",
+  "version": "0.1.0",
+  "description": "Lleva al portal TRIBU-CR las declaraciones que la Oficina preparó (IVA formulario 150): las deja como borrador, relee cada casilla y reporta a la Oficina. Presentar sigue siendo un clic de una persona.",
+  "author": { "name": "Oficina (TheOffice)" },
+  "keywords": ["hacienda", "tribu-cr", "iva", "costa-rica", "odoo"]
+}

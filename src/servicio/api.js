@@ -24,6 +24,7 @@ import * as diferidosSrv from "./diferidos.js";
 import * as extractosSrv from "./extractos.js";
 import * as comprobantesSrv from "./comprobantes.js";
 import * as autonomia from "./autonomia.js";
+import * as hacienda from "./hacienda.js";
 import * as activosSrv from "./activos.js";
 import * as cierreMes from "./cierreMes.js";
 import { avance, calendario } from "../lib/diferidos.js";
@@ -57,7 +58,7 @@ export function crearApi(opciones) {
     enCurso: ctx.corridas.enCurso,
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -120,7 +121,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente);
     return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
   });
@@ -334,6 +335,45 @@ export function crearApi(opciones) {
   ruta("POST", "/api/autonomia/:id/revocar", (q, p, cuerpo, quien, ctx) => {
     if (!String(cuerpo.motivo || "").trim()) return error(400, "Diga por qué se revoca.");
     return { ok: ctx.db.revocarAutonomia(Number(p.id), quien, String(cuerpo.motivo).slice(0, 300)) };
+  });
+
+  // --- Hacienda (TRIBU-CR): declaraciones preparadas, juez, carga del plugin, aprobación, presentación
+  ruta("GET", "/api/hacienda", (q, p, c, quien, ctx) => {
+    const periodos = ctx.db.periodosDeclaraciones();
+    const periodo = q.periodo || periodos[0] || null;
+    const lista = ctx.db.declaraciones({ periodo, impuesto: q.impuesto || null, estado: q.estado || null, companiaId: q.compania ? Number(q.compania) : null });
+    return { periodo, periodos, declaraciones: lista.map(hacienda.resumen),
+      parametros: { juezIA: Boolean(ctx.cfg.CLAUDE_API_KEY), notificarA: ctx.cfg.HACIENDA_NOTIFICAR || null, smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS) } };
+  });
+  // lo que el plugin puede cargar en el portal: pendiente, sin rojo y con cifras al día
+  ruta("GET", "/api/hacienda/pendientes", (q, p, c, quien, ctx) => {
+    const lista = ctx.db.declaraciones({ periodo: q.periodo || null, impuesto: q.impuesto || "150", estado: "pendientes" }).filter(hacienda.cargable);
+    return { declaraciones: lista.map(d => ({ ...hacienda.resumen(d), casillas: d.paquete.casillas.map(({ rastro, ...x }) => x) })) };
+  });
+  ruta("GET", "/api/hacienda/:id", (q, p, c, quien, ctx) => { const d = ctx.db.declaracion(Number(p.id)); return d ? { ...hacienda.resumen(d), paquete: d.paquete, juez: d.juez, ajustes: d.ajustes, cargaDetalle: d.carga, paqueteNuevo: d.paquete_nuevo ? { totales: d.paquete_nuevo.totales } : null } : error(404, "No existe esa declaración."); });
+  ruta("POST", "/api/hacienda/:id/ajustar", (q, p, cuerpo, quien, ctx) => { const r = hacienda.ajustar({ db: ctx.db, id: Number(p.id), ajustes: cuerpo, quien }); return r.error ? error(400, r.error) : { ok: true, totales: r.paquete?.totales, semaforo: r.juez?.semaforo }; });
+  ruta("POST", "/api/hacienda/:id/juez", async (q, p, cuerpo, quien, ctx) => { const r = await hacienda.juezIA({ db: ctx.db, cfg: ctx.cfg, id: Number(p.id), quien }); return r.error ? error(400, r.error) : r; });
+  ruta("POST", "/api/hacienda/:id/cargada", (q, p, cuerpo, quien, ctx) => { const r = hacienda.registrarCarga({ db: ctx.db, id: Number(p.id), cuerpo, quien }); return r.error ? error(r.codigo || 400, r.error) : r; });
+  ruta("POST", "/api/hacienda/:id/aprobar", (q, p, cuerpo, quien, ctx) => {
+    const d = ctx.db.declaracion(Number(p.id));
+    if (!d) return error(404, "No existe esa declaración.");
+    if (d.juez?.semaforo === "rojo" && cuerpo.aunEnRojo !== true) return error(400, "Está en rojo: resuelva lo que marca el juez, o apruebe indicando aunEnRojo con una nota.");
+    if (d.juez?.semaforo === "rojo" && !String(cuerpo.nota || "").trim()) return error(400, "Para aprobar en rojo hace falta una nota.");
+    if (d.desactualizada) return error(409, "Las cifras cambiaron en la última corrida: actualice la declaración primero.");
+    return ctx.db.decidirDeclaracion(d.id, "aprobada", quien, cuerpo.nota || null) ? { ok: true, mensaje: "Aprobada. Presentar en TRIBU-CR sigue siendo un clic de una persona; después registre el número." } : error(409, `La declaración está ${d.estado}.`);
+  });
+  ruta("POST", "/api/hacienda/:id/rechazar", (q, p, cuerpo, quien, ctx) => { if (!String(cuerpo.motivo || "").trim()) return error(400, "Diga por qué."); return { ok: ctx.db.decidirDeclaracion(Number(p.id), "rechazada", quien, cuerpo.motivo) }; });
+  ruta("POST", "/api/hacienda/:id/presentada", (q, p, cuerpo, quien, ctx) => {
+    if (!String(cuerpo.numero || "").trim()) return error(400, "Falta el número de la declaración que dio el portal.");
+    return ctx.db.presentarDeclaracion(Number(p.id), { numero: String(cuerpo.numero).slice(0, 60), fecha: cuerpo.fecha || null }, quien) ? { ok: true } : error(409, "Solo se registra como presentada una declaración aprobada.");
+  });
+  ruta("POST", "/api/hacienda/:id/actualizar", (q, p, cuerpo, quien, ctx) => ({ ok: ctx.db.tomarPaqueteNuevo(Number(p.id), quien) }));
+  ruta("POST", "/api/hacienda/notificar", (q, p, cuerpo, quien, ctx) => {
+    const para = String(cuerpo.para || ctx.cfg.HACIENDA_NOTIFICAR || "").trim();
+    if (!para) return error(400, "Indique a quién va el resumen (o HACIENDA_NOTIFICAR en .env).");
+    if (!cuerpo.periodo) return error(400, "Indique el periodo (AAAA-MM).");
+    const r = hacienda.notificar({ db: ctx.db, periodo: cuerpo.periodo, para, quien });
+    return r.error ? error(400, r.error) : { ...r, mensaje: "El resumen quedó como borrador en Correos: apruébelo y envíelo desde ahí." };
   });
 
   // --- cierre de mes por compañía (junta lo de todos los agentes y la cola)

@@ -87,6 +87,7 @@ a{color:var(--sello)}
     <button data-v="diferidos">Diferidos</button>
     <button data-v="activos">Activos fijos</button>
     <button data-v="extractos">Extractos</button>
+    <button data-v="hacienda">Hacienda</button>
     <button data-v="correos">Correos</button>
     <button data-v="corridas">Corridas</button>
     <button data-v="auditoria">Auditoría</button>
@@ -193,6 +194,7 @@ V.tablero = function(){
     '<button class="b gh" data-correr="cartera">Cartera y cobros</button>'+
     '<button class="b gh" data-correr="datos">Calidad de datos</button>'+
     '<button class="b gh" data-correr="extractos">Extractos contra libros</button>'+
+    '<button class="b gh" data-correr="hacienda">Declaraciones (Hacienda)</button>'+
     '<select id="ciaCuentas"><option value="">Cuentas de…</option>'+S.companias.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join("")+'</select>'+
     '<button class="b gh" id="correrCuentas">Revisar cuentas → propuestas</button>'+
     '<a href="'+PREFIJO+'/oficina" target="_blank" style="margin-left:auto;font-size:12px">Abrir la oficina 2D</a></div>'+
@@ -737,6 +739,61 @@ function pintarAutonomia(j){
     '<div class="sub" style="margin-top:6px">✓ aprobadas sin cambios · ✎ corregidas · ✗ rechazadas · ⚠ fallaron en Odoo · ⚙ aprobadas solas</div>';
   $("#autRevocadas").innerHTML=j.revocadas.length?'<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+j.revocadas.length+' autonomías revocadas</summary>'+tabla(["Tipo","Compañía","Desde","Revocada","Por qué"], j.revocadas.map(function(r){ return [esc(j.tipos[r.tipo]||r.tipo), esc(r.compania), '<span class="sub">'+esc(String(r.otorgada_en).slice(0,10))+' · '+esc(r.otorgo)+'</span>', '<span class="sub">'+esc(String(r.revocada_en).slice(0,10))+' · '+esc(r.revoco)+'</span>', '<span class="sub">'+esc(r.motivo||"")+'</span>']; }))+'</details>':'';
 }
+/* ---------- Hacienda (TRIBU-CR): declaraciones preparadas, juez, carga del plugin, aprobación ---------- */
+var SEM = { verde:["verde","ok"], amarillo:["amarillo","alto"], rojo:["rojo","critico"] };
+var EST_DECL = { preparada:["preparada","neutro"], revisada:["revisada por IA","neutro"], cargada:["en el portal (borrador)","alto"], aprobada:["aprobada","ok"], presentada:["presentada","ok"], rechazada:["rechazada","critico"] };
+V.hacienda = function(){
+  return '<section><h2>Declaraciones de Hacienda (TRIBU-CR)</h2><div class="aviso">El agente <b>Hacienda</b> prepara por compañía el <b>IVA mensual (formulario 150)</b> casilla por casilla desde Odoo, la <b>informativa 270</b> (compras sin comprobante) y el acumulado de <b>renta (102)</b>. Cada una pasa por el <b>juez de reglas</b> y, si se pide, por el <b>juez de IA</b>: marcan, no cambian cifras. El plugin «Oficina Hacienda» la deja como <b>borrador en el portal</b> y relee cada casilla; aquí se compara, se <b>aprueba</b> con nombre y, después del clic de presentar (siempre de una persona), se registra el número. Nada de esto escribe en Odoo ni presenta por sí solo.</div>'+
+    '<div class="fila"><select id="hzPeriodo"></select><select id="hzImp"><option value="">todos los formularios</option><option value="150">150 · IVA</option><option value="270">270 · informativa</option><option value="102">102 · renta</option></select>'+
+    '<button class="b gh" id="hzIr">Ver</button><span style="flex:1"></span><button class="b gh" data-correr="hacienda">Preparar ahora</button><button class="b gh" id="hzNotificar">Notificar el resumen</button></div>'+
+    '<div id="hzParam" class="sub"></div><div id="hzTabla">Cargando…</div></section><section id="hzDetalle" hidden></section>';
+};
+function cargarHacienda(){ var per=$("#hzPeriodo"), imp=$("#hzImp"); api("/api/hacienda?periodo="+encodeURIComponent(per&&per.value||"")+"&impuesto="+(imp?imp.value:"")).then(pintarHacienda).catch(function(e){ msg(e.message,true); }); }
+function pintarHacienda(j){
+  var el=$("#hzTabla"); if(!el) return; S.hacienda=j;
+  var per=$("#hzPeriodo"); if(per && per.options.length!==j.periodos.length){ per.innerHTML=j.periodos.map(function(p){ return '<option value="'+esc(p)+'"'+(p===j.periodo?' selected':'')+'>'+esc(p)+'</option>'; }).join("") || '<option value="">sin periodos</option>'; }
+  $("#hzParam").innerHTML='Juez de IA: '+(j.parametros.juezIA?'<b>disponible</b>':'no (falta CLAUDE_API_KEY)')+' · Resumen a: '+(j.parametros.notificarA?'<b>'+esc(j.parametros.notificarA)+'</b>':'(HACIENDA_NOTIFICAR vacío: se pide al notificar)')+(j.parametros.smtp?'':' · sin SMTP: el correo queda en borrador');
+  if(!j.declaraciones.length){ el.innerHTML='<div class="sub" style="margin-top:8px">Todavía no hay declaraciones preparadas. Pulse «Preparar ahora» (o corre con los agentes del mes).</div>'; return; }
+  el.innerHTML=tabla(["Compañía","Formulario","Periodo",{t:"A pagar",n:1},{t:"A favor",n:1},"Juez","Estado","Portal",""], j.declaraciones.map(function(d){ var s=SEM[d.semaforo]||["—","neutro"], e=EST_DECL[d.estado]||[d.estado,"neutro"];
+    return [esc(d.compania), esc(d.formulario)+(d.porValidar?'<div class="sub">por validar</div>':''), esc(d.periodo), d.totales.pagar!=null?mon(d.totales.pagar):(d.totales.total!=null?mon(d.totales.total):'—'), d.totales.favor?mon(d.totales.favor):'<span class="sub">—</span>',
+      '<span class="est '+s[1]+'">'+s[0]+'</span>'+(d.observaciones?' <span class="sub">'+n(d.observaciones)+' obs.'+(d.ia?' · IA':'')+'</span>':''),
+      '<span class="est '+e[1]+'">'+e[0]+'</span>'+(d.desactualizada?'<div class="sub" style="color:var(--critico)">cifras cambiaron</div>':'')+(d.numero?'<div class="sub">'+esc(d.numero)+'</div>':''),
+      d.carga?(d.carga.diferencias?'<b style="color:var(--critico)">'+n(d.carga.diferencias)+' dif.</b>':'<span class="est ok">igual</span>')+(d.carga.difPrellenado?'<div class="sub">'+n(d.carga.difPrellenado)+' vs Hacienda</div>':''):'<span class="sub">—</span>',
+      '<a href="#" data-ver-decl="'+d.id+'">ver</a>']; }));
+}
+function verDeclaracion(id){
+  api("/api/hacienda/"+id).then(function(d){ S.decl=d; var sec=$("#hzDetalle"); sec.hidden=false;
+    var s=SEM[d.semaforo]||["—","neutro"], e=EST_DECL[d.estado]||[d.estado,"neutro"], p=d.paquete, x=p.extra||{};
+    var secciones={ventas:"Ventas",debito:"IVA cobrado (débito)",compras:"Compras",credito:"IVA pagado y crédito fiscal",determinacion:"Determinación",ingresos:"Ingresos",costos:"Costos",gastos:"Gastos"};
+    var filas=p.casillas.map(function(c){ var r=c.rastro||[]; return ['<span class="sub">'+esc(secciones[c.seccion]||c.seccion)+'</span>', (c.total||c.resultado?'<b>':'')+esc(c.etiqueta)+(c.total||c.resultado?'</b>':'')+(c.porValidar?' <span class="est alto">por validar</span>':'')+(c.nota?'<div class="sub">'+esc(c.nota)+'</div>':''),
+      '<span class="mono'+(c.resultado?'" style="font-weight:700':'')+'">'+(c.porcentaje?n(c.monto)+' %':n(c.monto))+'</span>'+(c.id==="prop"&&!c.confirmada?'<div class="sub">calculada del mes: '+n(c.calculada)+' %</div>':c.id==="prop"?'<div class="sub">confirmada</div>':'')+(c.fuente?'<div class="sub">'+esc(c.fuente)+'</div>':''),
+      r.length?'<details><summary class="sub" style="cursor:pointer">'+r.length+' fuente'+(r.length===1?'':'s')+'</summary>'+r.slice(0,20).map(function(f){ return '<div class="sub">'+esc(f.impuesto||f.cuenta)+(f.base!=null?': base '+n(f.base)+' · IVA '+n(f.impuesto_monto):': '+n(f.monto))+(f.documentos?' · '+n(f.documentos)+' doc.':'')+'</div>'; }).join("")+'</details>':'']; });
+    var acciones='';
+    if(["preparada","revisada","cargada"].indexOf(d.estado)>=0){
+      acciones+='<button class="b gh" id="hzJuez"'+(S.hacienda&&S.hacienda.parametros.juezIA?'':' disabled title="falta CLAUDE_API_KEY"')+'>Pedir revisión de IA</button> ';
+      if(d.desactualizada) acciones+='<button class="b" id="hzActualizar">Tomar las cifras nuevas</button> ';
+      else acciones+='<button class="b" id="hzAprobar">Aprobar</button> ';
+      acciones+='<button class="b rj" id="hzRechazar">Rechazar</button>';
+    }
+    if(d.estado==="aprobada") acciones+='<input class="f" id="hzNumero" placeholder="número que dio el portal" style="width:220px"> <button class="b" id="hzPresentada">Registrar como presentada</button>';
+    var ajustes = d.impuesto==="150" ? '<div class="fila" style="margin-top:8px"><span class="sub">Ajustes (sobreviven a las corridas):</span><input class="f" id="ajProp" placeholder="proporción %" style="width:120px" value="'+esc(d.ajustes&&d.ajustes.proporcion!=null?d.ajustes.proporcion:"")+'"><input class="f" id="ajSaldo" placeholder="saldo a favor anterior" style="width:170px" value="'+esc(d.ajustes&&d.ajustes.saldoAnterior!=null?d.ajustes.saldoAnterior:"")+'"><button class="b gh" id="hzAjustar">Guardar ajustes</button></div>'
+      : d.impuesto==="102" ? '<div class="fila" style="margin-top:8px"><span class="sub">Ajustes:</span><input class="f" id="ajTarifa" placeholder="tarifa %" style="width:100px" value="'+esc(d.ajustes&&d.ajustes.tarifa!=null?d.ajustes.tarifa:"")+'"><input class="f" id="ajPP" placeholder="pagos parciales" style="width:140px" value="'+esc(d.ajustes&&d.ajustes.pagosParciales!=null?d.ajustes.pagosParciales:"")+'"><input class="f" id="ajRet" placeholder="retenciones" style="width:130px" value="'+esc(d.ajustes&&d.ajustes.retenciones!=null?d.ajustes.retenciones:"")+'"><button class="b gh" id="hzAjustar">Guardar ajustes</button></div>' : '';
+    if(["preparada","revisada","rechazada"].indexOf(d.estado)<0) ajustes='';
+    var carga=d.cargaDetalle;
+    sec.innerHTML='<h2>'+esc(d.compania)+' — '+esc(d.formulario)+' · '+esc(d.periodo)+'</h2>'+
+      '<div class="fila"><span class="est '+s[1]+'">juez '+s[0]+'</span><span class="est '+e[1]+'">'+e[0]+'</span>'+(d.decidio?'<span class="sub">'+esc(d.decidio)+(d.nota?' · '+esc(d.nota):'')+'</span>':'')+(d.numero?'<span class="sub">N.º '+esc(d.numero)+'</span>':'')+'<span style="flex:1"></span>'+acciones+'</div>'+
+      (d.desactualizada&&d.paqueteNuevo?'<div class="aviso" style="border-color:var(--critico)">La última corrida dio otras cifras (a pagar: '+mon(d.paqueteNuevo.totales.pagar)+'). Tome las nuevas o rechace esta.</div>':'')+
+      ((d.juez&&d.juez.observaciones||[]).length?'<div style="margin:8px 0">'+(d.juez.ia?'<div class="sub"><b>Juez de IA</b> ('+esc(d.juez.ia.modelo)+'): '+esc(d.juez.ia.resumen)+'</div>':'')+d.juez.observaciones.map(function(o){ return alerta({nivel:o.nivel==="critico"?"critico":o.nivel==="alto"?"alto":"info", texto:(o.regla==="ia"?"[IA] ":"")+o.texto, detalle:[]}); }).join("")+'</div>':'<div class="sub" style="margin:8px 0">Sin observaciones del juez.</div>')+
+      (carga?'<div class="aviso"><b>Carga en el portal</b> ('+esc(String(carga.fecha).slice(0,16).replace("T"," "))+', '+esc(carga.quien)+'): '+(carga.borradorGuardado?'borrador guardado':'<b style="color:var(--critico)">sin confirmar el borrador</b>')+' · '+(carga.diferencias.length?'<b style="color:var(--critico)">'+carga.diferencias.length+' casillas distintas</b>':'todas las casillas iguales')+(carga.difPrellenado?' · '+carga.difPrellenado.length+' distintas del prellenado de Hacienda':'')+(carga.faltan.length?' · sin leer: '+esc(carga.faltan.join(", ")):'')+(carga.capturas.length?' · capturas: '+esc(carga.capturas.join(", ")):'')+(carga.notas?'<div class="sub">'+esc(carga.notas)+'</div>':'')+
+        (carga.diferencias.length?tabla(["Casilla",{t:"Paquete",n:1},{t:"Portal",n:1}], carga.diferencias.map(function(x){ return [esc(x.etiqueta), n(x.paquete), '<b style="color:var(--critico)">'+(x.motivo?esc(x.motivo):n(x.portal))+'</b>']; })):'')+
+        (carga.difPrellenado&&carga.difPrellenado.length?'<div class="sub" style="margin-top:6px">Contra el prellenado de Hacienda:</div>'+tabla(["Casilla",{t:"Odoo",n:1},{t:"Hacienda",n:1}], carga.difPrellenado.map(function(x){ return [esc(x.etiqueta), n(x.paquete), n(x.portal)]; })):'')+'</div>':'')+
+      (d.impuesto==="270"?tabla(["Proveedor","Cédula",{t:"Monto",n:1},{t:"Doc.",n:1}], (p.filas||[]).map(function(f){ return [esc(f.proveedor), f.cedula?'<span class="mono">'+esc(f.cedula)+'</span>':'<span class="est alto">sin cédula</span>', n(f.monto), n(f.documentos)]; })):'')+
+      tabla(["Sección","Casilla",{t:"Monto",n:1},"De dónde sale"], filas)+ajustes+
+      (x.campoEstadoHacienda===null||x.campoEstadoHacienda===undefined?'':'')+'<div class="sub" style="margin-top:6px">'+(d.impuesto==="150"?'Documentos: '+n(p.totales.documentosVenta)+' de venta, '+n(p.totales.documentosCompra)+' de compra. ':'')+(x.hastaMes?'Acumulado hasta '+esc(x.hastaMes)+(x.parcial?' (parcial: el año no ha terminado)':'')+'. ':'')+'Las casillas son de la Oficina; la correspondencia con las pantallas del portal la lleva el plugin.</div>';
+    sec.scrollIntoView({behavior:"smooth"});
+  }).catch(function(e){ msg(e.message,true); });
+}
+function accionDecl(ruta, cuerpo, ok){ api("/api/hacienda/"+S.decl.id+ruta, cuerpo).then(function(j){ msg(j.mensaje||ok||"Listo."); cargarHacienda(); verDeclaracion(S.decl.id); }).catch(function(e){ msg(e.message,true); }); }
 /* ---------- Activos fijos (ítem 16): registro en la app, depreciación a la cola de asientos ---------- */
 V.activos = function(){
   return '<section><h2>Activos fijos</h2><div class="aviso">En IASIMA los activos no están cargados en Odoo y la depreciación se hace a mano. Registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
@@ -777,10 +834,10 @@ function importarActivos(probar){
   }; rd.readAsText(f);
 }
 /* ---------- Cierre de mes por cliente ---------- */
-var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", extractos:"Extract.", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
+var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", extractos:"Extract.", hacienda:"IVA", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
 var EST_ITEM_CM = { ok:["✓","ok","al día"], pendiente:["!","alto","pendiente"], "sin-datos":["?","critico","sin corrida del mes"], na:["–","neutro","no aplica"], revisado:["✓","neutro","dado por bueno"] };
 var EST_CM = { abierto:["con pendientes","alto"], listo:["listo para cerrar","ok"], cerrado:["cerrado","neutro"] };
-var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","extractos","cierre","estados","cambiario","diferidos","depreciacion"];
+var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","extractos","hacienda","cierre","estados","cambiario","diferidos","depreciacion"];
 V.cierremes = function(){
   return '<section><h2>Cierre de mes por cliente</h2><div class="aviso">Junta lo que encontraron los agentes en su última corrida y lo que espera en Aprobaciones. Cada ítem pendiente se resuelve en su pestaña o se <b>da por bueno</b> con una nota (queda en la auditoría). Sin pendientes, el mes del cliente se <b>cierra</b> y queda una foto de la lista. «?» quiere decir que el agente no ha corrido para ese mes.</div>'+
     '<div class="fila"><input class="f" type="month" id="cmMes" value="'+esc(S.cmMes||"")+'"><button class="b gh" id="cmVer">Ver</button>'+
@@ -887,6 +944,7 @@ function pintar(){
   if (S.vista==="activos") cargarActivos();
   if (S.vista==="extractos") cargarExtractos();
   if (S.vista==="autonomia") cargarAutonomia();
+  if (S.vista==="hacienda") cargarHacienda();
   if (S.vista==="cierremes") cargarCierreMes();
   if (S.vista==="corridas") api("/api/corridas").then(pintarCorridas);
   if (S.vista==="auditoria") api("/api/auditoria").then(pintarAuditoria);
@@ -1018,6 +1076,18 @@ $("#main").addEventListener("click", function(ev){
   else if (d.anularExtracto){ ev.preventDefault(); var na=prompt("¿Por qué se anula este extracto? (se borran sus líneas sin asiento; lo ya propuesto o creado en Odoo no se toca)", ""); if(na===null) return; api("/api/extractos/"+d.anularExtracto+"/anular",{nota:na}).then(function(){ msg("Anulado."); $("#exLineas").innerHTML=""; cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.ignorarLinea){ ev.preventDefault(); var ni=prompt("¿Por qué se ignora este movimiento? (p. ej. ya registrado en otra cuenta)", ""); if(!ni) return; api("/api/extractos/lineas/"+d.ignorarLinea+"/ignorar",{nota:ni}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.reabrirLinea){ ev.preventDefault(); api("/api/extractos/lineas/"+d.reabrirLinea+"/ignorar",{ignorar:false}).then(function(){ verLineasExtracto(d.ext); cargarExtractos(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="hzIr"){ cargarHacienda(); }
+  else if (t.id==="hzNotificar"){ var per=$("#hzPeriodo").value; var para=(S.hacienda&&S.hacienda.parametros.notificarA)||prompt("¿A qué correo va el resumen de "+per+"?",""); if(!para) return;
+    api("/api/hacienda/notificar",{periodo:per, para:para}).then(function(j){ msg(j.mensaje); cargarHacienda(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.verDecl){ ev.preventDefault(); verDeclaracion(d.verDecl); }
+  else if (t.id==="hzJuez"){ t.disabled=true; msg("Revisando con IA…"); accionDecl("/juez",{}, "Revisión de IA lista."); }
+  else if (t.id==="hzAprobar"){ var rojo=S.decl.semaforo==="rojo"; var nt=prompt(rojo?"Está en ROJO. Para aprobar igual, diga por qué:":"Nota para la auditoría (opcional):",""); if(nt===null) return; if(rojo&&!nt) return msg("En rojo hace falta una nota.",true);
+    accionDecl("/aprobar",{nota:nt, aunEnRojo:rojo}); }
+  else if (t.id==="hzRechazar"){ var mo=prompt("¿Por qué se rechaza? (vuelve a prepararse en la corrida siguiente)",""); if(!mo) return; accionDecl("/rechazar",{motivo:mo},"Rechazada."); }
+  else if (t.id==="hzPresentada"){ var num=$("#hzNumero").value.trim(); if(!num) return msg("Escriba el número que dio el portal.",true); accionDecl("/presentada",{numero:num},"Registrada como presentada."); }
+  else if (t.id==="hzActualizar"){ accionDecl("/actualizar",{},"Cifras actualizadas: vuelve a preparada."); }
+  else if (t.id==="hzAjustar"){ var aj={}; ["ajProp:proporcion","ajSaldo:saldoAnterior","ajTarifa:tarifa","ajPP:pagosParciales","ajRet:retenciones"].forEach(function(k){ var i=$("#"+k.split(":")[0]); if(i) aj[k.split(":")[1]]=i.value.trim(); });
+    accionDecl("/ajustar",aj,"Ajustes guardados y cifras recalculadas."); }
   else if (d.darAutonomia){ var nt=prompt("Desde la próxima corrida esto se aprobará solo (si pasa las validaciones). Nota para la auditoría (opcional):", ""); if(nt===null) return;
     api("/api/autonomia/otorgar",{tipo:d.darAutonomia, compania:Number(d.cia), nota:nt}).then(function(j){ msg(j.mensaje); cargarAutonomia(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.revocarAutonomia){ var mr=prompt("¿Por qué se revoca? (vuelve a pasar todo por Aprobaciones)", ""); if(!mr) return;

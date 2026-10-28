@@ -24,7 +24,8 @@ export const ITEMS = [
   { id: "diferidos", titulo: "Cuotas de diferidos registradas", vista: "diferidos", agente: "diferidos" },
   { id: "depreciacion", titulo: "Depreciación registrada", vista: "activos", agente: "depreciacion" },
   { id: "asientos", titulo: "Asientos propuestos decididos", vista: "aprobaciones", agente: null },
-  { id: "estados", titulo: "Estados financieros sin observaciones", vista: "hallazgos", agente: "estados" }
+  { id: "estados", titulo: "Estados financieros sin observaciones", vista: "hallazgos", agente: "estados" },
+  { id: "hacienda", titulo: "Declaración de IVA preparada y presentada", vista: "hacienda", agente: "hacienda" }
 ];
 
 export function mesPorOmision(db) {
@@ -44,6 +45,7 @@ function contexto(db, mes) {
   ctx.diferidosReg = db.diferidos({ estado: "activo" });
   ctx.activosReg = db.activos({ estado: "activo" });
   ctx.lineasExtracto = db.lineasExtracto({ limite: 200000 });
+  ctx.declaraciones = db.declaraciones({ periodo: mes, impuesto: "150" }).filter(d => d.periodo === mes);
   return ctx;
 }
 const delMes = (res, mes) => res && res.mes === mes;
@@ -98,6 +100,13 @@ function evaluar(it, cia, ctx) {
       if (!ls.length) return na("Sin extracto del mes subido.");
       const p = ls.filter(l => l.estado === "pendiente").length, a = ls.filter(l => l.estado === "propuesta").length;
       return p || a ? pend([p ? `${plural(p, "movimiento del banco sin registrar", "movimientos del banco sin registrar")}` : null, a ? `${plural(a, "con asiento por decidir", "con asiento por decidir")}` : null].filter(Boolean).join(", ") + ".") : ok(`${plural(ls.length, "movimiento", "movimientos")} en libros.`);
+    }
+    case "hacienda": {
+      const d = ctx.declaraciones.find(x => x.compania_id === cia.id);
+      if (!d) return ctx.declaraciones.length ? na("Sin movimiento de IVA en el mes.") : sinDatos("Hacienda");
+      if (d.estado === "presentada") return ok(`IVA presentado${d.numero_presentacion ? ` (${d.numero_presentacion})` : ""}.`);
+      const sem = d.juez?.semaforo ? ` Semáforo ${d.juez.semaforo}.` : "";
+      return pend(`IVA ${d.estado}${d.paquete.totales.pagar ? `: ₡${colones(d.paquete.totales.pagar)} a pagar` : ""}.${sem}`);
     }
     case "puente": {
       if (!delMes(ctx.cierre, mes)) return sinDatos("Cierre");

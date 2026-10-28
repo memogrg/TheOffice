@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "oficina": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servidor/index.js"],
+      "env": {
+        "OFICINA_URL": "${OFICINA_URL}",
+        "OFICINA_TOKEN": "${OFICINA_TOKEN}",
+        "OFICINA_QUIEN": "${OFICINA_QUIEN}"
+      }
+    }
+  }
+}

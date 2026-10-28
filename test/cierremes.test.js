@@ -21,6 +21,10 @@ function base() {
   corrida(db, "estados", { mes: MES, companias: [{ companiaId: 1, borradores: 2, balance: { diferencia: 0 }, resultadosAnio: { utilidad: 10 } }, { companiaId: 2, borradores: 0, balance: { diferencia: 0 }, resultadosAnio: { utilidad: 5 } }],
     cajasNegativas: [], ladoContrario: [] });
   corrida(db, "cambiario", { mes: MES, companias: [{ companiaId: 2, ajustes: 1, neto: 65000 }] });
+  // Hacienda: Ceiba con el IVA preparado; Lirio ya presentado
+  const paq = (cia, nombre, pagar) => ({ impuesto: "150", compania: nombre, companiaId: cia, periodo: MES, casillas: [], totales: { pagar, favor: 0 }, extra: {}, juez: { semaforo: "verde", observaciones: [] } });
+  db.sincronizarDeclaraciones(null, [paq(1, "Ceiba", 120000), paq(2, "Lirio", 0)]);
+  const lir = db.declaraciones({ companiaId: 2 })[0]; db.decidirDeclaracion(lir.id, "aprobada", "victor"); db.presentarDeclaracion(lir.id, { numero: "1" }, "victor");
   return db;
 }
 
@@ -41,6 +45,9 @@ test("Cierre de mes: qué falta por compañía, con lo que dicen los agentes y l
   assert.equal(it(ceiba, "bancos").estado, "pendiente");
   assert.match(it(ceiba, "puente").detalle, /A pagar CCSS: ₡300/);
   assert.equal(it(ceiba, "borradores").estado, "pendiente");
+  assert.equal(it(ceiba, "hacienda").estado, "pendiente");
+  assert.match(it(ceiba, "hacienda").detalle, /120.000 a pagar/);
+  assert.equal(it(lirio, "hacienda").estado, "ok");
   assert.equal(it(ceiba, "cambiario").estado, "na");
   assert.equal(it(ceiba, "diferidos").estado, "na", "sin diferidos registrados");
   assert.equal(ceiba.estado, "abierto");

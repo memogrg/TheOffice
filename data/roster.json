@@ -449,6 +449,34 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "hacienda",
+      "nombre": "HACIENDA",
+      "rol": "HACIENDA",
+      "modo": "lectura",
+      "hace": "Prepara, por compañía y periodo, las declaraciones de TRIBU-CR desde Odoo: IVA mensual (formulario 150) por tarifa con crédito fiscal, proporción y saldo anterior; informativa 270 de compras sin comprobante; acumulado de renta (102). Cada una pasa por el juez de reglas (y el de IA si se pide) y queda en la pestaña Hacienda con semáforo. El plugin la deja como borrador en el portal; presentar es de una persona.",
+      "noHace": "No presenta ni paga en TRIBU-CR, no escribe en Odoo.",
+      "responde": [
+        "cuánto IVA paga cada compañía este mes",
+        "qué declaraciones están en rojo",
+        "qué compañías tienen saldo a favor"
+      ],
+      "palabras": {
+        "declaracion": 8,
+        "declaraciones": 8,
+        "hacienda": 5,
+        "tribu": 6,
+        "tribu-cr": 6,
+        "formulario 150": 7,
+        "d-104": 6,
+        "renta": 4,
+        "informativa": 5,
+        "270": 5,
+        "presentar": 6
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [
