@@ -57,40 +57,54 @@ export function clasificarImpuesto({ name = "", amount = null, amount_type = "pe
 }
 
 // Arma el paquete del formulario 150 de una compañía y un mes.
-// agregados: [{ impuestoId, nombre, tarifa, tasa, derecho, noAcreditable, uso: sale|purchase, base, impuesto, documentos }]
+// agregados: [{ impuestoId, nombre, tarifa, tasa, derecho, noAcreditable, uso: sale|purchase, base, impuesto, documentos,
+//               exoBase, exoImpuesto, documentosExonerados }]  (lo exonerado es opcional)
 // extra: { saldoAFavorAnterior, proporcion (0–100, null = no aplica), anterior: {debito, credito} del mes previo, borradores, rechazadosHacienda, comprasSinAceptar, sinClasificar: [nombres] }
 // Las casillas van en colones enteros, como las pide el portal; el rastro conserva los centavos.
+// Una venta a un cliente exonerado (zona franca, art. 8) lleva el impuesto de su tarifa pero no se cobra:
+// Odoo (TecnoDEM) lo revierte con una línea de exoneración. Aquí esa base sale de la tarifa y va a su
+// propia casilla (ventas autorizadas sin impuesto), para que base × tasa siga cuadrando con el débito.
 const entero = x => Math.round(Number(x) || 0);
 export function paquete150({ compania, companiaId, periodo, agregados = [], extra = {} }) {
   const casillas = [];
   const c = (id, seccion, etiqueta, monto, rastro = [], atributos = {}) => { const m = atributos.porcentaje ? r2(monto) : entero(monto); casillas.push({ id, seccion, etiqueta, monto: m, rastro, ...atributos }); return m; };
   const de = (uso, tarifa) => agregados.filter(a => a.uso === uso && a.tarifa === tarifa);
   const suma = (xs, k) => r2(xs.reduce((t, a) => t + (Number(a[k]) || 0), 0));
-  const rastro = xs => xs.map(a => ({ impuestoId: a.impuestoId, impuesto: a.nombre, base: r2(a.base), impuesto_monto: r2(a.impuesto), documentos: a.documentos || 0 }));
+  const gravada = xs => r2(suma(xs, "base") - suma(xs, "exoBase"));
+  const rastro = xs => xs.map(a => ({ impuestoId: a.impuestoId, impuesto: a.nombre, base: r2(a.base), impuesto_monto: r2(a.impuesto), documentos: a.documentos || 0, ...(a.exoBase ? { exonerado: r2(a.exoBase), iva_exonerado: r2(a.exoImpuesto), documentos_exonerados: a.documentosExonerados || 0 } : {}) }));
+  const rastroExo = xs => xs.filter(a => a.exoBase).map(a => ({ impuestoId: a.impuestoId, impuesto: a.nombre, tarifa: a.tarifa, base: r2(a.exoBase), impuesto_monto: r2(a.exoImpuesto), documentos: a.documentosExonerados || 0 }));
 
-  // Ventas: base e IVA por tarifa
+  // Ventas: base gravada e IVA por tarifa; lo exonerado aparte
   let ventasTotal = 0, debito = 0, ventasConDerecho = 0;
   for (const t of ORDEN_TARIFAS) {
     const xs = de("sale", t); if (!xs.length && !["13", "ex", "0sd"].includes(t)) continue;
-    const base = c(`v${t}`, "ventas", `Ventas ${POR_ID[t].etiqueta}`, suma(xs, "base"), rastro(xs), { tarifa: t, tasa: POR_ID[t].tasa });
+    const base = c(`v${t}`, "ventas", `Ventas ${POR_ID[t].etiqueta}`, gravada(xs), rastro(xs), { tarifa: t, tasa: POR_ID[t].tasa });
     ventasTotal += base; if (POR_ID[t].derecho) ventasConDerecho += base;
     if (POR_ID[t].tasa > 0) debito += c(`d${t}`, "debito", `IVA cobrado ${POR_ID[t].etiqueta}`, suma(xs, "impuesto"), rastro(xs), { tarifa: t, tasa: POR_ID[t].tasa, base });
+  }
+  const ventasExo = agregados.filter(a => a.uso === "sale" && a.exoBase);
+  if (ventasExo.length) {
+    const vexo = c("vexo", "ventas", "Ventas autorizadas sin impuesto (clientes exonerados)", suma(ventasExo, "exoBase"), rastroExo(ventasExo), { exonerado: true });
+    ventasTotal += vexo; ventasConDerecho += vexo;        // dan derecho a crédito (art. 32)
+    c("dexo", "debito", "IVA no cobrado por exoneración (informativo, no suma al débito)", suma(ventasExo, "exoImpuesto"), rastroExo(ventasExo), { exonerado: true, informativo: true });
   }
   c("vtot", "ventas", "Total de ventas", ventasTotal, [], { total: true });
   c("dtot", "debito", "Total IVA cobrado (débito fiscal)", debito, [], { total: true });
 
-  // Compras: base e IVA soportado por tarifa; el no acreditable aparte
+  // Compras: base gravada e IVA soportado por tarifa; el no acreditable y lo exonerado aparte
   let comprasTotal = 0, soportado = 0, noAcreditable = 0;
   for (const t of ORDEN_TARIFAS) {
     const xs = de("purchase", t); if (!xs.length && t !== "13") continue;
-    const base = c(`c${t}`, "compras", `Compras ${POR_ID[t].etiqueta}`, suma(xs, "base"), rastro(xs), { tarifa: t, tasa: POR_ID[t].tasa });
+    const base = c(`c${t}`, "compras", `Compras ${POR_ID[t].etiqueta}`, gravada(xs), rastro(xs), { tarifa: t, tasa: POR_ID[t].tasa });
     comprasTotal += base;
     if (POR_ID[t].tasa > 0) {
       const acred = xs.filter(a => !a.noAcreditable), noAcred = xs.filter(a => a.noAcreditable);
-      soportado += c(`s${t}`, "credito", `IVA pagado ${POR_ID[t].etiqueta}`, suma(acred, "impuesto"), rastro(acred), { tarifa: t, tasa: POR_ID[t].tasa, base: suma(acred, "base") });
+      soportado += c(`s${t}`, "credito", `IVA pagado ${POR_ID[t].etiqueta}`, suma(acred, "impuesto"), rastro(acred), { tarifa: t, tasa: POR_ID[t].tasa, base: gravada(acred) });
       noAcreditable += suma(noAcred, "impuesto");
     }
   }
+  const comprasExo = agregados.filter(a => a.uso === "purchase" && a.exoBase);
+  if (comprasExo.length) comprasTotal += c("cexo", "compras", "Compras autorizadas sin impuesto (exoneración propia)", suma(comprasExo, "exoBase"), rastroExo(comprasExo), { exonerado: true });
   c("ctot", "compras", "Total de compras", comprasTotal, [], { total: true });
   c("stot", "credito", "Total IVA pagado", soportado, [], { total: true });
   c("sna", "credito", "IVA no acreditable (impuestos marcados así)", noAcreditable, rastro(agregados.filter(a => a.uso === "purchase" && a.noAcreditable)));
@@ -106,7 +120,8 @@ export function paquete150({ compania, companiaId, periodo, agregados = [], extr
   c("favor", "determinacion", "Saldo a favor para el periodo siguiente", Math.max(0, -det), [], { total: true, resultado: true });
 
   const totales = { ventas: r2(ventasTotal), debito: r2(debito), compras: r2(comprasTotal), soportado: r2(soportado), noAcreditable: r2(noAcreditable), proporcion, credito, saldoAnterior: saf,
-    determinado: det, pagar: Math.max(0, det), favor: Math.max(0, -det), documentosVenta: agregados.filter(a => a.uso === "sale").reduce((t, a) => t + (a.documentos || 0), 0),
+    determinado: det, pagar: Math.max(0, det), favor: Math.max(0, -det),
+    ventasExoneradas: r2(suma(ventasExo, "exoBase")), ivaExonerado: r2(suma(ventasExo, "exoImpuesto")), comprasExoneradas: r2(suma(comprasExo, "exoBase")), documentosVenta: agregados.filter(a => a.uso === "sale").reduce((t, a) => t + (a.documentos || 0), 0),
     documentosCompra: agregados.filter(a => a.uso === "purchase").reduce((t, a) => t + (a.documentos || 0), 0) };
   return { impuesto: "150", formulario: FORMULARIOS[150].nombre, compania, companiaId, periodo, casillas, totales, extra: { ...extra, proporcionCalculada: propCalculada } };
 }
@@ -167,6 +182,9 @@ export function juezDeReglas(p) {
     if (x.rechazadosHacienda) ob("hacienda", "critico", `${x.rechazadosHacienda} documentos del periodo rechazados por Hacienda: no deben declararse así.`);
     if (x.comprasSinAceptar) ob("aceptacion", "info", `${x.comprasSinAceptar} facturas de compra del periodo sin mensaje de aceptación en Hacienda (estado «${x.estadosSinAceptar || "-"}»): confirmar con TecnoDEM si el crédito fiscal queda respaldado.`);
     if ((x.exentasComo01 || []).length) ob("exento-01", "alto", `Ventas con impuestos llamados «exento» pero con código de tarifa 01 (0 % con derecho a crédito): ${x.exentasComo01.slice(0, 3).join(", ")}. Si son exentas de verdad (tarifa 10), cambia la proporción de crédito.`);
+    if ((x.exoneracionesVencidas || []).length) ob("exoneracion-vencida", "critico", `Documentos del periodo con una exoneración ya vencida: ${x.exoneracionesVencidas.slice(0, 3).join("; ")}. Ese IVA sí se debía cobrar.`);
+    if (p.totales.ventasExoneradas) ob("exoneracion", "info", `₡${colones(p.totales.ventasExoneradas)} de ventas a clientes exonerados (IVA no cobrado ₡${colones(p.totales.ivaExonerado)}${(x.exoneraciones || []).length ? `; ${x.exoneraciones.slice(0, 3).join(", ")}` : ""}): van como ventas autorizadas sin impuesto, no en la tarifa.`);
+    if (p.totales.comprasExoneradas) ob("exoneracion", "info", `₡${colones(p.totales.comprasExoneradas)} de compras con exoneración propia: sin IVA pagado, no generan crédito.`);
     if ((x.especiales || []).length) ob("especial", "info", `Impuestos de régimen especial en el periodo (${x.especiales.slice(0, 3).join(", ")}): revisar que el formulario los lleve donde corresponde.`);
     if (x.notasSinLigar) ob("notas", "info", `${x.notasSinLigar} notas de crédito del periodo sin ligar a su factura.`);
     if (cas.prop && cas.prop.monto < 100 && !cas.prop.confirmada) ob("prorrata", "alto", `La proporción de crédito salió en ${cas.prop.monto}% por las ventas sin derecho del periodo. Confirme la prorrata de la compañía antes de declarar.`);

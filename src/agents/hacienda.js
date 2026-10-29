@@ -37,21 +37,46 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
 
   // --- Líneas del periodo: la base (líneas con impuestos) y el impuesto (líneas de impuesto)
   const tipoDoc = ["in", VENTA.concat(COMPRA)];
-  const bases = await odoo.leerTodo("account.move.line", [["parent_state", "=", "posted"], ["date", ">=", d], ["date", "<", h], ["move_type", ...tipoDoc], ["tax_ids", "!=", false]],
-    ["company_id", "move_id", "move_type", "tax_ids", "balance"]);
+  const domBases = [["parent_state", "=", "posted"], ["date", ">=", d], ["date", "<", h], ["move_type", ...tipoDoc], ["tax_ids", "!=", false]];
+  let camposBase = ["company_id", "move_id", "move_type", "tax_ids", "balance", "date", "total_exonerate_cc", "exoneration_id"], bases, conExoneracion = true;
+  try { bases = await odoo.leerTodo("account.move.line", domBases, camposBase); }
+  catch { camposBase = camposBase.slice(0, 5); conExoneracion = false; bases = await odoo.leerTodo("account.move.line", domBases, camposBase); }   // sin la localización de TecnoDEM
   // (move_type no es un campo almacenado en las líneas: se leen, no se agrupan)
+  // Las líneas de impuesto traen también las de exoneración de TecnoDEM (display_type «exo»): revierten
+  // el IVA de una venta a un cliente exonerado (zona franca, art. 8…). Netas dan el débito real.
   const impLineas = await odoo.leerTodo("account.move.line", [["parent_state", "=", "posted"], ["date", ">=", d], ["date", "<", h], ["move_type", ...tipoDoc], ["tax_line_id", "!=", false]],
-    ["company_id", "tax_line_id", "move_type", "balance"]);
-  log(`${bases.length} líneas con impuesto, ${impLineas.length} líneas de IVA`);
+    ["company_id", "tax_line_id", "move_type", "balance", "display_type"]);
+  log(`${bases.length} líneas con impuesto, ${impLineas.length} líneas de IVA (${impLineas.filter(x => x.display_type === "exo").length} de exoneración)`);
+  // Catálogo de exoneraciones (TecnoDEM), para saber cuál es y si está vencida
+  const exoneraciones = new Map();
+  if (conExoneracion) {
+    const ids = [...new Set(bases.map(l => idDe(l.exoneration_id)).filter(Boolean))];
+    if (ids.length) {
+      try { for (const e of await odoo.leer("bdt.account.exoneration", "search_read", [[["id", "in", ids]], ["name", "document_number", "date_expirate", "average"]], {})) exoneraciones.set(e.id, e); }
+      catch { /* sin el modelo de exoneraciones */ }
+    }
+  }
   const agregados = new Map();   // "cia|impuesto|uso" → agregado
   const ag = (cia, impId, uso) => {
     const k = `${cia}|${impId}|${uso}`;
-    if (!agregados.has(k)) { const t = impuestos.get(impId); agregados.set(k, { companiaId: cia, impuestoId: impId, nombre: t?.nombre || `impuesto ${impId}`, clase: t?.clase || null, uso, base: 0, impuesto: 0, docs: new Set() }); }
+    if (!agregados.has(k)) { const t = impuestos.get(impId); agregados.set(k, { companiaId: cia, impuestoId: impId, nombre: t?.nombre || `impuesto ${impId}`, clase: t?.clase || null, uso, base: 0, impuesto: 0, exoBase: 0, exoImpuesto: 0, docs: new Set(), docsExo: new Set() }); }
     return agregados.get(k);
   };
+  const vencidas = new Map(), exoUsadas = new Map();   // por compañía
   for (const l of bases) {
-    const uso = VENTA.includes(l.move_type) ? "sale" : "purchase", signo = uso === "sale" ? -1 : 1;
-    for (const impId of l.tax_ids || []) { const a = ag(idDe(l.company_id), impId, uso); a.base += signo * (Number(l.balance) || 0); a.docs.add(idDe(l.move_id)); }
+    const uso = VENTA.includes(l.move_type) ? "sale" : "purchase", signo = uso === "sale" ? -1 : 1, cia = idDe(l.company_id);
+    const exoImp = Number(l.total_exonerate_cc) || 0;
+    for (const impId of l.tax_ids || []) {
+      const a = ag(cia, impId, uso); a.base += signo * (Number(l.balance) || 0); a.docs.add(idDe(l.move_id));
+      // la parte exonerada: el IVA que no se cobró y la base que lo generaba (IVA exonerado ÷ tasa)
+      if (exoImp && a.clase && a.clase.tasa > 0) { a.exoImpuesto += exoImp; a.exoBase += exoImp / (a.clase.tasa / 100); a.docsExo.add(idDe(l.move_id)); }
+    }
+    if (exoImp) {
+      const e = exoneraciones.get(idDe(l.exoneration_id));
+      const etiqueta = e ? `${e.name}${e.document_number ? ` (${e.document_number})` : ""}` : nombreDe(l.exoneration_id) || "exoneración sin detalle";
+      if (!exoUsadas.has(cia)) exoUsadas.set(cia, new Set()); exoUsadas.get(cia).add(etiqueta);
+      if (e && e.date_expirate && String(e.date_expirate).slice(0, 10) < String(l.date).slice(0, 10)) { if (!vencidas.has(cia)) vencidas.set(cia, new Set()); vencidas.get(cia).add(`${etiqueta} venció el ${String(e.date_expirate).slice(0, 10)}`); }
+    }
   }
   for (const g of impLineas) {
     const uso = VENTA.includes(g.move_type) ? "sale" : "purchase", signo = uso === "sale" ? -1 : 1;
@@ -111,7 +136,8 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
       if (!a.clase) { if (Math.abs(a.base) + Math.abs(a.impuesto) > 0.005) desconocidos.push(a.nombre); continue; }
       if (a.clase.exentoComo01 && a.uso === "sale" && Math.abs(a.base) > 0.005) exentasComo01.push(a.nombre);
       if (a.clase.especial && Math.abs(a.base) + Math.abs(a.impuesto) > 0.005) especiales.push(`${a.nombre} (${a.clase.especial})`);
-      lista.push({ impuestoId: a.impuestoId, nombre: a.nombre, tarifa: a.clase.tarifa, tasa: a.clase.tasa, derecho: a.clase.derecho, noAcreditable: a.clase.noAcreditable, uso: a.uso, base: r2(a.base), impuesto: r2(a.impuesto), documentos: a.docs.size });
+      lista.push({ impuestoId: a.impuestoId, nombre: a.nombre, tarifa: a.clase.tarifa, tasa: a.clase.tasa, derecho: a.clase.derecho, noAcreditable: a.clase.noAcreditable, uso: a.uso, base: r2(a.base), impuesto: r2(a.impuesto), documentos: a.docs.size,
+        exoBase: r2(a.exoBase), exoImpuesto: r2(a.exoImpuesto), documentosExonerados: a.docsExo.size });
     }
     if (desconocidos.length) sinClasificar.set(cia, desconocidos);
     const aj = ajustesDe(cia, "150", mes);
@@ -119,7 +145,8 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
     const p150 = paquete150({ compania: nombre, companiaId: cia, periodo: mes, agregados: lista, extra: {
       proporcion: aj.proporcion ?? null, saldoAFavorAnterior: aj.saldoAnterior ?? previa?.favor ?? 0, fuenteSaldoAnterior: aj.saldoAnterior != null ? "indicado a mano" : previa ? `declaración ${previa.periodo} en la Oficina` : null,
       anterior: anterior.get(cia) || null, borradores: borradores.get(cia) || 0, notasSinLigar: notas.get(cia) || 0, rechazadosHacienda: rechazados.get(cia) || 0, comprasSinAceptar: sinAceptar.get(cia) || 0,
-      sinClasificar: desconocidos, exentasComo01, especiales, campoEstadoHacienda: campoMH, estadosSinAceptar: [...estadosVistos].join(", ") } });
+      sinClasificar: desconocidos, exentasComo01, especiales, campoEstadoHacienda: campoMH, estadosSinAceptar: [...estadosVistos].join(", "),
+      exoneraciones: [...(exoUsadas.get(cia) || [])], exoneracionesVencidas: [...(vencidas.get(cia) || [])] } });
     p150.fuentes = lista;                 // para recalcular con otros ajustes sin volver a Odoo
     p150.juez = juezDeReglas(p150);
     if (ciasConMovimiento.has(cia) || previa) paquetes.push(p150);

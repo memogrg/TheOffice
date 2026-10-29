@@ -101,6 +101,45 @@ test("El agente arma las tres declaraciones desde Odoo y el juez marca lo que ha
   assert.equal(r.totales.declaraciones150, 1);
 });
 
+test("Exoneraciones (TecnoDEM): la venta a zona franca sale de la tarifa y va a «autorizadas sin impuesto»; el débito cuadra; la exoneración vencida frena", async () => {
+  const datos = instancia();
+  const C2 = [2, "Lirio"];
+  datos["res.company"].push({ id: 2, name: "Lirio", vat: "3101000002" });
+  datos["account.tax"].push({ id: 6, name: "Ventas gravadas LE", amount: 13, amount_type: "percent", type_tax_use: "sale", company_id: C2, tax_rate_code: "08", code: "01" },
+    { id: 7, name: "13% Compras", amount: 13, amount_type: "percent", type_tax_use: "purchase", company_id: C2, tax_rate_code: "08", code: "01" });
+  datos["bdt.account.exoneration"] = [{ id: 1, name: "Zona Franca 4.4", document_number: "9635", date_expirate: false, average: 13 }, { id: 2, name: "Exoneración vencida", document_number: "AL-1", date_expirate: "2026-01-31 00:00:00", average: 13 },
+    { id: 3, name: "Exo parcial 9 de 13", document_number: "9518", date_expirate: false, average: 9 }];
+  const mv = (id, tipo, fecha) => ({ id, company_id: C2, move_type: tipo, state: "posted", date: fecha, invoice_date: fecha, partner_id: [11, "Cliente ZF"], e_key: "5" + String(id).padStart(49, "0"), amount_untaxed: 0, reversed_entry_id: false });
+  const base = (id, m, tax, balance, extra = {}) => ({ id, company_id: C2, move_id: [m.id, `M${m.id}`], move_type: m.move_type, date: m.date, parent_state: "posted", tax_ids: [tax], balance, tax_line_id: false, account_id: [700, "Ventas"], total_exonerate_cc: 0, exoneration_id: false, ...extra });
+  const imp = (id, m, tax, balance, display_type = "tax") => ({ id, company_id: C2, move_id: [m.id, `M${m.id}`], move_type: m.move_type, date: m.date, parent_state: "posted", tax_ids: [], balance, tax_line_id: [tax, "t"], account_id: [210, "IVA"], display_type });
+  const vZF = mv(50, "out_invoice", "2026-02-03"), vNormal = mv(51, "out_invoice", "2026-02-04"), vVencida = mv(52, "out_invoice", "2026-02-20"), cParcial = mv(53, "in_invoice", "2026-02-10");
+  datos["account.move"].push(vZF, vNormal, vVencida, cParcial);
+  datos["account.move.line"].push(
+    base(500, vZF, 6, -2000000, { total_exonerate_cc: 260000, exoneration_id: [1, "Zona Franca 4.4"] }), imp(501, vZF, 6, -260000), imp(502, vZF, 6, 260000, "exo"),   // exonerada al 100 %
+    base(503, vNormal, 6, -1000000), imp(504, vNormal, 6, -130000),                                                                                             // gravada normal
+    base(505, vVencida, 6, -100000, { total_exonerate_cc: 13000, exoneration_id: [2, "Exoneración vencida"] }), imp(506, vVencida, 6, -13000), imp(507, vVencida, 6, 13000, "exo"),
+    base(508, cParcial, 7, 400000, { account_id: [600, "Gastos"], total_exonerate_cc: 36000, exoneration_id: [3, "Exo parcial"] }), imp(509, cParcial, 7, 52000), imp(510, cParcial, 7, -36000, "exo")   // paga 4 de 13 puntos
+  );
+  const r = await agente.ejecutar({ odoo: new OdooSimulado(datos), cfg: { HACIENDA_MES: "2026-02" }, log: () => {} });
+  const p = r.paquetes.find(x => x.impuesto === "150" && x.companiaId === 2);
+  const c = Object.fromEntries(p.casillas.map(x => [x.id, x.monto]));
+  assert.equal(c.v13, 1000000, "la base exonerada (2 000 000 + 100 000) sale de la tarifa 13 %");
+  assert.equal(c.vexo, 2100000); assert.equal(c.dexo, 273000);
+  assert.equal(c.d13, 130000, "el débito es el neto de las líneas: solo la venta normal");
+  assert.equal(c.vtot, 3100000);
+  assert.equal(c.c13, Math.round(400000 - 36000 / 0.13), "la compra con exoneración parcial: la parte exonerada (9 de 13 puntos) sale de la base gravada");
+  assert.equal(c.s13, 16000); assert.equal(c.cexo, Math.round(36000 / 0.13));
+  assert.ok(!p.juez.observaciones.some(o => o.regla === "cuadre"), "base × 13 % cuadra con el débito una vez separado lo exonerado");
+  assert.ok(p.juez.observaciones.some(o => o.regla === "exoneracion" && /Zona Franca 4\.4 \(9635\)/.test(o.texto)));
+  const vencida = p.juez.observaciones.find(o => o.regla === "exoneracion-vencida");
+  assert.ok(vencida && /venció el 2026-01-31/.test(vencida.texto)); assert.equal(p.juez.semaforo, "rojo");
+  assert.equal(p.totales.ventasExoneradas, 2100000);
+  // la compañía sin exoneraciones no se entera
+  const p1 = r.paquetes.find(x => x.impuesto === "150" && x.companiaId === 1);
+  assert.ok(!p1.casillas.some(x => x.id === "vexo"));
+  assert.ok(!p1.juez.observaciones.some(o => /exoneracion/.test(o.regla)));
+});
+
 function servicio(extraCfg = {}) {
   const raiz = mkdtempSync(join(tmpdir(), "hacienda-"));
   writeFileSync(join(raiz, "sim.json"), JSON.stringify(instancia()));

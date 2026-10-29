@@ -13,11 +13,14 @@ nombre exacto de cada campo del portal se anota en la columna «Campo del portal
 | `v0cd` | Ventas al 0 % con derecho a crédito (art. 32, exportaciones) | Ventas → Tarifa 0 % con derecho |
 | `vex` | Ventas exentas | Ventas → Exentas |
 | `v0sd` | Ventas al 0 % sin derecho a crédito | Ventas → 0 % sin derecho |
+| `vexo` | Ventas autorizadas sin impuesto: clientes exonerados (zona franca, art. 8). Es la base que llevaba IVA pero no se cobró | Ventas → Autorizadas sin impuesto / Exoneradas (confirmar con el contador en la primera declaración) |
+| `dexo` | IVA no cobrado por esas exoneraciones. **Informativo**: no se escribe en el portal | (no se escribe; sirve para explicar por qué el débito es menor) |
 | `vtot` | Total de ventas | (lo calcula el portal: solo releer) |
 | `d13`, `d4`, … | IVA cobrado por tarifa | (lo calcula el portal desde la base: releer y comparar) |
 | `dtot` | Débito fiscal total | (releer) |
 | `c13`, `c4`, … | Compras por tarifa (base) | Compras → Tarifa … → Monto |
 | `s13`, `s4`, … | IVA pagado por tarifa (acreditable) | Compras → Tarifa … → Impuesto (si el portal lo pide) |
+| `cexo` | Compras autorizadas sin impuesto: la compañía compró con su propia exoneración | Compras → Autorizadas sin impuesto (confirmar) |
 | `sna` | IVA no acreditable | Crédito fiscal → IVA no acreditable (si existe el campo) |
 | `prop` | Proporción de crédito aplicable (%) | Crédito fiscal → Proporcionalidad |
 | `cf` | Crédito fiscal del periodo | (releer) |
