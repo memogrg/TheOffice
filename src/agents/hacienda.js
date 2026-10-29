@@ -29,8 +29,11 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
 
   // --- Impuestos de Odoo → tarifas de Hacienda
   const impuestos = new Map();
-  for (const t of await odoo.leerTodo("account.tax", [], ["name", "amount", "amount_type", "type_tax_use", "company_id"], { context: { active_test: false } }))
-    impuestos.set(t.id, { id: t.id, nombre: t.name, clase: clasificarImpuesto(t) });
+  let camposImp = ["name", "amount", "amount_type", "type_tax_use", "company_id", "tax_rate_code", "code"];
+  let listaImp;
+  try { listaImp = await odoo.leerTodo("account.tax", [], camposImp, { context: { active_test: false } }); }
+  catch { camposImp = camposImp.slice(0, 5); listaImp = await odoo.leerTodo("account.tax", [], camposImp, { context: { active_test: false } }); }   // sin la localización de TecnoDEM
+  for (const t of listaImp) impuestos.set(t.id, { id: t.id, nombre: t.name, clase: clasificarImpuesto(t) });
 
   // --- Líneas del periodo: la base (líneas con impuestos) y el impuesto (líneas de impuesto)
   const tipoDoc = ["in", VENTA.concat(COMPRA)];
@@ -66,7 +69,7 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
   const porCia = (filas, f) => { const m = new Map(); for (const x of filas) { const cia = idDe(x.company_id); m.set(cia, (m.get(cia) || 0) + f(x)); } return m; };
   const borradores = porCia(await odoo.leer("account.move", "read_group", [[["state", "=", "draft"], ["move_type", ...tipoDoc], ["date", ">=", d], ["date", "<", h]], [], ["company_id"]], { lazy: false }), x => x.__count);
   const notas = porCia(await odoo.leer("account.move", "read_group", [[["state", "=", "posted"], ["move_type", "in", ["in_refund", "out_refund"]], ["reversed_entry_id", "=", false], ["date", ">=", d], ["date", "<", h]], [], ["company_id"]], { lazy: false }), x => x.__count);
-  let campoMH = null, rechazados = new Map(), sinAceptar = new Map();
+  let campoMH = null, rechazados = new Map(), sinAceptar = new Map(); const estadosVistos = new Set();
   for (const campo of CAMPOS_ESTADO_MH) {
     try {
       const g = await odoo.leer("account.move", "read_group", [[["state", "=", "posted"], ["move_type", ...tipoDoc], ["date", ">=", d], ["date", "<", h]], [], ["company_id", "move_type", campo]], { lazy: false });
@@ -75,7 +78,7 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
       for (const x of g) {
         const v = String(x[campo] || "").toLowerCase(), cia = idDe(x.company_id);
         if (/rechaz/.test(v)) rechazados.set(cia, (rechazados.get(cia) || 0) + x.__count);
-        else if (x.move_type === "in_invoice" && v && !/acept|accept/.test(v)) sinAceptar.set(cia, (sinAceptar.get(cia) || 0) + x.__count);
+        else if (x.move_type === "in_invoice" && !/acept|accept/.test(v)) { sinAceptar.set(cia, (sinAceptar.get(cia) || 0) + x.__count); estadosVistos.add(v || "-"); }
       }
       break;
     } catch { /* ese campo no existe en esta instancia */ }
@@ -102,9 +105,12 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
     const nombre = c.name;
     // 150
     const mios = [...agregados.values()].filter(a => a.companiaId === cia);
-    const lista = [], desconocidos = [];
+    const lista = [], desconocidos = [], exentasComo01 = [], especiales = [];
     for (const a of mios) {
+      if (a.clase && a.clase.excluido) continue;                                   // selectivo, cemento…: no van en el 150
       if (!a.clase) { if (Math.abs(a.base) + Math.abs(a.impuesto) > 0.005) desconocidos.push(a.nombre); continue; }
+      if (a.clase.exentoComo01 && a.uso === "sale" && Math.abs(a.base) > 0.005) exentasComo01.push(a.nombre);
+      if (a.clase.especial && Math.abs(a.base) + Math.abs(a.impuesto) > 0.005) especiales.push(`${a.nombre} (${a.clase.especial})`);
       lista.push({ impuestoId: a.impuestoId, nombre: a.nombre, tarifa: a.clase.tarifa, tasa: a.clase.tasa, derecho: a.clase.derecho, noAcreditable: a.clase.noAcreditable, uso: a.uso, base: r2(a.base), impuesto: r2(a.impuesto), documentos: a.docs.size });
     }
     if (desconocidos.length) sinClasificar.set(cia, desconocidos);
@@ -113,7 +119,7 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
     const p150 = paquete150({ compania: nombre, companiaId: cia, periodo: mes, agregados: lista, extra: {
       proporcion: aj.proporcion ?? null, saldoAFavorAnterior: aj.saldoAnterior ?? previa?.favor ?? 0, fuenteSaldoAnterior: aj.saldoAnterior != null ? "indicado a mano" : previa ? `declaración ${previa.periodo} en la Oficina` : null,
       anterior: anterior.get(cia) || null, borradores: borradores.get(cia) || 0, notasSinLigar: notas.get(cia) || 0, rechazadosHacienda: rechazados.get(cia) || 0, comprasSinAceptar: sinAceptar.get(cia) || 0,
-      sinClasificar: desconocidos, campoEstadoHacienda: campoMH } });
+      sinClasificar: desconocidos, exentasComo01, especiales, campoEstadoHacienda: campoMH, estadosSinAceptar: [...estadosVistos].join(", ") } });
     p150.fuentes = lista;                 // para recalcular con otros ajustes sin volver a Odoo
     p150.juez = juezDeReglas(p150);
     if (ciasConMovimiento.has(cia) || previa) paquetes.push(p150);

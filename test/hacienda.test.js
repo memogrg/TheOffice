@@ -52,6 +52,13 @@ test("Tarifas: por el código del nombre o por el porcentaje; el no acreditable 
   assert.deepEqual([clasificarImpuesto({ name: "IVA 4%", amount: 4 }).tarifa, clasificarImpuesto({ name: "IVA con tarifa 11", amount: 0 }).derecho, clasificarImpuesto({ name: "Exento", amount: 0 }).tarifa], ["4", false, "ex"]);
   assert.equal(clasificarImpuesto({ name: "IVA 13% no acreditable", amount: 13, type_tax_use: "purchase" }).noAcreditable, true);
   assert.equal(clasificarImpuesto({ name: "Impuesto raro", amount: 7 }), null);
+  // la localización de TecnoDEM: el código de tarifa manda sobre el nombre y el porcentaje
+  assert.equal(clasificarImpuesto({ name: "8% Compras", amount: 8, type_tax_use: "purchase", tax_rate_code: "07", code: "01" }).tarifa, "t8");
+  assert.equal(clasificarImpuesto({ name: "13%", amount: 13, tax_rate_code: "00", code: "01" }).tarifa, "13", "sin código de tarifa, por el porcentaje");
+  assert.equal(clasificarImpuesto({ name: "IVA 0 % (codigo 11) Compras", amount: 0, type_tax_use: "purchase" }).derecho, false);
+  assert.deepEqual(clasificarImpuesto({ name: "Selectivo de Consumo", amount: 10, code: "02" }), { excluido: "selectivo de consumo" });
+  assert.equal(clasificarImpuesto({ name: "Exento", amount: 0, tax_rate_code: "01", code: "01" }).exentoComo01, true);
+  assert.equal(clasificarImpuesto({ name: "08-IVA Régimen de Bienes Usados (Factor) 13,0%", amount: 13, tax_rate_code: "08", code: "08", type_tax_use: "purchase" }).especial, "bienes usados");
 });
 
 test("Paquete 150: ventas y compras por tarifa, notas que restan, proporción, saldo anterior y determinación", () => {

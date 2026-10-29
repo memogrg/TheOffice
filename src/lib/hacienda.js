@@ -32,13 +32,19 @@ const ORDEN_TARIFAS = ["13", "4", "2", "1", "05", "t4", "t8", "0cd", "ex", "0sd"
 const POR_ID = Object.fromEntries(Object.values(TARIFAS).map(t => [t.id, t]));
 const POR_TASA = { 13: "13", 4: "4", 2: "2", 1: "1", 0.5: "05", 8: "t8" };
 
-// Un impuesto de Odoo → tarifa de Hacienda. Por el código «tarifa NN» del nombre (así los nombra la
-// localización), y si no, por el porcentaje. Devuelve null cuando no se reconoce.
-export function clasificarImpuesto({ name = "", amount = null, amount_type = "percent", type_tax_use = "" } = {}) {
+// Un impuesto de Odoo → tarifa de Hacienda. La localización de TecnoDEM guarda el código de tarifa
+// en tax_rate_code (01–11; «00» = sin código) y el tipo de impuesto en code (01 IVA, 07 IVA cálculo
+// especial, 08 IVA régimen de bienes usados; 02 selectivo, 04 bebidas, 12 cemento, 99 otros: no son IVA
+// y quedan fuera del 150). Sin código: por «código NN» o «tarifa NN» en el nombre, y si no, por el
+// porcentaje. Devuelve null cuando no se reconoce.
+const NO_IVA = { "02": "selectivo de consumo", "04": "bebidas alcohólicas", "12": "específico al cemento", "99": "otros" };
+export function clasificarImpuesto({ name = "", amount = null, amount_type = "percent", type_tax_use = "", tax_rate_code = null, code = null } = {}) {
   const n = String(name || "");
+  if (code && NO_IVA[code]) return { excluido: NO_IVA[code] };
   const noAcreditable = /no acreditable|sin derecho a cr[eé]dito|gasto/i.test(n) && type_tax_use === "purchase";
-  const m = n.match(/tarifa\s*(\d{2})\b/i);
-  let t = m && TARIFAS[m[1]] ? TARIFAS[m[1]] : null;
+  let t = tax_rate_code && TARIFAS[tax_rate_code] ? TARIFAS[tax_rate_code] : null;
+  const m = n.match(/(?:c[oó]d(?:igo)?\.?|tarifa)\s*(\d{1,2})\b/i);
+  if (!t && m && TARIFAS[m[1].padStart(2, "0")]) t = TARIFAS[m[1].padStart(2, "0")];
   if (!t && /exent/i.test(n)) t = TARIFAS["10"];
   if (!t && /no sujet/i.test(n)) t = TARIFAS["11"];
   if (!t && amount_type === "percent" && amount != null) {
@@ -47,7 +53,7 @@ export function clasificarImpuesto({ name = "", amount = null, amount_type = "pe
     else if (Number(amount) === 0) t = TARIFAS["01"];
   }
   if (!t) return null;
-  return { tarifa: t.id, tasa: t.tasa, etiqueta: t.etiqueta, derecho: t.derecho, noAcreditable, uso: type_tax_use };
+  return { tarifa: t.id, tasa: t.tasa, etiqueta: t.etiqueta, derecho: t.derecho, noAcreditable, uso: type_tax_use, especial: code === "07" || code === "08" ? (code === "07" ? "cálculo especial" : "bienes usados") : null, exentoComo01: t.id === "0cd" && /exent/i.test(n) };
 }
 
 // Arma el paquete del formulario 150 de una compañía y un mes.
@@ -159,7 +165,9 @@ export function juezDeReglas(p) {
     if ((x.sinClasificar || []).length) ob("tarifa", "critico", `${x.sinClasificar.length} impuestos con movimiento no se reconocen como tarifa de IVA: ${x.sinClasificar.slice(0, 4).join(", ")}. Hay que asignarles tarifa antes de declarar.`);
     if (x.borradores) ob("borradores", "alto", `${x.borradores} documentos del periodo siguen en borrador: no están en estas cifras.`);
     if (x.rechazadosHacienda) ob("hacienda", "critico", `${x.rechazadosHacienda} documentos del periodo rechazados por Hacienda: no deben declararse así.`);
-    if (x.comprasSinAceptar) ob("aceptacion", "alto", `${x.comprasSinAceptar} facturas de compra del periodo sin aceptación en Hacienda: el crédito fiscal de esas no está respaldado.`);
+    if (x.comprasSinAceptar) ob("aceptacion", "info", `${x.comprasSinAceptar} facturas de compra del periodo sin mensaje de aceptación en Hacienda (estado «${x.estadosSinAceptar || "-"}»): confirmar con TecnoDEM si el crédito fiscal queda respaldado.`);
+    if ((x.exentasComo01 || []).length) ob("exento-01", "alto", `Ventas con impuestos llamados «exento» pero con código de tarifa 01 (0 % con derecho a crédito): ${x.exentasComo01.slice(0, 3).join(", ")}. Si son exentas de verdad (tarifa 10), cambia la proporción de crédito.`);
+    if ((x.especiales || []).length) ob("especial", "info", `Impuestos de régimen especial en el periodo (${x.especiales.slice(0, 3).join(", ")}): revisar que el formulario los lleve donde corresponde.`);
     if (x.notasSinLigar) ob("notas", "info", `${x.notasSinLigar} notas de crédito del periodo sin ligar a su factura.`);
     if (cas.prop && cas.prop.monto < 100 && !cas.prop.confirmada) ob("prorrata", "alto", `La proporción de crédito salió en ${cas.prop.monto}% por las ventas sin derecho del periodo. Confirme la prorrata de la compañía antes de declarar.`);
     if (x.anterior && (x.anterior.debito || x.anterior.credito)) {
