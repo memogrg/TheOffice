@@ -19,7 +19,7 @@ La Biblia (v1.0, 25 oct 2026) documenta el estado al **10 de setiembre**. Este a
 | Bancos | Conciliación a mano en el módulo de TecnoDEM; sin extractos en Odoo | **Fase 3C (base)**: extractos de cualquier banco (CSV, TXT, Excel) subidos en la app, emparejados con libros; cargos, intereses y transferencias propias como asientos propuestos; cobros y pagos con la factura que calza; saldo del banco contra libros. Revisión de zips de PDF+XML contra Odoo y el buzón |
 | Autonomía | NIVELES → AUTÓNOMO en la matriz, sin medir | **Fase 4**: historial por tipo × compañía desde la cola y la auditoría; candidato tras dos meses seguidos sin correcciones; una persona la otorga; se aprueba solo lo que pasa las validaciones; se revoca sola si falla en Odoo |
 | Hacienda | Declaraciones a mano en ATV/TRIBU-CR | **Agente Hacienda**: paquetes del IVA (150) por tarifa, 270 y acumulado de renta, con juez de reglas y de IA; pestaña Hacienda con el ciclo preparada → cargada → aprobada → presentada; plugin «Oficina Hacienda» (skill + MCP) que deja el borrador en el portal y relee; presentar sigue siendo de la persona |
-| Pruebas | Ninguna automatizada | 117 pruebas (`npm test`) con un Odoo simulado |
+| Pruebas | Ninguna automatizada | 118 pruebas (`npm test`) con un Odoo simulado |
 
 ## Decisiones que la Biblia todavía no registra (pendientes de Memo)
 

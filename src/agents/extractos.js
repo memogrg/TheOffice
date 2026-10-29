@@ -13,7 +13,8 @@
 // Cobros y pagos no se proponen como asiento: registrarlos es un pago contra la factura, y eso
 // espera a la confirmación de TecnoDEM (puede emitir un recibo electrónico de pago).
 import { createHash } from "node:crypto";
-import { idDe, nombreDe, r2 } from "../lib/contable.js";
+import { idDe, nombreDe, r2, ultimaFechaPorCompania, mesAEvaluar, rangoMes } from "../lib/contable.js";
+import { sumarMeses } from "../lib/meses.js";
 import { clasificarTexto, esTextoCargo, esTextoInteres, normal } from "../lib/extractos.js";
 
 export const meta = {
@@ -28,14 +29,58 @@ const corto = ids => createHash("sha1").update(ids.slice().sort((a, b) => a - b)
 const palabras = t => new Set(normal(t).split(" ").filter(w => w.length > 3 && !/^\d+$/.test(w)));
 const parecido = (a, b) => { const x = palabras(a), y = palabras(b); let n = 0; for (const w of x) if (y.has(w)) n++; return n; };
 
+// El módulo de conciliación de TecnoDEM ya guarda los movimientos del banco que el contador subió
+// (taerp.bank.line, uno por conciliación): se traen solos, sin pedir el CSV otra vez. Idempotente:
+// una fila de extracto por conciliación y las líneas por huella. Débito = entrada, crédito = salida.
+async function traerDeTecnoDEM({ odoo, db, cfg, log }) {
+  if (String(cfg.EXTRACTOS_TECNODEM || "").toLowerCase() === "no") return null;
+  const meses = Math.max(1, Number(cfg.EXTRACTOS_MESES) || 3);
+  let recs;
+  try {
+    const mes = mesAEvaluar(cfg, cfg.EXTRACTOS_MES, await ultimaFechaPorCompania(odoo));
+    const desde = rangoMes(sumarMeses(mes, 1 - meses))[0];
+    recs = await odoo.leerTodo("taerp.bank.reconciliation", [["end_date", ">=", desde]], ["name", "state", "end_date", "account_id", "company_id", "currency_id", "bank_balance", "name_file"]);
+  } catch (e) { log(`Sin módulo de conciliación de TecnoDEM (${e.message}): solo los extractos subidos a mano`); return null; }
+  if (!recs.length) return { conciliaciones: 0, nuevas: 0 };
+  const diarios = await odoo.leerTodo("account.journal", [["type", "=", "bank"]], ["name", "company_id", "default_account_id", "currency_id"]);
+  const porCuenta = new Map(diarios.filter(d => idDe(d.default_account_id)).map(d => [`${idDe(d.company_id)}|${idDe(d.default_account_id)}`, d]));
+  let nuevas = 0, sinDiario = 0, extractosNuevos = 0;
+  const ids = recs.map(r => r.id);
+  const lineas = [];
+  for (let i = 0; i < ids.length; i += 200) lineas.push(...await odoo.leerTodo("taerp.bank.line", [["bank_reconcil_id", "in", ids.slice(i, i + 200)]], ["bank_reconcil_id", "name", "description", "date", "debit", "credit", "reconciliation"]));
+  const porRec = new Map();
+  for (const l of lineas) { const k = idDe(l.bank_reconcil_id); porRec.set(k, [...(porRec.get(k) || []), l]); }
+  for (const r of recs) {
+    const d = porCuenta.get(`${idDe(r.company_id)}|${idDe(r.account_id)}`);
+    if (!d) { sinDiario++; continue; }
+    const vistas = new Map();
+    const movimientos = (porRec.get(r.id) || []).filter(l => l.date && /^\d{4}-\d{2}-\d{2}/.test(String(l.date))).map(l => {
+      const monto = r2((Number(l.debit) || 0) - (Number(l.credit) || 0)), descripcion = String(l.description || l.name || "").replace(/\s+/g, " ").slice(0, 300), referencia = String(l.name || "").slice(0, 80);
+      const base = `${String(l.date).slice(0, 10)}|${monto.toFixed(2)}|${normal(descripcion)}|${normal(referencia)}`;
+      const n = (vistas.get(base) || 0) + 1; vistas.set(base, n);
+      return { fecha: String(l.date).slice(0, 10), descripcion, referencia, monto, saldo: null, huella: createHash("sha1").update(`${base}|${n}`).digest("hex").slice(0, 20), externo: { tecnodem: l.id, conciliada: Boolean(l.reconciliation), conciliacion: r.name } };
+    }).filter(m => m.monto !== 0).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    if (!movimientos.length) continue;
+    const referencia = `tecnodem:${r.id}`;
+    const existente = db.extractoPorReferencia(referencia);
+    if (existente) { nuevas += db.agregarLineasExtracto(existente.id, movimientos, { hasta: r.end_date, saldoFinal: r.bank_balance ?? null }).nuevos; continue; }
+    const x = db.registrarExtracto({ companiaId: idDe(r.company_id), compania: nombreDe(r.company_id), diarioId: d.id, diario: d.name, cuentaId: idDe(d.default_account_id), moneda: nombreDe(r.currency_id) || nombreDe(d.currency_id) || null,
+      archivo: r.name_file || r.name, formato: "tecnodem", desde: movimientos[0].fecha, hasta: r.end_date, saldoInicial: null, saldoFinal: r.bank_balance ?? null, cuadra: null, referencia }, movimientos, "agente:extractos");
+    nuevas += x.nuevos; extractosNuevos++;
+  }
+  log(`TecnoDEM: ${recs.length} conciliaciones desde hace ${meses} meses, ${extractosNuevos} extractos nuevos, ${nuevas} movimientos nuevos${sinDiario ? `, ${sinDiario} conciliaciones de cuentas que no son de un diario de banco` : ""}`);
+  return { conciliaciones: recs.length, extractosNuevos, nuevas, sinDiario };
+}
+
 export async function ejecutar({ odoo, cfg, log, db }) {
   const t0 = Date.now();
   const vacio = (texto) => ({ agente: meta.nombre, titulo: "Extractos bancarios", corrida: new Date().toISOString(), segundos: 0, llamadasOdoo: 0,
     totales: { lineas: 0 }, bancos: [], cobros: [], pagos: [], transito: [], asientosSugeridos: [], cambios: [], alertas: [{ nivel: "info", texto, detalle: [] }] });
   if (!db) return vacio("El emparejamiento de extractos corre desde el servicio (necesita la base de la app).");
-  const lineas = db.lineasExtracto({ estados: ["pendiente", "en-libros", "propuesta", "registrada"], limite: 50000 });
-  if (!lineas.length) return vacio("Todavía no hay extractos. Se suben en la pestaña Extractos (CSV, TXT o Excel del banco).");
   await odoo.conectar();
+  const tecnodem = await traerDeTecnoDEM({ odoo, db, cfg, log });
+  const lineas = db.lineasExtracto({ estados: ["pendiente", "en-libros", "propuesta", "registrada"], limite: 50000 });
+  if (!lineas.length) return vacio("Todavía no hay extractos: ni en el módulo de conciliación de TecnoDEM ni subidos en la pestaña Extractos (CSV, TXT o Excel del banco).");
 
   const idsDiario = [...new Set(lineas.map(l => l.diario_id))];
   const diarios = await odoo.leer("account.journal", "search_read", [[["id", "in", idsDiario]], ["name", "company_id", "default_account_id", "currency_id"]], {});
@@ -197,6 +242,7 @@ export async function ejecutar({ odoo, cfg, log, db }) {
     registradas: bancos.reduce((t, b) => t + b.registradas, 0), pendientes: bancos.reduce((t, b) => t + b.pendientes, 0), cobrosConFactura: cobros.filter(c => c.candidatos.length).length,
     pagosConFactura: pagos.filter(p => p.candidatos.length).length, enTransito: bancos.reduce((t, b) => t + b.transito.length, 0), asientosSugeridos: asientosSugeridos.length };
   const alertas = [];
+  if (tecnodem && tecnodem.conciliaciones) alertas.push({ nivel: "info", texto: `Del módulo de conciliación de TecnoDEM: ${tecnodem.conciliaciones} conciliaciones recientes, ${tecnodem.nuevas} movimientos nuevos en esta corrida.`, detalle: tecnodem.sinDiario ? [`${tecnodem.sinDiario} conciliaciones son de cuentas que no corresponden a un diario de banco: no se trajeron.`] : [] });
   if (asientosSugeridos.length) alertas.push({ nivel: "info", texto: `${asientosSugeridos.length} asientos propuestos desde los extractos (cargos bancarios, intereses y transferencias propias) en Aprobaciones → Asientos.`,
     detalle: asientosSugeridos.slice(0, 8).map(a => `${a.compania}: ${a.referencia}`) });
   const sinCuenta = asientosSugeridos.filter(a => a.aviso);
@@ -217,6 +263,6 @@ export async function ejecutar({ odoo, cfg, log, db }) {
   return {
     agente: meta.nombre, titulo: "Extractos bancarios contra libros", corrida: new Date().toISOString(),
     segundos: Math.round((Date.now() - t0) / 100) / 10, llamadasOdoo: odoo.llamadas,
-    totales, bancos, cobros: cobros.slice(0, 300), pagos: pagos.slice(0, 300), asientosSugeridos, cambios, alertas
+    totales: { ...totales, tecnodem: tecnodem ? tecnodem.nuevas : null }, bancos, cobros: cobros.slice(0, 300), pagos: pagos.slice(0, 300), asientosSugeridos, cambios, alertas
   };
 }

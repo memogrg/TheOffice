@@ -236,3 +236,40 @@ test("El Director lleva las preguntas del extracto al agente Extractos", () => {
   assert.equal(DirectorCore.decidir("qué movimientos del extracto no están en libros", roster, []).agente.id, "extractos");
   assert.equal(DirectorCore.decidir("qué cargos bancarios faltan", roster, []).agente.id, "extractos");
 });
+
+test("Los extractos que ya están en el módulo de conciliación de TecnoDEM se traen solos, sin duplicar", async () => {
+  const sim = instancia();
+  sim["taerp.bank.reconciliation"] = [{ id: 7, name: "BCR Colones 2026-02", state: "draft", end_date: "2026-02-28", account_id: [500, "1-01-01 BCR"], company_id: C1, currency_id: CRC, bank_balance: 961093, name_file: "bcr-feb.xlsx" },
+    { id: 8, name: "Caja chica 2026-02", state: "done", end_date: "2026-02-28", account_id: [999, "Caja"], company_id: C1, currency_id: CRC, bank_balance: 0, name_file: false }];
+  sim["taerp.bank.line"] = [
+    { id: 1, bank_reconcil_id: [7, "BCR"], name: "9001", description: "PAGO PROVEEDOR XYZ", date: "2026-02-03", debit: 0, credit: 30000, reconciliation: true },
+    { id: 2, bank_reconcil_id: [7, "BCR"], name: "9005", description: "COMISION SINPE", date: "2026-02-28", debit: 0, credit: 250, reconciliation: false },
+    { id: 3, bank_reconcil_id: [7, "BCR"], name: "9003", description: "DEPOSITO CLIENTE ABC", date: "2026-02-15", debit: 20000, credit: 0, reconciliation: false },
+    { id: 4, bank_reconcil_id: [8, "Caja"], name: "x", description: "no es de un diario de banco", date: "2026-02-10", debit: 1, credit: 0, reconciliation: false }
+  ];
+  const raiz = mkdtempSync(join(tmpdir(), "extractos-td-"));
+  writeFileSync(join(raiz, "sim.json"), JSON.stringify(sim));
+  const db = new BaseDeDatos(":memory:");
+  const corridas = new Corridas({ db, cfg: { ODOO_SIMULADO: "sim.json", EXTRACTOS_MES: "2026-02" }, raiz, raizProyecto: RAIZ });
+  const { resultado: r } = await corridas.correr("extractos");
+  assert.equal(r.totales.tecnodem, 3, "las tres líneas del banco; la de caja no");
+  const [e] = db.extractos();
+  assert.equal(e.formato, "tecnodem"); assert.equal(e.archivo, "bcr-feb.xlsx"); assert.equal(e.saldo_final, 961093); assert.equal(e.movimientos, 3);
+  const ls = db.lineasExtracto({});
+  assert.equal(ls.find(l => l.descripcion === "PAGO PROVEEDOR XYZ").estado, "en-libros");
+  assert.equal(ls.find(l => l.descripcion === "PAGO PROVEEDOR XYZ").externo.conciliada, true);
+  assert.equal(ls.find(l => l.descripcion === "COMISION SINPE").tipo, "cargo");
+  // segunda corrida: nada nuevo; una línea nueva en la misma conciliación sí entra
+  const otra = await corridas.correr("extractos");
+  assert.equal(otra.resultado.totales.tecnodem, 0);
+  sim["taerp.bank.line"].push({ id: 5, bank_reconcil_id: [7, "BCR"], name: "9009", description: "INTERESES SOBRE SALDO", date: "2026-02-27", debit: 120, credit: 0, reconciliation: false });
+  writeFileSync(join(raiz, "sim.json"), JSON.stringify(sim));
+  const tercera = await corridas.correr("extractos");
+  assert.equal(tercera.resultado.totales.tecnodem, 1);
+  assert.equal(db.extractos().length, 1, "sigue siendo un solo extracto por conciliación");
+  assert.equal(db.extractos()[0].movimientos, 4);
+  // se puede apagar
+  const db2 = new BaseDeDatos(":memory:");
+  const sin = await new Corridas({ db: db2, cfg: { ODOO_SIMULADO: "sim.json", EXTRACTOS_TECNODEM: "no" }, raiz, raizProyecto: RAIZ }).correr("extractos");
+  assert.equal(sin.resultado.totales.lineas, 0);
+});

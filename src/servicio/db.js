@@ -330,18 +330,38 @@ export class BaseDeDatos {
       UNIQUE (diario_id, huella)
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS extracto_lineas_diario ON extracto_lineas (diario_id, estado, fecha)");
+    const columnas = t => new Set(this.todos(`PRAGMA table_info(${t})`).map(c => c.name));
+    if (!columnas("extractos").has("referencia")) this.db.exec("ALTER TABLE extractos ADD COLUMN referencia TEXT");          // tecnodem:<id de la conciliación>
+    if (!columnas("extracto_lineas").has("externo")) this.db.exec("ALTER TABLE extracto_lineas ADD COLUMN externo TEXT");    // JSON: lo que dice TecnoDEM de la línea
+  }
+  // Un extracto que viene del módulo de TecnoDEM: una fila por conciliación; en cada corrida solo se agregan las líneas nuevas.
+  extractoPorReferencia(referencia) { return this.uno("SELECT * FROM extractos WHERE referencia=?", referencia) || null; }
+  agregarLineasExtracto(extractoId, movimientos, { hasta = null, saldoFinal = null } = {}) {
+    const e = this.extracto(extractoId);
+    if (!e) return { nuevos: 0 };
+    let nuevos = 0;
+    this.transaccion(() => {
+      for (const m of movimientos) {
+        const r = this.correr(`INSERT OR IGNORE INTO extracto_lineas (extracto_id, compania_id, diario_id, fecha, descripcion, referencia, monto, saldo, huella, externo) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          extractoId, e.compania_id, e.diario_id, m.fecha, m.descripcion ?? null, m.referencia ?? null, m.monto, m.saldo ?? null, m.huella, m.externo ? JSON.stringify(m.externo) : null);
+        nuevos += r.changes;
+      }
+      if (nuevos || hasta || saldoFinal != null) this.correr("UPDATE extractos SET movimientos=movimientos+?, hasta=COALESCE(?, hasta), saldo_final=COALESCE(?, saldo_final), desde=MIN(COALESCE(desde, ?), ?) WHERE id=?",
+        nuevos, hasta, saldoFinal, movimientos[0]?.fecha ?? null, movimientos.reduce((a, m) => (!a || m.fecha < a ? m.fecha : a), null) ?? e.desde, extractoId);
+    });
+    return { nuevos };
   }
   // e: {companiaId, compania, diarioId, diario, cuentaId, moneda, archivo, formato, desde, hasta, saldoInicial, saldoFinal, cuadra}
   registrarExtracto(e, movimientos, quien) {
     let id, nuevos = 0;
     this.transaccion(() => {
-      const x = this.correr(`INSERT INTO extractos (compania_id, compania, diario_id, diario, cuenta_id, moneda, archivo, formato, desde, hasta, saldo_inicial, saldo_final, cuadra, subio, creado_en)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, e.companiaId, e.compania ?? null, e.diarioId, e.diario ?? null, e.cuentaId ?? null, e.moneda ?? null, e.archivo ?? null, e.formato ?? null,
-        e.desde ?? null, e.hasta ?? null, e.saldoInicial ?? null, e.saldoFinal ?? null, e.cuadra == null ? null : (e.cuadra ? 1 : 0), quien, this.#ahora());
+      const x = this.correr(`INSERT INTO extractos (compania_id, compania, diario_id, diario, cuenta_id, moneda, archivo, formato, desde, hasta, saldo_inicial, saldo_final, cuadra, subio, creado_en, referencia)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, e.companiaId, e.compania ?? null, e.diarioId, e.diario ?? null, e.cuentaId ?? null, e.moneda ?? null, e.archivo ?? null, e.formato ?? null,
+        e.desde ?? null, e.hasta ?? null, e.saldoInicial ?? null, e.saldoFinal ?? null, e.cuadra == null ? null : (e.cuadra ? 1 : 0), quien, this.#ahora(), e.referencia ?? null);
       id = Number(x.lastInsertRowid);
       for (const m of movimientos) {
-        const r = this.correr(`INSERT OR IGNORE INTO extracto_lineas (extracto_id, compania_id, diario_id, fecha, descripcion, referencia, monto, saldo, huella)
-          VALUES (?,?,?,?,?,?,?,?,?)`, id, e.companiaId, e.diarioId, m.fecha, m.descripcion ?? null, m.referencia ?? null, m.monto, m.saldo ?? null, m.huella);
+        const r = this.correr(`INSERT OR IGNORE INTO extracto_lineas (extracto_id, compania_id, diario_id, fecha, descripcion, referencia, monto, saldo, huella, externo)
+          VALUES (?,?,?,?,?,?,?,?,?,?)`, id, e.companiaId, e.diarioId, m.fecha, m.descripcion ?? null, m.referencia ?? null, m.monto, m.saldo ?? null, m.huella, m.externo ? JSON.stringify(m.externo) : null);
         nuevos += r.changes;
       }
       this.correr("UPDATE extractos SET movimientos=?, repetidos=? WHERE id=?", nuevos, movimientos.length - nuevos, id);
@@ -369,7 +389,7 @@ export class BaseDeDatos {
     if (diarioId) { cond.push("l.diario_id=?"); p.push(diarioId); }
     if (estados) { cond.push(`l.estado IN (${estados.map(() => "?").join(",")})`); p.push(...estados); }
     return this.todos(`SELECT l.* FROM extracto_lineas l JOIN extractos e ON e.id=l.extracto_id WHERE ${cond.join(" AND ")} ORDER BY l.diario_id, l.fecha, l.id LIMIT ?`, ...p, limite)
-      .map(l => ({ ...l, emparejado: l.emparejado ? JSON.parse(l.emparejado) : null }));
+      .map(l => ({ ...l, emparejado: l.emparejado ? JSON.parse(l.emparejado) : null, externo: l.externo ? JSON.parse(l.externo) : null }));
   }
   // Resultado del emparejamiento: [{id, estado, tipo, emparejado, asientoClave}]. Las ignoradas no se tocan.
   actualizarLineasExtracto(cambios) {
