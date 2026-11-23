@@ -13,6 +13,7 @@
 /* Diseño «contable y legible»: menú lateral agrupado, tarjetas blancas, tablas claras.
    --m es la letra de toda la app; --mono queda para claves y códigos. */
 :root{
+  color-scheme:light;
   --fondo:#F4F6F5; --panel:#FFFFFF; --borde:#D9E0DD; --borde2:#C4D0CC; --raya:#E4EAE7;
   --tinta:#0E1614; --tinta2:#33423D; --tinta3:#56645F;
   --sello:#0B4A3F; --sello2:#083A31; --sobre:#FFFFFF;
@@ -22,12 +23,14 @@
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
   --fondo:#121715; --panel:#1A201D; --borde:#2C3531; --borde2:#3A4540; --raya:#262E2A;
   --tinta:#ECE8DD; --tinta2:#C3C9C4; --tinta3:#9AA5A0;
   --sello:#6FD3AE; --sello2:#8FE0C2; --sobre:#0C1512;
   --ok:#6FD3AE; --alto:#E2B45A; --critico:#F0957F; --neutro:#A9B3AE;
   --ok-f:#1D2F29; --alto-f:#33290F; --critico-f:#3A1F19; --neutro-f:#242B28;}}
 :root[data-theme="dark"]{
+  color-scheme:dark;
   --fondo:#121715; --panel:#1A201D; --borde:#2C3531; --borde2:#3A4540; --raya:#262E2A;
   --tinta:#ECE8DD; --tinta2:#C3C9C4; --tinta3:#9AA5A0;
   --sello:#6FD3AE; --sello2:#8FE0C2; --sobre:#0C1512;
@@ -36,28 +39,32 @@
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--fondo);color:var(--tinta);font:14px/1.45 var(--m);-webkit-font-smoothing:antialiased}
-a{color:var(--sello);font-weight:600}
+a{color:var(--sello);font-weight:500;text-decoration-thickness:1px;text-underline-offset:2px}
+a:hover{text-decoration-thickness:2px}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--sello);outline-offset:2px}
 code{font-family:var(--mono);font-size:.92em;background:var(--neutro-f);padding:1px 5px;border-radius:4px}
 
 /* ---------- estructura: menú lateral + contenido ---------- */
 #app{display:flex;min-height:100vh;align-items:stretch}
-#lado{flex:0 0 248px;background:var(--panel);border-right:1px solid var(--borde);padding:18px 12px 24px;position:sticky;top:0;height:100vh;overflow-y:auto}
+#lado{scrollbar-width:thin;flex:0 0 248px;background:var(--panel);border-right:1px solid var(--borde);padding:18px 12px 24px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .marca{display:flex;align-items:center;gap:10px;padding:0 8px 14px}
-.marca .logo{width:30px;height:30px;border-radius:6px;background:var(--sello);color:var(--sobre);display:flex;align-items:center;justify-content:center;font-weight:700;flex:none;overflow:hidden}
-.marca .logo img{width:100%;height:100%;object-fit:contain;background:var(--panel)}
+.marca .logo{flex:none;display:flex;align-items:center}
+.marca .logo svg{display:block;width:30px;height:30px}
+.marca .logo rect{fill:var(--sello)} .marca .logo circle{fill:none;stroke:var(--sobre);stroke-width:3}
+.marca .logo img{display:block;height:30px;width:auto;max-width:120px;object-fit:contain;border-radius:4px}
 .marca h1{margin:0;font-size:16px;font-weight:700;line-height:1.2;flex:1;min-width:0}
 .marca h1 small{display:block;font-size:12px;font-weight:500;color:var(--tinta3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu{display:none;align-items:center;min-height:40px;padding:0 12px;border:1px solid var(--borde2);border-radius:6px;background:var(--panel);color:var(--tinta);font:600 13px var(--m);cursor:pointer}
 #nav{display:flex;flex-direction:column;gap:2px}
 #nav .grupo{padding:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta3)}
 #nav .grupo:first-child{padding-top:4px}
-#nav button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:40px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--tinta);font:14px var(--m);text-align:left;cursor:pointer}
+#nav button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:36px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--tinta);font:14px var(--m);text-align:left;cursor:pointer}
 #nav button:hover{background:var(--fondo)}
 #nav button[aria-selected="true"]{background:var(--ok-f);background:color-mix(in srgb,var(--sello) 12%,var(--panel));color:var(--sello);font-weight:600}
-#nav .cu{padding:1px 8px;border-radius:999px;background:var(--neutro-f);color:var(--tinta2);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
-#nav .cu.al{background:var(--sello);color:var(--sobre)}
+#nav .cu{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:26px;height:22px;padding:1px 8px 0;border-radius:11px;background:var(--neutro-f);color:var(--tinta);font-size:12.5px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#nav .cu.fuerte{background:var(--sello);color:var(--sobre)}
 #nav .cu:empty{display:none}
-.fuera #nav,.fuera .menu{display:none}
+.fuera #nav,.fuera .menu,.fuera .yo label,.fuera .yo #quien{display:none}
 #cuerpo{flex:1;min-width:0;padding:20px 28px 40px}
 #barra{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-bottom:18px}
 #barra .tit{flex:1 1 260px;min-width:0}
@@ -65,8 +72,9 @@ code{font-family:var(--mono);font-size:.92em;background:var(--neutro-f);padding:
 #barra .sub{font-size:13.5px}
 .yo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--tinta3)}
 .yo input{font:13px var(--m);padding:8px 10px;border:1px solid var(--borde2);border-radius:6px;background:var(--panel);color:var(--tinta);width:170px}
+.yo input[readonly]{border-color:transparent;background:transparent;padding-left:2px;font-weight:600;field-sizing:content;min-width:60px;max-width:240px}
 #main{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
-#vista{flex:999 1 560px;min-width:0}
+#vista{flex:999 1 560px;min-width:0;container-type:inline-size}
 #vivo{flex:1 1 400px;max-width:640px;min-width:0;position:sticky;top:16px}
 #vivo[hidden]{display:none}
 #vivo section{padding:14px 16px}
@@ -75,9 +83,11 @@ code{font-family:var(--mono);font-size:.92em;background:var(--neutro-f);padding:
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .chip{font-size:12.5px;padding:4px 10px;border:1px solid var(--borde2);border-radius:999px;color:var(--tinta2);background:var(--panel)}
 .chip b{color:var(--tinta)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;margin-bottom:16px}
-.tile{background:var(--panel);border:1px solid var(--borde);border-radius:8px;padding:14px 16px}
-.tile .k{font-size:13px;color:var(--tinta3)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(136px,100%),1fr));gap:12px;margin-bottom:16px}
+.tiles.c4{grid-template-columns:repeat(2,minmax(0,1fr))}
+@container (min-width:600px){.tiles.c4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tile{background:var(--panel);border:1px solid var(--borde);border-radius:8px;padding:14px 14px;min-width:0}
+.tile .k{font-size:13px;color:var(--tinta3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .v{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15;margin-top:4px;color:var(--tinta);font-variant-numeric:tabular-nums}
 .tile .s{font-size:12.5px;color:var(--tinta3);margin-top:2px}
 section,details.sec{background:var(--panel);border:1px solid var(--borde);border-radius:8px;padding:16px 18px;margin-bottom:16px}
@@ -92,7 +102,13 @@ button.b.gh,a.b.gh{background:transparent;color:var(--sello)}
 button.b.rj{background:transparent;color:var(--critico);border-color:var(--critico)}
 button.b.g{min-height:42px;padding:0 16px;font-size:14px}
 button.b:disabled{opacity:.5;cursor:default}
+button.b:hover:not(:disabled),a.b:hover{filter:brightness(1.12)}
+button.b.gh:hover:not(:disabled),a.b.gh:hover{filter:none;background:var(--ok-f);background:color-mix(in srgb,var(--sello) 10%,transparent)}
+button.b.rj:hover:not(:disabled){filter:none;background:var(--critico-f)}
+td button.b{min-height:32px;padding:0 12px;font-size:13px}
 select,input.f,textarea.f{font:13.5px var(--m);padding:7px 9px;min-height:36px;border:1px solid var(--borde2);border-radius:6px;background:var(--panel);color:var(--tinta)}
+input[type=file]{font:13px var(--m);color:var(--tinta2);max-width:100%}
+input[type=file]::file-selector-button{font:600 13px var(--m);min-height:32px;padding:0 12px;margin-right:10px;border:1px solid var(--sello);border-radius:6px;background:transparent;color:var(--sello);cursor:pointer}
 .tw{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;padding:8px 10px 8px 0;font-size:12px;font-weight:600;color:var(--tinta3);border-bottom:1px solid var(--borde2)}
@@ -100,15 +116,21 @@ td{padding:9px 10px 9px 0;border-bottom:1px solid var(--raya);vertical-align:top
 tbody tr:last-child>td{border-bottom:0}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 td.a{text-align:right;white-space:nowrap;padding-right:0} /* última columna sin título: las acciones */
+td.a button.b{margin:2px 0 2px 4px}
+td.a:has(.b:nth-of-type(3)){white-space:normal;min-width:300px} /* tres o más botones: que bajen de renglón */
 .mono{font-family:var(--mono);font-size:12px}
+b.mono{font-weight:600}
+.cuenta{font-size:13px;color:var(--tinta2);margin:2px 0 6px}
 .sub{font-size:12.5px;color:var(--tinta3)}
 .est{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap;color:var(--neutro);background:var(--neutro-f)}
 .est.ok{color:var(--ok);background:var(--ok-f)} .est.alto{color:var(--alto);background:var(--alto-f)}
 .est.critico{color:var(--critico);background:var(--critico-f)} .est.neutro,.est.info{color:var(--neutro);background:var(--neutro-f)}
-.al{border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--neutro-f)}
-.al.alto{border-color:var(--alto);background:var(--alto-f)} .al.critico{border-color:var(--critico);background:var(--critico-f)} .al.ok{border-color:var(--ok);background:var(--ok-f)}
-.al .t{font-weight:600;font-size:13.5px} .al .est{background:var(--panel);margin-right:8px} .al .d{font-size:12.5px;color:var(--tinta2);margin-top:3px;line-height:1.5}
-.aviso{font-size:13px;color:var(--tinta2);background:var(--fondo);border:1px solid var(--raya);padding:10px 12px;border-radius:6px;margin-bottom:10px}
+.al{border:1px solid var(--borde);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--fondo)}
+.al.critico{border-color:var(--critico);background:var(--critico-f)}
+.al .t{font-weight:600;font-size:13.5px} .al .est{margin-right:8px}
+.al.critico .est{background:var(--panel)} .al .d{font-size:12.5px;color:var(--tinta2);margin-top:3px;line-height:1.5}
+.aviso{font-size:13px;line-height:1.55;color:var(--tinta2);margin:0 0 12px;max-width:112ch}
+.aviso[style*="critico"]{border:1px solid var(--critico);background:var(--critico-f);color:var(--tinta);padding:10px 12px;border-radius:6px;max-width:none}
 .tema{display:inline-flex;border:1px solid var(--borde2);border-radius:6px;overflow:hidden;background:var(--panel)}
 .tema button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:0;background:transparent;color:var(--tinta2);font:600 13px var(--m);cursor:pointer}
 .tema button[aria-pressed="true"]{background:var(--sello);color:var(--sobre)}
@@ -116,6 +138,7 @@ td.a{text-align:right;white-space:nowrap;padding-right:0} /* última columna sin
 .hecho:last-child{border-bottom:0;padding-bottom:0}
 .hecho .cuando{flex:0 0 92px;color:var(--tinta3);font-size:12.5px}
 .hecho .que{flex:1;min-width:0}
+.sub.falla{color:var(--critico)}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--raya);font-size:13px}
 .kv:last-child{border-bottom:0;padding-bottom:0}
 .kv span{color:var(--tinta3)} .kv b{font-weight:600;text-align:right}
@@ -152,7 +175,7 @@ iframe.escena{display:block;width:100%;height:260px;border:0;border-radius:4px;b
 <div id="app" class="fuera">
 <aside id="lado">
   <div class="marca">
-    <span class="logo" id="logo" aria-hidden="true">O</span>
+    <span class="logo" id="logo" aria-hidden="true"><svg viewBox="0 0 30 30"><rect width="30" height="30" rx="7"></rect><circle cx="15" cy="15" r="6.25"></circle></svg></span>
     <h1 id="marca">Oficina</h1>
     <button class="menu" id="menuBtn" type="button" aria-expanded="false" aria-controls="nav">Menú</button>
   </div>
@@ -160,8 +183,8 @@ iframe.escena{display:block;width:100%;height:260px;border:0;border-radius:4px;b
     <div class="grupo">Trabajo diario</div>
     <button data-v="tablero" aria-selected="true">Inicio</button>
     <button data-v="casos">Casos<span class="cu" id="nCasos"></span></button>
-    <button data-v="aprobaciones">Aprobaciones<span class="cu al" id="nAprob"></span></button>
-    <button data-v="correos">Correos<span class="cu al" id="nCorreos"></span></button>
+    <button data-v="aprobaciones">Aprobaciones<span class="cu fuerte" id="nAprob"></span></button>
+    <button data-v="correos">Correos<span class="cu fuerte" id="nCorreos"></span></button>
     <button data-v="director">Director</button>
     <button data-v="oficina">Oficina 2D</button>
     <div class="grupo">Cierre</div>
@@ -187,8 +210,8 @@ iframe.escena{display:block;width:100%;height:260px;border:0;border-radius:4px;b
         <button type="button" id="temaDia" aria-pressed="false"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg>Día</button>
         <button type="button" id="temaNoche" aria-pressed="false"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z"></path></svg>Noche</button>
       </div>
-      <label for="quien">Soy</label><input id="quien" placeholder="nombre o correo">
-      <input id="token" placeholder="token (opcional, si no entró)" type="password" aria-label="Token de acceso" title="Solo hace falta si no usó la pantalla de entrada">
+      <label for="quien">Soy</label><input id="quien" placeholder="su nombre">
+      <input id="token" placeholder="token" type="password" style="display:none" aria-label="Token de acceso" title="Solo hace falta si no usó la pantalla de entrada">
       <button class="b gh" id="salir" style="display:none" title="Cerrar sesión">Salir</button>
     </div>
   </header>
@@ -219,6 +242,8 @@ var md = function(t){ return esc(t).replace(/^#{1,4} +(.+)$/gm,"<b>$1</b>").repl
 var fecha = function(s){ return s ? new Date(s).toLocaleString("es-CR",{dateStyle:"medium",timeStyle:"short"}) : "—"; };
 
 try { $("#quien").value = localStorage.getItem("iasima_quien")||""; $("#token").value = localStorage.getItem("iasima_token")||""; } catch(e){}
+// El token se pide en la pantalla de entrada; este campo solo aparece si quedó uno guardado de antes.
+$("#token").style.display = $("#token").value ? "" : "none";
 $("#quien").addEventListener("change", function(){ try{ localStorage.setItem("iasima_quien", this.value); }catch(e){}
   // la memoria del Director es por persona: al cambiar el nombre se carga SU conversación, sin recargar
   S.chat=[]; S.conversacion=null; S.nueva=false; S.directorCargado=false; if (S.vista==="director") pintar(); });
@@ -235,7 +260,7 @@ function api(ruta, cuerpo){
 }
 // Pantalla de entrada: el token se valida una vez y queda en una cookie del navegador.
 function pedirEntrada(m, smtp){
-  marcar(m); $("#vivo").hidden=true; $("#app").classList.add("fuera"); $("#titulo").textContent="Entrar"; $("#subtitulo").textContent="";
+  marcar(m); $("#vivo").hidden=true; $("#app").classList.add("fuera"); $("#titulo").textContent=""; $("#subtitulo").textContent="";
   $("#vista").innerHTML='<section style="max-width:420px;margin:40px auto"><h2>Entrar</h2>'+
     '<div class="sub" style="margin-bottom:10px">Si le mandaron un <b>enlace de acceso</b>, ábralo y entra directo. '+(smtp?'Si ya está registrado, pida uno nuevo con su correo.':'Si no lo tiene, pídaselo a su contador.')+'</div>'+
     (smtp?'<form id="pedir"><div class="fila"><input class="f" id="pCorreo" type="email" placeholder="su correo" style="flex:1" autofocus><button class="b" type="submit">Enviarme el enlace</button></div><div class="sub" id="pMsg"></div></form>':"")+
@@ -270,11 +295,11 @@ V.tablero = function(){
     '<span style="flex:1"></span>'+
     '<button class="b gh g" data-cm-ir="director">Preguntar al Director</button>'+
     '<button class="b g" data-correr="recepcion">Actualizar el buzón</button></div>';
-  h += '<div class="tiles">'+
-    tile("Correos en el buzón", t.total, t.companias!=null?("de "+n(t.companias)+" compañías"):(rec?"":"sin corrida todavía"))+
-    tile("Tasa de registro", t.pctOk!=null?t.pctOk+" %":null, "registrados como factura")+
-    tile("Por reclamar afuera", ab["afuera|abierto"]||0, "tiquetes y rechazados")+
-    tile("Por revisar adentro", ab["adentro|abierto"]||0, "errores, duplicados, cédulas")+
+  h += '<div class="tiles c4">'+
+    tile("Correos en buzón", t.total, t.companias!=null?("de "+n(t.companias)+" compañías"):(rec?"":"sin lectura todavía"))+
+    tile("Tasa de registro", t.pctOk!=null?String(t.pctOk).replace(".",",")+" %":null, "ya son factura")+
+    tile("Reclamar afuera", ab["afuera|abierto"]||0, "tiquetes y rechazados")+
+    tile("Revisar adentro", ab["adentro|abierto"]||0, "errores y duplicados")+
     '</div>';
   // Lo que espera a una persona: una fila por cola, con a dónde ir.
   var pend = [
@@ -349,13 +374,18 @@ function hace(s){
 }
 function htmlUltimo(lista){
   if(!lista.length) return '<div class="sub">Todavía no se ha hecho nada. Pulse «Actualizar el buzón».</div>';
+  var nombre=function(c){ return AGENTES[c.agente]||c.agente; };
   return lista.map(function(h){
     var que, est="";
-    if (h.corrida){
-      var c=h.corrida, t=c.totales ? Object.keys(c.totales).slice(0,3).map(function(k){ return k+": "+n(c.totales[k]); }).join(" · ") : "";
-      que='El agente <b>'+esc(AGENTES[c.agente]||c.agente)+'</b> '+(c.estado==="corriendo"?"está corriendo":(c.estado==="ok"?"corrió":"no terminó"))+(c.compania?' · '+esc(c.compania):"")+
-        (c.error||t?'<div class="sub">'+esc(c.error||t)+'</div>':"");
-      est='<span class="est '+({ok:"ok",fallo:"critico",corriendo:"alto"}[c.estado]||"neutro")+'">'+esc(c.estado)+'</span>';
+    if (h.corridas){
+      var cs=h.corridas, mal=cs.filter(function(c){ return c.estado!=="ok" && c.estado!=="corriendo"; }), enCurso=cs.filter(function(c){ return c.estado==="corriendo"; });
+      que = cs.length===1
+        ? 'El agente <b>'+esc(nombre(cs[0]))+'</b> '+(enCurso.length?"está corriendo":(mal.length?"no terminó":"corrió"))+(cs[0].compania?' · '+esc(cs[0].compania):"")
+        : 'Corrieron <b>'+cs.length+' agentes</b><div class="sub">'+esc(cs.slice().reverse().map(nombre).join(", "))+'</div>';
+      que += mal.map(function(c){ return '<div class="sub falla">'+(cs.length>1?esc(nombre(c))+' no terminó: ':"")+esc(String(c.error||"sin detalle").slice(0,160))+'</div>'; }).join("");
+      est = enCurso.length ? '<span class="est alto">corriendo</span>'
+        : mal.length ? '<span class="est critico">'+(cs.length>1?mal.length+(mal.length===1?" fallo":" fallos"):"fallo")+'</span>'
+        : '<span class="est ok">ok</span>';
     } else {
       var a=h.accion, nota=a.detalle && (a.detalle.nota||a.detalle.motivo);
       que='<b>'+esc(a.quien)+'</b> '+esc(VERBOS[a.accion]||a.accion)+' '+esc(OBJETOS[a.objeto]||a.objeto)+(a.objeto_id!=null?' #'+esc(a.objeto_id):"")+
@@ -365,12 +395,20 @@ function htmlUltimo(lista){
   }).join("");
 }
 function cargarUltimo(){
-  Promise.all([api("/api/corridas?limite=10"), api("/api/auditoria?limite=60")]).then(function(r){
+  Promise.all([api("/api/corridas?limite=40"), api("/api/auditoria?limite=60")]).then(function(r){
     var hechos=[];
     r[0].forEach(function(c){ hechos.push({ cuando:c.fin||c.inicio, corrida:c }); });
     r[1].forEach(function(a){ if (!SIN_RESUMEN[a.accion+" "+a.objeto]) hechos.push({ cuando:a.cuando, accion:a }); });
     hechos.sort(function(x,y){ return new Date(y.cuando)-new Date(x.cuando); });
-    S.ultimo=hechos.slice(0,8);
+    // Corridas seguidas (sin nada de una persona en medio y a menos de 15 minutos de la más reciente)
+    // cuentan como un solo hecho: la corrida semanal son trece agentes, no trece renglones.
+    var out=[];
+    hechos.forEach(function(h){
+      var u=out[out.length-1];
+      if (h.corrida && u && u.corridas && Math.abs(new Date(u.cuando)-new Date(h.cuando)) <= 15*60000) u.corridas.push(h.corrida);
+      else out.push(h.corrida ? { cuando:h.cuando, corridas:[h.corrida] } : h);
+    });
+    S.ultimo=out.slice(0,6);
     var el=$("#ultimo"); if(el) el.innerHTML=htmlUltimo(S.ultimo);
   }).catch(function(){ var el=$("#ultimo"); if(el && !S.ultimo) el.innerHTML='<div class="sub">No se pudo cargar. Está completo en Corridas y Auditoría.</div>'; });
 }
@@ -413,7 +451,7 @@ function pintarVivo(){
     kv("Asientos", e.escrituraAsientos?(e.publicarAsientos?"Crea y publica":"Crea en borrador"):"Bloqueados")+
     kv("Correo", e.smtp?"Configurado":"Sin SMTP: nada sale")+
     kv("Acceso", !e.acceso||!e.acceso.remota?"En esta PC":(e.acceso.sesion?"Remoto con sesión personal":"Remoto con token"))+
-    kv("Calendario", e.programador?e.programador.plan:"—");
+    kv("Calendario", e.programador ? (/^sin corridas/.test(e.programador.plan) ? "Sin corridas automáticas" : e.programador.plan) : "—");
 }
 // El marco mide lo que mide el piso adentro (misma página, mismo origen).
 function ajustarVivo(){
@@ -637,6 +675,7 @@ V.casos = function(){
     '<button class="b gh" id="fIr">Filtrar</button></div><div id="casosTabla">Cargando…</div></section>';
   return h;
 };
+var ESTADOS_BUZON = { isticket:"Tiquete", rejected:"Rechazado", vatiderror:"Cédula inválida", duplicate:"Duplicado", error:"Error", process:"En cola", done:"Registrada" };
 function pintarCasos(lista){
   var el = $("#casosTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada con esos filtros.</div>'; return; }
@@ -644,7 +683,7 @@ function pintarCasos(lista){
     return ['<div><b class="mono">'+esc(c.consecutivo||c.asunto||"—")+'</b><div class="sub">'+esc(c.tipo||"")+(c.fecha_documento?" · "+esc(c.fecha_documento):"")+(c.veces>1?" · llegó "+c.veces+" veces":"")+'</div></div>',
       '<div>'+esc(c.compania||"")+'<div class="sub mono">'+esc(c.receptor)+'</div></div>',
       '<div>'+esc(c.establecimiento||c.cedula_emisor||"—")+(c.identificado_por&&c.identificado_por!=="clave"?'<div class="sub">'+esc(c.identificado_por)+'</div>':"")+'</div>',
-      '<span class="est '+(c.frente==="afuera"?"alto":"critico")+'">'+esc(c.estado_buzon)+'</span>'+(c.error?'<div class="sub">'+esc(String(c.error).slice(0,120))+'</div>':""),
+      '<span class="est '+(c.frente==="afuera"?"alto":"critico")+'">'+esc(ESTADOS_BUZON[c.estado_buzon]||c.estado_buzon)+'</span>'+(c.error?'<div class="sub">'+esc(String(c.error).slice(0,120))+'</div>':""),
       '<div class="sub">'+fecha(c.ultima_vez)+(c.seguimiento!=="abierto"?'<br><span class="est '+(c.seguimiento==="resuelto"?"ok":"neutro")+'">'+c.seguimiento+'</span>'+(c.resuelto_por?' '+esc(c.resuelto_por):""):"")+'</div>',
       c.seguimiento==="abierto" ? '<button class="b gh" data-resolver="'+c.id+'">Resuelto</button>' : '<button class="b gh" data-reabrir="'+c.id+'">Reabrir</button>'];
   }));
@@ -791,7 +830,7 @@ V.correos = function(){
 function pintarCorreos(lista){
   var el=$("#corrTabla"); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="sub">Nada en este estado. Corra «Comunicación» en Inicio.</div>'; return; }
-  el.innerHTML = tabla(["Para","Asunto",{t:"Casos",n:1},"Estado",""], lista.map(function(c){
+  el.innerHTML = '<div class="cuenta"><b>'+n(lista.length)+'</b> '+(lista.length===1?"correo":"correos")+' en esta lista</div>'+tabla(["Para","Asunto",{t:"Casos",n:1},"Estado",""], lista.map(function(c){
     return ['<div><span class="mono">'+esc(c.para)+'</span><div class="sub">'+(c.frente==="afuera"?"al establecimiento":/^cobro:/.test(c.frente)?"recordatorio de cobro":"revisión interna")+' · '+esc((c.companias||[]).join(", "))+'</div></div>',
       '<a href="#" data-ver-correo="'+c.id+'">'+esc(c.asunto)+'</a>', n(c.casos),
       '<span class="est '+({borrador:"neutro",aprobado:"ok",enviado:"ok",rechazado:"critico",fallo:"critico",obsoleto:"neutro"}[c.estado]||"neutro")+'">'+esc(c.estado)+'</span>'+(c.enviado_a?'<div class="sub">→ '+esc(c.enviado_a)+'</div>':"")+(c.error?'<div class="sub">'+esc(c.error)+'</div>':""),
@@ -1114,7 +1153,7 @@ function pintarAuditoria(lista){
 
 /* ---------- piezas ---------- */
 function tile(k, v, s){ return '<div class="tile"><div class="k">'+esc(k)+'</div><div class="v">'+(v==null?"—":esc(n(v)))+'</div><div class="s">'+esc(s||"")+'</div></div>'; }
-var NIVELES = { alto:"Alto", critico:"Crítico", ok:"OK" };
+var NIVELES = { alto:"Alto", critico:"Crítico", ok:"OK", info:"Aviso" };
 function alerta(a){ return '<div class="al '+esc(a.nivel)+'"><div class="t"><span class="est '+esc(a.nivel)+'">'+esc(NIVELES[a.nivel]||a.nivel)+'</span>'+esc(a.texto)+'</div>'+(a.detalle&&a.detalle.length?'<div class="d">'+a.detalle.slice(0,6).map(esc).join("<br>")+'</div>':"")+'</div>'; }
 function tabla(cab, filas){
   return '<div class="tw"><table><thead><tr>'+cab.map(function(c){ var o=typeof c==="object"?c:{t:c}; return '<th'+(o.n?' class="n"':"")+'>'+esc(o.t)+'</th>'; }).join("")+'</tr></thead><tbody>'+
@@ -1146,28 +1185,13 @@ function marcar(m){
   if(!m) return;
   document.title="Oficina "+m.nombre;
   $("#marca").innerHTML="Oficina<small>"+esc(m.nombre)+"</small>";
-  $("#logo").innerHTML = m.logo ? '<img src="'+esc(m.logo)+'" alt="">' : esc(String(m.nombre||"O").charAt(0).toUpperCase());
+  if (m.logo) $("#logo").innerHTML = '<img src="'+esc(m.logo)+'" alt="">';   // sin logo propio queda el signo de la Oficina
   if(m.color){ var r=document.documentElement.style; r.setProperty("--sello", m.color); r.setProperty("--sello2", m.color); r.setProperty("--sobre", "#fff"); }
 }
 var TITULOS = { tablero:"Inicio", director:"Director", casos:"Casos", hallazgos:"Hallazgos", cierremes:"Cierre de mes", aprobaciones:"Aprobaciones",
   autonomia:"Autonomía", diferidos:"Diferidos", activos:"Activos fijos", extractos:"Extractos", hacienda:"Hacienda", correos:"Correos",
   corridas:"Corridas", auditoria:"Auditoría", usuarios:"Usuarios", oficina:"Oficina 2D" };
-var SUBTITULOS = {
-  casos:"Documentos por reclamar al establecimiento y por revisar adentro.",
-  aprobaciones:"Lo que los agentes proponen. Nada se escribe en Odoo sin la aprobación de una persona.",
-  correos:"Reclamos y avisos redactados. Ninguno sale sin aprobarlo.",
-  director:"Pregunte como le preguntaría a una persona. Solo lee y propone.",
-  oficina:"Los agentes en su oficina. Haga clic en uno para ver en qué está.",
-  cierremes:"Lo que falta, compañía por compañía, para cerrar el mes.",
-  hallazgos:"Lo que encontraron los agentes de solo lectura.",
-  hacienda:"Declaraciones preparadas, revisadas y por presentar.",
-  extractos:"Los movimientos del banco contra los libros.",
-  diferidos:"Gastos diferidos y su cuota de cada mes.",
-  activos:"Activos fijos y su depreciación.",
-  corridas:"Historial de corridas de los agentes.",
-  autonomia:"Qué propuestas se aprueban solas, y con qué evidencia.",
-  auditoria:"Quién hizo qué y cuándo.",
-  usuarios:"Quién entra a la oficina y qué puede ver." };
+var SUBTITULOS = { oficina:"Los agentes en su oficina. Haga clic en uno para ver en qué está." };
 var VISTAS_RECEPTOR = ["tablero","casos","correos"];
 function pintar(){
   var receptor = S.estado && S.estado.usuario && S.estado.usuario.rol==="receptor";
@@ -1187,7 +1211,7 @@ function pintar(){
   $("#vivo").hidden = !conVivo;
   if (conVivo){ pintarVivo(); cargarUltimo(); }
   $("#salir").style.display = (S.estado && S.estado.usuario && !S.estado.usuario.porToken) ? "" : "none";
-  $("#token").style.display = receptor ? "none" : "";
+  $("#token").style.display = (receptor || !$("#token").value) ? "none" : "";
   if (receptor) $("#quien").readOnly = true;
   $("#vista").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
   // el chat abre siempre en el último mensaje (al volver a la pestaña, al recargar, al responder)
