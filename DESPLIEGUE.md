@@ -16,9 +16,10 @@ calendario interno y corridas que pueden durar más de un minuto. Eso define el 
 3. Railway crea un **entorno de prueba por PR** (URL propia) donde Victor prueba contra la copia neutralizada de Odoo.
 4. Al mezclar a `main`, Railway despliega producción solo.
 
-> **Octubre 2026:** Railway tiene los registros nuevos pausados tras un incidente de seguridad del 21 de
-> octubre (acceso indebido a variables de entorno de clientes). Mientras tanto: Fly.io o Render para el
-> host definitivo, y Cloudflare Tunnel sobre una PC para probar hoy.
+> **Octubre 2026:** Railway pausó los registros nuevos tras un incidente de seguridad del 21 de octubre
+> (acceso indebido a variables de entorno de clientes); los reabrió el 2 de noviembre, solo con plan de
+> pago (Hobby, US$5/mes). Fly.io y Render siguen listos como alternativa; Cloudflare Tunnel sobre una PC
+> sirve para probar sin cuenta.
 
 ## Probar hoy desde una PC: Cloudflare Tunnel
 
@@ -59,15 +60,15 @@ En ambos casos: `SERVICIO_TOKEN` en el `.env` **antes** de abrir el túnel, y la
 2. Complete las variables marcadas `sync: false` en el panel.
 3. Cada push a `main` despliega solo. Las *Preview Environments* por PR están en el plan Pro del workspace.
 
-## Railway, paso a paso (cuando reabra registros)
+## Railway, paso a paso
 
 1. Suba el repo a GitHub (branch `app` → PR → `main`).
-2. En [railway.app](https://railway.app): **New Project → Deploy from GitHub repo** → elija `TheOffice`. Railway detecta el `Dockerfile`.
-3. **Volume**: en el servicio, *Settings → Volumes → Add Volume*, mount path `/app/inquilinos` (y otro en `/app/data` si usa un solo inquilino). Sin volumen, la base se borra en cada despliegue.
-4. **Variables** (*Settings → Variables*), mínimo:
+2. En [railway.com](https://railway.com): **New Project → Deploy from GitHub repo** → elija `TheOffice`. Railway detecta el `Dockerfile` (que no debe traer `VOLUME`: Railway lo rechaza).
+3. **Volume**: Railway permite **un** volumen por servicio. Clic derecho sobre el servicio → *Attach Volume*, mount path `/app/inquilinos`, y use siempre la lista `INQUILINOS` (aunque sea un solo inquilino, `INQUILINOS=iasima`): así base, reportes y catálogo quedan todos dentro del volumen. Sin volumen, la base se borra en cada despliegue.
+4. **Variables** (*Variables → Raw Editor* acepta el formato del `.env`), mínimo:
 
    ```
-   INQUILINOS=iasima,sima
+   INQUILINOS=iasima,sima        # o solo iasima
    IASIMA_NOMBRE=IASIMA
    IASIMA_ODOO_URL=https://iasima.tecnodem.net
    IASIMA_ODOO_DB=iasima

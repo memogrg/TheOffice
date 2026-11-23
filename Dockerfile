@@ -5,8 +5,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 COPY . .
-# Los datos de los inquilinos (bases SQLite, reportes, catálogos) viven aquí: volumen persistente.
-VOLUME ["/app/data", "/app/inquilinos", "/app/reportes"]
+# Los datos de los inquilinos (bases SQLite, reportes, catálogos) viven en /app/inquilinos (con INQUILINOS)
+# o en /app/data y /app/reportes (sin lista): monte ahí un volumen persistente del host. Sin la instrucción
+# VOLUME: Railway la rechaza («use Railway Volumes»); docker-compose y Fly montan el suyo igual.
 EXPOSE 4180
 ENV PUERTO=4180
 ENV SERVICIO_HOST=0.0.0.0
