@@ -32,7 +32,7 @@ escribe en Odoo o manda por correo pasa antes por una persona:
 
 | Pantalla | Qué se hace ahí |
 |---|---|
-| **Tablero** | Cifras de la última corrida, alertas, compañías y receptores con casos abiertos. Botones para correr cada agente (solo leen y proponen). |
+| **Inicio** (antes «Tablero») | Cifras de la última lectura del buzón, lo que espera aprobación, alertas, compañías y receptores con casos abiertos. «Lo último que se hizo» junta las corridas de los agentes y las acciones de las personas, lo más reciente primero (el detalle completo sigue en Corridas y Auditoría). A la derecha, la oficina 2D en vivo y el estado del servicio. Arriba, el interruptor **Día / Noche** (queda guardado en el navegador; la oficina 2D lo sigue). «Actualizar el buzón» corre Recepción; el resto de agentes está en «Correr otros agentes» (solo leen y proponen). |
 | **Casos** | Un caso por documento y receptor. Filtro por receptor, compañía, frente (afuera/adentro). «Resuelto» lo marca una persona; la corrida siguiente no lo pisa, y lo que deja de aparecer en Odoo se cierra solo. |
 | **Aprobaciones** | Las propuestas de Cuentas, línea por línea. Aprobar / rechazar; «Aplicar en Odoo» corre el agente en escritura **solo sobre lo aprobado** de esa compañía. |
 | **Correos** | Los borradores de Victor con vista previa. Aprobar / rechazar; enviar en prueba (todo a su correo) o de verdad. |
@@ -50,7 +50,9 @@ dirigidos a él; nada de propuestas, corridas, Director ni oficina 2D. Un **cont
 servicio sigue valiendo como contable sin nombre fijo (modo local). Las sesiones viven 30 días en una cookie. Calendario: `CORRIDA_DIARIA=07:00`
 corre Recepción y Comunicación (borradores) todos los días; `CONCILIACION_SEMANAL=1` corre Conciliación los lunes.
 
-La oficina 2D sigue existiendo (`/oficina` en el servicio, o `Oficina IASIMA.html` con doble clic).
+La oficina 2D sigue existiendo: dentro de la app (pestaña **Oficina 2D** y el piso en vivo del Inicio; `/oficina?escena=1` muestra solo el piso), sola en `/oficina`, o `Oficina IASIMA.html` con doble clic.
+
+El menú de la app va a la izquierda, agrupado: Trabajo diario (Inicio, Casos, Aprobaciones, Correos, Director, Oficina 2D), Cierre (Cierre de mes, Hallazgos, Hacienda), Libros (Extractos, Diferidos, Activos fijos) y Sistema (Corridas, Autonomía, Auditoría, Usuarios).
 
 **Varios inquilinos.** La misma app atiende varias firmas, cada una con su Odoo, su base, sus reglas,
 su calendario, su Director y su marca: `INQUILINOS=iasima,sima` y `IASIMA_ODOO_URL=…`, `SIMA_ODOO_URL=…`

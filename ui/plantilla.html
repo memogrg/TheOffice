@@ -149,6 +149,14 @@ button.b.dg{background:none; color:var(--hold); border-color:var(--hold)}
   color:var(--ink3); display:block; margin-bottom:4px}
 footer{margin-top:14px; font-size:11.5px; color:var(--ink3); line-height:1.6; padding:0 4px}
 footer b{color:var(--ink2)} footer code{font-family:var(--m); font-size:10.5px}
+/* Modo escena (/oficina?escena=1): solo el piso con los agentes, para mostrarlo dentro del Inicio de la app. */
+html.escena body{background:transparent}
+html.escena .app{max-width:none; padding:0}
+html.escena .titlebar, html.escena .side, html.escena .roster, html.escena footer{display:none}
+html.escena .main{display:block}
+html.escena .stagewrap{border:0; padding:0; background:transparent}
+@media(max-width:560px){ html.escena .nmtag, html.escena .zone{display:none}
+  html.escena .bub{max-width:150px; font-size:9.5px; padding:2px 5px} }
 </style>
 
 <div class="app">
@@ -202,6 +210,9 @@ footer b{color:var(--ink2)} footer code{font-family:var(--m); font-size:10.5px}
 
 <script>
 window.__DATOS__ = /*DATOS*/ null /*FIN*/;
+if(/[?&]escena(=|&|$)/.test(location.search)) document.documentElement.classList.add("escena");
+// Día / noche: el mismo que se eligió en la app (misma clave del navegador).
+try{ var __t=localStorage.getItem("iasima_tema"); if(__t==="dark"||__t==="light") document.documentElement.setAttribute("data-theme",__t); }catch(e){}
 </script>
 <script>
 /*DIRECTOR*/ /*FINDIRECTOR*/
@@ -210,6 +221,8 @@ window.__DATOS__ = /*DATOS*/ null /*FIN*/;
 (function(){
 "use strict";
 var D = window.__DATOS__;
+// En modo escena (dentro del Inicio de la app) un clic en un agente abre la oficina completa.
+function avisarApp(){ if(document.documentElement.classList.contains("escena") && window.parent!==window){ try{ window.parent.postMessage({oficina:"abrir"}, location.origin); }catch(e){} } }
 
 /* ================= sprites ================= */
 var CUERPO = [
@@ -408,7 +421,7 @@ var CHARLAS=[
   ["esa compañía está fea","573 sin registrar, sí"],
   ["¿la CCSS de enero?","sigue sin liquidar, ya propuse el asiento"],
   ["¿cuadró el banco?","faltan dos comisiones, van en el asiento"],
-  ["¿le damos autonomía al diferencial?","dos meses limpios, decide él"]
+  ["¿le damos autonomía al diferencial?","dos meses limpios, decide él"],
   ["¿el reporte ya salió?","falta el correo del cliente"]
 ];
 var elegir=function(a){ return a[Math.floor(Math.random()*a.length)]; };
@@ -512,9 +525,9 @@ function dibujarActores(){
   });
   ov.innerHTML=o;
   Array.prototype.forEach.call(g.querySelectorAll(".act"), function(n){
-    n.addEventListener("click", function(){ sel=n.getAttribute("data-ag"); tab="a"; pintar(); });
+    n.addEventListener("click", function(){ sel=n.getAttribute("data-ag"); tab="a"; pintar(); avisarApp(); });
     n.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault();
-      sel=n.getAttribute("data-ag"); tab="a"; pintar(); } });
+      sel=n.getAttribute("data-ag"); tab="a"; pintar(); avisarApp(); } });
   });
 }
 

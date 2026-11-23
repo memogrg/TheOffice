@@ -38,9 +38,12 @@ export const CSP = [
   "frame-src 'self'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'", "object-src 'none'"
 ].join("; ");
 
-export function cabeceras(extra = {}, { html = false } = {}) {
-  return { "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()", ...(html ? { "Content-Security-Policy": CSP } : {}), ...extra };
+// marcoPropio: la oficina 2D se muestra dentro de la app (pestaña Oficina 2D e Inicio), así que esa
+// página sí admite un marco, pero solo del mismo origen. Todo lo demás sigue sin poder enmarcarse.
+export function cabeceras(extra = {}, { html = false, marcoPropio = false } = {}) {
+  const csp = marcoPropio ? CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'") : CSP;
+  return { "X-Content-Type-Options": "nosniff", "X-Frame-Options": marcoPropio ? "SAMEORIGIN" : "DENY", "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()", ...(html ? { "Content-Security-Policy": csp } : {}), ...extra };
 }
 
 // Un POST con cookie de otro sitio (CSRF): si trae Origin, tiene que ser el mismo host.

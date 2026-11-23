@@ -612,7 +612,7 @@ export function crearApi(opciones) {
         const rutaEstado = join(ctx.raiz, "data", "estado.json");
         const estado = existsSync(rutaEstado) ? JSON.parse(readFileSync(rutaEstado, "utf8")) : { agentes: [] };
         const html = generarOficina({ raizProyecto, raiz: ctx.raiz, cfg: ctx.cfg, estado, marca: ctx.corridas?.marca || ctx.inquilino, prefijo: ctx.corridas?.prefijo ?? (r0.prefijo || "") });
-        res.writeHead(200, cabeceras({ "Content-Type": TIPOS[".html"], "Cache-Control": "no-store" }, { html: true }));
+        res.writeHead(200, cabeceras({ "Content-Type": TIPOS[".html"], "Cache-Control": "no-store" }, { html: true, marcoPropio: true }));
         return res.end(html);
       }
       return estatico(res, raizProyecto, pathname);

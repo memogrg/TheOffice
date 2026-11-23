@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { BaseDeDatos } from "../src/servicio/db.js";
 import { crearApi } from "../src/servicio/api.js";
-import { avisosDeArranque, Limitador } from "../src/servicio/seguridad.js";
+import { avisosDeArranque, Limitador, cabeceras } from "../src/servicio/seguridad.js";
 
 const TOKEN = "un-token-largo-y-al-azar-de-prueba-123456";
 async function levantar(cfg) {
@@ -89,4 +89,14 @@ test("Avisos al arrancar y limitador", () => {
   l.fallo("a", 0); l.fallo("a", 10);
   assert.equal(l.bloqueado("a", 20), true);
   assert.equal(l.bloqueado("a", 2000), false, "la ventana vence");
+});
+
+test("la oficina 2D solo se puede enmarcar desde la propia app", () => {
+  const normal = cabeceras({}, { html: true });
+  assert.equal(normal["X-Frame-Options"], "DENY");
+  assert.match(normal["Content-Security-Policy"], /frame-ancestors 'none'/);
+  const oficina = cabeceras({}, { html: true, marcoPropio: true });
+  assert.equal(oficina["X-Frame-Options"], "SAMEORIGIN");
+  assert.match(oficina["Content-Security-Policy"], /frame-ancestors 'self'/);
+  assert.doesNotMatch(oficina["Content-Security-Policy"], /frame-ancestors 'none'/);
 });
