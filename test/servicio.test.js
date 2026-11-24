@@ -134,6 +134,39 @@ test("programador: dispara una vez al día a la hora dicha y no repite tras rein
   assert.match(new Programador({ corridas, db, cfg: {} }).describir(), /sin corridas programadas/);
 });
 
+test("programador: una corrida fallida se reintenta a los 10 y 30 minutos y después se deja para mañana (no cada minuto)", async () => {
+  const hoy = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };
+  // Sin instancia simulada, Recepción falla al conectar
+  const { db, corridas, cfg: c } = armar({ CORRIDA_DIARIA: "07:00", ODOO_SIMULADO: "no-existe.json" });
+  const mensajes = [];
+  let reloj = hoy(7, 0);
+  const prog = new Programador({ corridas, db, cfg: c, reloj: () => reloj, log: m => mensajes.push(m) });
+  // La base guarda la hora real; el reloj del test es falso: se alinea cada fallo con el reloj.
+  const alinear = () => { const u = db.ultimaCorridaCualquiera("recepcion"); db.correr("UPDATE corridas SET inicio=?, fin=? WHERE id=?", reloj.toISOString(), reloj.toISOString(), u.id); };
+  assert.deepEqual(await prog.tick(), ["recepcion"], "primer intento"); alinear();
+  assert.equal(db.corridas({ agente: "recepcion" }).length, 1);
+  assert.equal(prog.ultimoFallo.intentos, 1);
+  reloj = hoy(7, 1); assert.deepEqual(await prog.tick(), [], "al minuto no se repite");
+  reloj = hoy(7, 9); assert.deepEqual(await prog.tick(), []);
+  reloj = hoy(7, 10); assert.deepEqual(await prog.tick(), ["recepcion"], "segundo intento a los 10 min"); alinear();
+  reloj = hoy(7, 30); assert.deepEqual(await prog.tick(), [], "el tercero espera 30 min");
+  reloj = hoy(7, 40); assert.deepEqual(await prog.tick(), ["recepcion"], "tercer intento"); alinear();
+  reloj = hoy(8, 40); assert.deepEqual(await prog.tick(), [], "agotados los intentos del día");
+  reloj = hoy(23, 59); assert.deepEqual(await prog.tick(), []);
+  assert.equal(db.corridas({ agente: "recepcion" }).length, 3, "tres corridas en el día, no una por minuto");
+  assert.ok(mensajes.some(m => /no se reintenta hasta mañana/.test(m)));
+  assert.equal(db.corridas({ agente: "comunicacion" }).length, 0, "Comunicación y Diagnóstico no corren si Recepción falló");
+  // Salud: la última corrida falló por otra cosa (archivo faltante) → «fallo»; con error de credenciales → «sin-acceso»
+  const { saludOdoo } = await import("../src/servicio/salud.js");
+  assert.equal(saludOdoo(db).estado, "fallo");
+  const id = db.abrirCorrida("recepcion"); db.fallarCorrida(id, "Usuario o contraseña incorrectos.");
+  const sl = saludOdoo(db);
+  assert.equal(sl.estado, "sin-acceso"); assert.equal(sl.intentos, 4); assert.match(sl.texto, /Odoo rechaza la conexión/); assert.match(sl.queHacer, /credenciales/);
+  assert.equal(db.ultimoFallo("recepcion").error, "Usuario o contraseña incorrectos.");
+  const ok = db.abrirCorrida("recepcion"); db.cerrarCorrida(ok, { totales: {} });
+  assert.equal(saludOdoo(db).estado, "ok"); assert.equal(db.ultimoFallo("recepcion"), null, "una corrida buena posterior borra el fallo de la tarjeta");
+});
+
 test("API: estado, correr, casos, propuestas, correos, token", async () => {
   const { raiz, db, corridas, cfg: c } = armar({ SERVICIO_TOKEN: "secreto" });
   writeFileSync(join(raiz, "ui", "app.html"), ""); mkdirSync(join(raiz, "ui", "app"), { recursive: true });
@@ -162,6 +195,7 @@ test("API: estado, correr, casos, propuestas, correos, token", async () => {
     assert.equal(sinOficina.status, 302, "la oficina sin token manda a la app para entrar");
 
     const e0 = await get("/api/estado");
+    assert.equal(e0.salud.estado, "ok");
     assert.equal(e0.ultimas.recepcion, null);
     assert.equal(e0.escrituraPermitida, true);
 

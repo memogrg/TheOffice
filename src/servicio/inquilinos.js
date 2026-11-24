@@ -49,7 +49,7 @@ export function cargarInquilinos(cfg, raizProyecto) {
 function prepararRaiz(raiz, raizProyecto) {
   mkdirSync(join(raiz, "data"), { recursive: true });
   mkdirSync(join(raiz, "reportes"), { recursive: true });
-  for (const f of ["roster.json", "reglas.json"]) {
+  for (const f of ["roster.json", "reglas.json", "reglas-firma.md"]) {
     const destino = join(raiz, "data", f), origen = join(raizProyecto, "data", f);
     if (!existsSync(destino) && existsSync(origen)) copyFileSync(origen, destino);
   }

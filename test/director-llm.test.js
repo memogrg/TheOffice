@@ -48,7 +48,7 @@ function armar(extra = {}, fetchImpl) {
   const db = new BaseDeDatos(":memory:");
   const cfg = { ...base, ...extra };
   const corridas = new Corridas({ db, cfg, raiz });
-  const director = new DirectorLLM({ db, corridas, cfg, raiz, fetchImpl });
+  const director = new DirectorLLM({ db, corridas, cfg, raiz, raizProyecto: RAIZ, fetchImpl });
   return { raiz, db, cfg, corridas, director };
 }
 
@@ -309,4 +309,19 @@ test("corrección 2 del log: el Director nunca manda a editar a mano en Odoo; an
   assert.match(s, /proponer_regla/);
   assert.match(s, /naturaleza/);
   assert.match(s, /Nunca propongas 7\.01\.01 ni 5\.04\.99\/5\.04\.999/);
+});
+
+test("log del 23 nov: el Director lleva las reglas fijas de la firma y «estado» no esconde los fallos de acceso a Odoo", async () => {
+  const { director, db } = armar({ CLAUDE_API_KEY: "x" });
+  const s = director.sistema();
+  assert.match(s, /Reglas fijas de la firma/);
+  assert.match(s, /5\.04\.02\.04/, "internet va a 5.04.02.04");
+  assert.match(s, /5\.04\.17\.01 Relaciones públicas/);
+  assert.match(s, /se reporta y se escala/, "mes entregado: no se registra por cuenta propia");
+  assert.match(s, /Nunca digas que no hay corridas cuando lo que hay son corridas fallidas/);
+  const id = db.abrirCorrida("recepcion"); db.fallarCorrida(id, "Usuario o contraseña incorrectos.");
+  const e = await director.ejecutarHerramienta("estado", {}, "victor");
+  assert.equal(e.salud.estado, "sin-acceso");
+  assert.match(e.salud.texto, /Odoo rechaza la conexión/);
+  assert.equal(e.fallosRecientes.length, 1); assert.equal(e.fallosRecientes[0].agente, "recepcion");
 });

@@ -32,7 +32,7 @@ const contextos = inquilinos.map(inq => {
   const prefijo = inq.unico || inq.dominio ? "" : `/t/${inq.id}`;
   const corridas = new Corridas({ db, cfg: c, raiz: inq.raiz, raizProyecto: RAIZ, marca: inq, prefijo, log: logI });
   const programador = new Programador({ corridas, db, cfg: c, log: logI });
-  const director = new DirectorLLM({ db, corridas, cfg: c, raiz: inq.raiz, log: logI });
+  const director = new DirectorLLM({ db, corridas, cfg: c, raiz: inq.raiz, raizProyecto: RAIZ, log: logI });
   return { inquilino: inq, db, corridas, programador, director, cfg: c, raiz: inq.raiz };
 });
 const api = crearApi({ contextos, raizProyecto: RAIZ, log });

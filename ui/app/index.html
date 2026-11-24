@@ -290,7 +290,7 @@ V.tablero = function(){
   var e = S.estado, u = e.ultimas, rec = u.recepcion, p = e.pendientes;
   var t = rec && rec.totales || {};
   var ab = {}; (e.casos.porFrente||[]).forEach(function(x){ ab[x.frente+"|"+x.seguimiento]=x.n; });
-  var h = '<div class="fila">'+
+  var h = avisoSalud(e)+'<div class="fila">'+
     (e.enCurso?'<span class="est alto">Corriendo: '+esc(e.enCurso.agente)+'…</span>':"")+
     '<span style="flex:1"></span>'+
     '<button class="b gh g" data-cm-ir="director">Preguntar al Director</button>'+
@@ -458,10 +458,19 @@ function ajustarVivo(){
   var f=$("#vivoMarco iframe"); if(!f || $("#vivo").hidden) return;
   try{ var a=f.contentDocument && f.contentDocument.querySelector(".app"); if(a && a.offsetHeight) f.style.height=a.offsetHeight+"px"; }catch(x){}
 }
+// Si Odoo rechaza la conexión (o la última corrida falló), se dice arriba en rojo: no «el buzón todavía no se ha leído».
+function avisoSalud(e){
+  var sl=e&&e.salud; if(!sl || sl.estado==="ok") return "";
+  var critico = sl.estado==="sin-acceso";
+  return '<div class="aviso" style="border-color:var(--critico)"><b>'+(critico?"Odoo rechaza la conexión.":"La última corrida falló.")+'</b> '+esc(sl.texto||sl.error||"")+
+    (critico&&sl.queHacer?'<div class="sub" style="margin-top:4px">'+esc(sl.queHacer)+'</div>':"")+
+    (sl.ultimaOk?'<div class="sub" style="margin-top:4px">Última corrida buena: '+esc(sl.ultimaOk.agente)+', '+fecha(sl.ultimaOk.fin)+'.</div>':"")+'</div>';
+}
 function subInicio(){
   var e=S.estado||{}, f = e.ultimas ? (e.ultimas.recepcion && e.ultimas.recepcion.fin) : e.ultimaRecepcion;
   var hoy = new Date().toLocaleDateString("es-CR",{weekday:"long",day:"numeric",month:"long"});
-  return hoy.charAt(0).toUpperCase()+hoy.slice(1)+" · "+(f ? "última lectura del buzón: "+fecha(f) : "el buzón todavía no se ha leído");
+  var sl=e.salud;
+  return hoy.charAt(0).toUpperCase()+hoy.slice(1)+" · "+(sl&&sl.estado==="sin-acceso" ? "sin acceso a Odoo desde "+fecha(sl.desde) : f ? "última lectura del buzón: "+fecha(f) : "el buzón todavía no se ha leído");
 }
 // Contadores del menú: lo abierto y lo que espera aprobación.
 function contadores(receptor){
@@ -554,8 +563,9 @@ var ARREGLO = { "configuración":"configuración", emisor:"reclamo al emisor", d
 var ESTADO_BANCO = { "atrasada":["atrasada","alto"], "solo-borradores":["solo borradores","alto"], "nunca-conciliada":["nunca conciliada","critico"], "al-dia":["al día","ok"], "sin-movimiento":["sin movimiento","neutro"] };
 function pintarHallazgo(id, r){
   var el=$("#hz-"+id); if(!el) return;
-  if(!r || !r.corrida){ el.innerHTML='<div class="sub">Todavía no ha corrido. Pulse «Correr ahora».</div>'; return; }
-  var h = '<div class="sub" style="margin-bottom:6px">Última corrida: '+fecha(r.fin||r.corrida)+'</div>'+(r.alertas||[]).map(alerta).join("");
+  var fallo = r && r.ultimoFallo ? '<div class="al critico"><div class="t"><span class="est critico">falló</span>La corrida de '+fecha(r.ultimoFallo.fin||r.ultimoFallo.inicio)+' no terminó: '+esc(r.ultimoFallo.error||"")+'</div></div>' : "";
+  if(!r || !r.corrida){ el.innerHTML=fallo+'<div class="sub">'+(fallo?"Sin resultados todavía.":"Todavía no ha corrido. Pulse «Correr ahora».")+'</div>'; return; }
+  var h = fallo+'<div class="sub" style="margin-bottom:6px">Última corrida buena: '+fecha(r.fin||r.corrida)+(fallo?' (lo de abajo es de esa corrida)':'')+'</div>'+(r.alertas||[]).map(alerta).join("");
   if (id==="diagnostico") h += tabla(["Causa",{t:"Correos",n:1},"Compañías","Qué hacer","Quién",""], (r.causas||[]).map(function(c){
     return ['<b>'+esc(c.titulo)+'</b>'+(c.pendientes&&c.pendientes.length?'<details><summary class="sub" style="cursor:pointer">'+c.pendientes.length+' pendientes concretos</summary><div class="sub">'+c.pendientes.slice(0,20).map(function(p){ return esc(p.compania)+' — '+esc(p.detalle)+' ('+p.correos+')'; }).join("<br>")+'</div></details>':""),
       n(c.correos), '<span class="sub">'+c.companias.slice(0,3).map(function(x){ return esc(x.compania)+' ('+x.correos+')'; }).join("<br>")+(c.companias.length>3?'<br>+'+(c.companias.length-3)+' más':"")+'</span>',
@@ -1060,7 +1070,7 @@ function verDeclaracion(id){
 function accionDecl(ruta, cuerpo, ok){ api("/api/hacienda/"+S.decl.id+ruta, cuerpo).then(function(j){ msg(j.mensaje||ok||"Listo."); cargarHacienda(); verDeclaracion(S.decl.id); }).catch(function(e){ msg(e.message,true); }); }
 /* ---------- Activos fijos (ítem 16): registro en la app, depreciación a la cola de asientos ---------- */
 V.activos = function(){
-  return '<section><h2>Activos fijos</h2><div class="aviso">En IASIMA los activos no están cargados en Odoo y la depreciación se hace a mano. Registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
+  return '<section><h2>Activos fijos</h2><div class="aviso">Para las compañías que no llevan sus activos en el módulo de Odoo y deprecian a mano: registre aquí cada activo con su costo, valor residual, vida útil y las cuentas de <b>depreciación acumulada</b> y <b>gasto</b>. Si ya se venía depreciando a mano, indique <b>hasta qué mes</b>: desde el siguiente lo propone el agente <b>Depreciación</b> en <b>Aprobaciones → Asientos</b>. Si en un mes la compañía ya depreció a mano, no se propone nada para no duplicar.</div>'+
     '<form class="fila" id="afForm"><select id="afCia" required><option value="">compañía…</option>'+opcionesCia()+'</select>'+
     '<input class="f" id="afDesc" placeholder="activo (p. ej. Pickup Toyota placa …)" style="flex:1;min-width:200px" required><input class="f" id="afCat" placeholder="categoría" style="width:120px">'+
     '<input class="f" id="afAcu" placeholder="cuenta dep. acumulada" style="width:160px" required><input class="f" id="afGas" placeholder="cuenta gasto depreciación" style="width:170px" required>'+

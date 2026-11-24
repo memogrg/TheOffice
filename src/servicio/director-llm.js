@@ -23,13 +23,14 @@ import * as cambiosSrv from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
 import * as activosSrv from "./activos.js";
 import * as cierreMesSrv from "./cierreMes.js";
+import { saludOdoo } from "./salud.js";
 import { Clasificador, resolverEnPlan } from "../clasificador.js";
 
 const API = "https://api.anthropic.com/v1/messages";
 
 export class DirectorLLM {
-  constructor({ db, corridas, cfg, raiz, log = () => {}, fetchImpl = globalThis.fetch }) {
-    this.db = db; this.corridas = corridas; this.cfg = cfg; this.raiz = raiz; this.log = log; this.fetch = fetchImpl;
+  constructor({ db, corridas, cfg, raiz, raizProyecto = raiz, log = () => {}, fetchImpl = globalThis.fetch }) {
+    this.db = db; this.corridas = corridas; this.cfg = cfg; this.raiz = raiz; this.raizProyecto = raizProyecto; this.log = log; this.fetch = fetchImpl;
     this.modelo = cfg.DIRECTOR_MODELO || "claude-sonnet-4-5";
     this.maxPasos = Number(cfg.DIRECTOR_MAX_PASOS || 12);
     // Memoria: cuántos turnos recientes van completos (con resultados de herramientas) y el tope
@@ -47,7 +48,7 @@ export class DirectorLLM {
     return [
       { name: "companias", description: "Lista las compañías de la instancia (id y nombre). Úsala para resolver el nombre que dio el usuario a un id antes de llamar a cuentas o filtrar casos.",
         input_schema: { type: "object", properties: { buscar: { type: "string", description: "texto a buscar en el nombre (opcional)" } } } },
-      { name: "estado", description: "Estado general: última corrida de cada agente con sus totales y alertas, casos abiertos por frente/receptor/compañía, pendientes de aprobación.",
+      { name: "estado", description: "Estado general: salud de la conexión con Odoo (si las corridas están fallando por credenciales o red, aquí sale primero y hay que decirlo así), última corrida buena de cada agente con sus totales y alertas, últimos fallos con su error, casos abiertos por frente/receptor/compañía, pendientes de aprobación.",
         input_schema: { type: "object", properties: {} } },
       { name: "correr_agente", description: "Ejecuta un agente contra Odoo AHORA y devuelve sus totales y alertas. recepcion (Marta): buzón de todas las compañías. conciliacion: correos registrados sin asiento. cuentas: propone cuentas contables de UNA compañía (obligatorio empresa), solo propone. comunicacion (Victor): redacta borradores a partir de la última corrida de Marta, no envía. diagnostico: por qué fallan los correos del buzón (causa, qué hacer, quién; periodos fiscales por abrir). recurrentes: servicios que llegan todos los meses y faltaron o vinieron con monto anormal en el último mes cerrado. bancos: estado de las conciliaciones bancarias por cuenta (atrasadas, borradores, nunca conciliadas). documentos: notas de crédito sin ligar a su factura (propone el vínculo) y huecos en consecutivos de venta. cierre: cuentas puente (salarios, CCSS, IVA, retenciones, renta, transitorias) que arrastran saldo sin liquidar y cuadre de IVA del mes (débito, crédito, IVA en cuentas equivocadas, borradores). estados: balance de situación y estado de resultados por compañía al cierre del mes (cajas en negativo, proveedores del lado contrario, años sin cerrar). cambiario: revalúa a fin de mes los saldos en dólares (bancos en moneda extranjera, clientes y proveedores abiertos) y propone el asiento de diferencial cambiario con reversión el día 1. diferidos: arma el asiento del mes con la cuota de cada gasto diferido registrado (y las atrasadas). depreciacion: arma el asiento de depreciación del mes de los activos fijos registrados (no lo propone si la compañía ya depreció a mano ese mes). cartera: antigüedad de cuentas por cobrar y por pagar por compañía, clientes morosos, pagos que vencen pronto; redacta recordatorios de cobro (borradores en Correos, no envía). datos: calidad de los contactos (cédulas repetidas, inválidas o faltantes, clientes sin correo, posibles duplicados por nombre). extractos: empareja los extractos bancarios subidos en la app con los libros, propone asientos de cargos bancarios, intereses y transferencias propias, y sugiere la factura de cada cobro o pago sin registrar. hacienda: prepara por compañía las declaraciones de TRIBU-CR del último mes cerrado (IVA formulario 150, informativa 270 y el acumulado de renta 102) con el juez de reglas; quedan en la pestaña Hacienda. Tarda de 5 a 60 segundos.",
         input_schema: { type: "object", properties: { agente: { type: "string", enum: ["recepcion", "conciliacion", "cuentas", "comunicacion", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"] }, empresa: { type: "integer", description: "id de compañía, obligatorio para cuentas" } }, required: ["agente"] } },
@@ -115,7 +116,9 @@ export class DirectorLLM {
           const u = db.ultimaCorrida(a);
           ultimas[a] = u ? { corrida: u.id, fin: u.fin, compania: u.compania, totales: u.totales, alertas: (u.alertas || []).map(x => x.texto), porEstado: u.resultado?.porEstado } : null;
         }
-        return { ultimas, casos: db.resumenCasos(), pendientes: { propuestas: db.propuestas({ estado: "propuesta" }).length, correosBorrador: db.correos({ estado: "borrador" }).length } };
+        const salud = saludOdoo(db);
+        const fallos = db.corridas({ limite: 60 }).filter(c => c.estado === "fallo").slice(0, 5).map(c => ({ corrida: c.id, agente: c.agente, cuando: c.fin || c.inicio, error: String(c.error || "").slice(0, 200) }));
+        return { salud, fallosRecientes: fallos, ultimas, casos: db.resumenCasos(), pendientes: { propuestas: db.propuestas({ estado: "propuesta" }).length, correosBorrador: db.correos({ estado: "borrador" }).length } };
       }
       case "correr_agente": {
         const a = args.agente;
@@ -331,7 +334,16 @@ export class DirectorLLM {
   }
 
   // --- El bucle de conversación -------------------------------------------------------
+  // Las reglas duras de la firma (data/reglas-firma.md): la copia del inquilino si la editaron, si no la del repo.
+  // Se leen en cada turno para que un cambio en el archivo entre sin reiniciar.
+  reglasFirma() {
+    for (const r of [join(this.raiz, "data", "reglas-firma.md"), join(this.raizProyecto, "data", "reglas-firma.md")]) {
+      if (existsSync(r)) { try { return readFileSync(r, "utf8").slice(0, 16_000); } catch { /* siguiente */ } }
+    }
+    return "";
+  }
   sistema(memoria = "") {
+    const reglasFirma = this.reglasFirma();
     const ag = this.roster.agentes.map(a => `- ${a.nombre}${a.rol && a.rol !== a.nombre ? ` (${a.rol})` : ""}: ${a.hace} No hace: ${a.noHace}${a.escribe ? " ESCRIBE EN ODOO: por el Director solo propone." : ""}`).join("\n");
     const nc = (this.roster.noConstruidos || []).map(a => `- ${a.nombre}: ${a.hace}`).join("\n");
     const congelada = this.cfg.ALERTA_REFERENCIA === "ultimo-correo" ? "\nEsta instancia es una copia de pruebas congelada: las horas sin ingesta se miden contra el último correo, no contra hoy." : "";
@@ -355,9 +367,10 @@ Reglas:
    - Si dicta un asiento puntual (un pago, una reclasificación, una provisión), llamá a "proponer_asiento": queda en Aprobaciones → Asientos. Si pregunta qué asientos hay pendientes o qué propuso Cierre, usá "asientos".
    - Si pide corregir, publicar, enviar o borrar algo puntual, explicá exactamente qué se cambiaría y terminá con: "Esto requiere aprobación humana en la pestaña Aprobaciones; no lo ejecuté."
 4. Respondé en español, breve, con las cifras y, cuando sea útil, el agente y la herramienta que usaste. Podés usar **negrita** y listas con "- "; la app las muestra formateadas.
-5. Criterio contable (guía de Victor, docs/guia-clasificacion-cuentas.md): regla propia del cliente → naturaleza del gasto (qué se compró y a quién) → historial → consulta al contador. Nunca propongas 7.01.01 ni 5.04.99/5.04.999 como destino: lo no identificado se reporta. Gasto que parece personal: consulta. Relaciones públicas frente a Gastos no justificados afecta la deducibilidad: la confirma el contador. Si preguntan en qué cuenta contable debería ir una factura o sus ítems, usá "revisar_factura" (una sola llamada trae líneas, cuenta actual, sugerencia del catálogo y plan): no reconstruyas eso con leer_odoo. Si leés account.account con leer_odoo, pasá compania: sin ella el code viene vacío y NO significa que la cuenta no tenga código.
+5. Criterio contable: el de la firma, no el tuyo. Abajo van sus reglas fijas (data/reglas-firma.md); lo que contradiga esas reglas no se propone aunque parezca razonable. Orden: regla propia del cliente → naturaleza del gasto (qué se compró y a quién) → historial → consulta al contador. Nunca propongas 7.01.01 ni 5.04.99/5.04.999 como destino: lo no identificado se reporta. Gasto que parece personal: consulta. Relaciones públicas frente a Gastos no justificados afecta la deducibilidad: la confirma el contador. Si preguntan en qué cuenta contable debería ir una factura o sus ítems, usá "revisar_factura" (una sola llamada trae líneas, cuenta actual, sugerencia del catálogo y plan): no reconstruyas eso con leer_odoo. Si leés account.account con leer_odoo, pasá compania: sin ella el code viene vacío y NO significa que la cuenta no tenga código.
 6. Estados del buzón: done registrada; isticket tiquete (no deducible, se reclama al establecimiento); rejected rechazada (se reclama); duplicate, error, process, vatiderror (se revisan adentro). La clave de Hacienda son 50 dígitos; tipo de documento en posiciones 30-31 (04 = tiquete); cédula del emisor en 10-21.${congelada}
-7. Tenés memoria: la conversación en curso te llega completa y abajo va lo que esta persona habló con vos en otras conversaciones de los últimos ${this.retencionDias} días. Si se refiere a algo de antes («la factura que vimos ayer», «lo de Ceiba»), usalo. Las cifras de antes pueden estar viejas: si pide un dato actual, volvé a consultar la herramienta.${memoria ? `\n\nConversaciones anteriores con esta persona:\n${memoria}` : ""}`;
+7. Tenés memoria: la conversación en curso te llega completa y abajo va lo que esta persona habló con vos en otras conversaciones de los últimos ${this.retencionDias} días. Si se refiere a algo de antes («la factura que vimos ayer», «lo de Ceiba»), usalo. Las cifras de antes pueden estar viejas: si pide un dato actual, volvé a consultar la herramienta.
+8. Si "estado" trae salud distinta de ok, eso va primero en tu respuesta y con el error tal cual: Odoo rechaza la conexión o la corrida falla por X desde Y; hay que avisar a quien administra la Oficina. Nunca digas que no hay corridas cuando lo que hay son corridas fallidas.${reglasFirma ? `\n\nReglas fijas de la firma:\n${reglasFirma}` : ""}${memoria ? `\n\nConversaciones anteriores con esta persona:\n${memoria}` : ""}`;
   }
 
   // conversacion: el historial guardado de ESTA conversación; conversacionId: su id, para que la

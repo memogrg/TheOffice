@@ -977,6 +977,18 @@ export class BaseDeDatos {
   ultimaCorrida(agente) {
     return desempacar(this.uno("SELECT * FROM corridas WHERE agente=? AND estado='ok' ORDER BY id DESC LIMIT 1", agente));
   }
+  // La última terminada, salga bien o mal (para contar intentos y mostrar el fallo).
+  ultimaCorridaCualquiera(agente) {
+    return desempacar(this.uno("SELECT id, agente, inicio, fin, estado, error FROM corridas WHERE agente=? AND estado<>'corriendo' ORDER BY id DESC LIMIT 1", agente));
+  }
+  // El último fallo de un agente si es más reciente que su última corrida buena (null si no).
+  ultimoFallo(agente) {
+    const u = this.ultimaCorridaCualquiera(agente);
+    return u && u.estado === "fallo" ? { corrida: u.id, inicio: u.inicio, fin: u.fin, error: u.error } : null;
+  }
+  corridasDesde(agente, desdeISO) {
+    return this.todos("SELECT id, agente, inicio, fin, estado, error FROM corridas WHERE agente=? AND inicio>=? ORDER BY id DESC", agente, desdeISO).map(desempacar);
+  }
 
   // --- casos: se sincronizan con lo que trae la corrida.
   // Los que ya existían y siguen apareciendo se actualizan (ultima_vez, veces); los nuevos se

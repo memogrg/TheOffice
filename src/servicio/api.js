@@ -18,6 +18,7 @@ import { resolverInquilino, marcaDe } from "./inquilinos.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
+import { saludOdoo } from "./salud.js";
 import { esRemota, ipDe, Limitador, cabeceras, origenAjeno, esJSON, RUTAS_CON_SESION } from "./seguridad.js";
 import * as cambios from "./cambios.js";
 import * as diferidosSrv from "./diferidos.js";
@@ -56,7 +57,8 @@ export function crearApi(opciones) {
     escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), escrituraCuentas: cambios.escrituraCuentas(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
     enCurso: ctx.corridas.enCurso,
-    programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick } : null,
+    salud: saludOdoo(ctx.db),
+    programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick, ultimoFallo: ctx.programador.ultimoFallo } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
     ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
@@ -122,8 +124,8 @@ export function crearApi(opciones) {
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
     if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].includes(p.agente)) return error(404, "No existe ese agente.");
-    const u = ctx.db.ultimaCorrida(p.agente);
-    return u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null };
+    const u = ctx.db.ultimaCorrida(p.agente), fallo = ctx.db.ultimoFallo(p.agente);   // el fallo solo si es más nuevo que la última buena
+    return { ...(u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null }), ultimoFallo: fallo };
   });
 
   // --- consultas al contador (lo que Cuentas no cierra solo, según la guía de clasificación)

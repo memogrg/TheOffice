@@ -83,6 +83,7 @@ Los datos de cada uno viven en `inquilinos/<id>/`. Sin `INQUILINOS`, todo funcio
 | `ui/app/index.html` | La app web que sirve el servicio. |
 | `scripts/construir-catalogo.js` | Arma `data/catalogo-cuentas.json` desde el histórico de Odoo (sin Excel). |
 | `data/roster.json` | El contrato de cada agente. El Director lo lee. |
+| `data/reglas-firma.md` | Las reglas duras de registro y de cierre de la firma (internet a 5.04.02.04, restaurante a Relaciones públicas, meses entregados no se tocan, controles B3, vidas útiles). El Director las lleva en cada conversación; se editan a mano, sin reiniciar. Cada inquilino puede tener su copia en `inquilinos/<id>/data/`. |
 | `data/reglas.json` | Decisiones humanas sobre cuentas. Mandan sobre el histórico. |
 | `ui/plantilla.html` | La oficina 2D. `run.js` la rellena y escribe `Oficina IASIMA.html`. |
 | `test/` | Pruebas (`node:test`) y el Odoo simulado (`test/simulado/`). |
@@ -171,7 +172,7 @@ Por omisión el servicio solo escucha en esta PC; lo remoto (túnel, proxy, otra
 | `PERMITIR_ESCRITURA` | `si` habilita a CUENTAS a modificar Odoo (además de `--aplicar`). |
 | `CATALOGO_CUENTAS` | Otro catálogo que no sea `data/catalogo-cuentas.json`. |
 | `PUERTO`, `BASE_DE_DATOS`, `SERVICIO_TOKEN` | Del servicio: puerto (4180), ruta de la base (`data/oficina.db`), token para las acciones. |
-| `CORRIDA_DIARIA`, `CONCILIACION_SEMANAL` | Calendario del servicio: hora local `HH:MM` y día de la semana (0 domingo … 6 sábado). |
+| `CORRIDA_DIARIA`, `CONCILIACION_SEMANAL` | Calendario del servicio: hora local `HH:MM` y día de la semana (0 domingo … 6 sábado). Si la corrida falla, se reintenta a los 10 y a los 30 minutos y después se deja para mañana; el fallo sale arriba del Inicio en rojo (salud de la conexión) y en la tarjeta del agente en Hallazgos. |
 | `CLAUDE_API_KEY`, `CLAUDE_WORKSPACE_ID`, `DIRECTOR_MODELO`, `DIRECTOR_MAX_PASOS` | El Director por modelo de lenguaje. Sin clave, Director de palabras. |
 | `DIRECTOR_RETENCION_DIAS`, `DIRECTOR_TURNOS_COMPLETOS`, `DIRECTOR_MAX_CONTEXTO` | Memoria del Director: 30 días de historial por persona, cuántos turnos van completos al modelo y el tope de contexto. |
 
