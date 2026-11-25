@@ -49,7 +49,7 @@ export function crearApi(opciones) {
   // --- estado general
   ruta("GET", "/api/estado", (q, p, c, quien, ctx) => esReceptor(ctx) ? estadoReceptor(ctx) : ({
     ahora: new Date().toISOString(),
-    usuario: ctx.usuario ? { correo: ctx.usuario.correo, nombre: ctx.usuario.nombre, rol: ctx.usuario.rol } : { rol: "contable", porToken: true },
+    usuario: ctx.usuario ? { correo: ctx.usuario.correo, nombre: ctx.usuario.nombre, rol: ctx.usuario.rol, claveTemporal: Boolean(ctx.usuario.clave_temporal) } : { rol: "contable", porToken: true },
     inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
@@ -468,7 +468,31 @@ export function crearApi(opciones) {
 
   // --- usuarios (solo contable): alta, baja, invitación por enlace (correo si hay SMTP, y siempre copiable)
   ruta("GET", "/api/usuarios", (q, p, c, quien, ctx) => ctx.db.usuarios());
-  ruta("POST", "/api/usuarios", (q, p, cuerpo, quien, ctx) => ctx.db.crearUsuario({ correo: cuerpo.correo, nombre: cuerpo.nombre || null, rol: cuerpo.rol || "receptor", quien }));
+  // Alta: por omisión con contraseña temporal (se devuelve UNA vez; la persona la cambia al entrar). conClave:false = solo enlace.
+  // Con el token compartido y desde afuera solo se pueden dar contraseñas mientras no exista ningún contable con
+  // contraseña (el primer alta). Después, crear contables o reiniciar contraseñas pide sesión personal.
+  const soloConSesion = ctx => ctx.remota && !ctx.usuario && ctx.db.hayContableConClave();
+  ruta("POST", "/api/usuarios", (q, p, cuerpo, quien, ctx) => {
+    const rol = cuerpo.rol || "receptor";
+    if (rol === "contable" && soloConSesion(ctx)) return error(403, "Para crear contables entre con su propio usuario y contraseña, no con el token.");
+    const u = ctx.db.crearUsuario({ correo: cuerpo.correo, nombre: cuerpo.nombre || null, rol, quien });
+    const claveTemporal = cuerpo.conClave === false ? null : ctx.db.claveTemporal(u.id, quien);
+    return { ...ctx.db.usuarios().find(x => x.id === u.id), claveTemporal };
+  });
+  // Reiniciar la contraseña de alguien: nueva temporal, se devuelve una vez, sus sesiones se cierran.
+  ruta("POST", "/api/usuarios/:id/clave", (q, p, cuerpo, quien, ctx) => {
+    const u = ctx.db.usuario(Number(p.id));
+    if (!u || !u.activo) return error(404, "No existe ese usuario o está inactivo.");
+    if (soloConSesion(ctx)) return error(403, "Para reiniciar contraseñas entre con su propio usuario y contraseña, no con el token.");
+    return { id: u.id, correo: u.correo, claveTemporal: ctx.db.claveTemporal(u.id, quien) };
+  });
+  // La propia: con sesión personal (token no: no hay «propia»). Cierra las otras sesiones de la persona.
+  ruta("POST", "/api/acceso/cambiar-clave", (q, p, cuerpo, quien, ctx) => {
+    if (!ctx.usuario) return error(400, "Entre con su correo y contraseña para cambiarla.");
+    try { ctx.db.cambiarClave(ctx.usuario.id, cuerpo.actual, cuerpo.nueva, quien); } catch (e) { return error(400, e.message); }
+    ctx.db.cerrarSesionesDe(ctx.usuario.id, { excepto: ctx.sesionHash || null });
+    return { ok: true };
+  }, AMBOS);
   ruta("POST", "/api/usuarios/:id/desactivar", (q, p, cuerpo, quien, ctx) => { ctx.db.desactivarUsuario(Number(p.id), quien); return { ok: true }; });
   ruta("POST", "/api/usuarios/:id/invitar", async (q, p, cuerpo, quien, ctx) => {
     const u = ctx.db.usuario(Number(p.id));
@@ -535,7 +559,7 @@ export function crearApi(opciones) {
         log(`POST con origen ajeno rechazado (${ip}): ${req.headers.origin} → ${url.pathname}`);
         return responder(res, 403, { error: "Origen no permitido." });
       }
-      const entradas = ["/api/entrar", "/api/acceso/entrar"];
+      const entradas = ["/api/entrar", "/api/acceso/entrar", "/api/acceso/clave"];
       if (req.method === "POST" && entradas.includes(pathname) && intentos.bloqueado(ip)) return responder(res, 429, { error: "Demasiados intentos. Espere 15 minutos." });
 
       // Entrar: valida el token y lo deja en una cookie (HttpOnly) para la app y la oficina 2D.
@@ -563,6 +587,18 @@ export function crearApi(opciones) {
         res.setHeader("Set-Cookie", `${nombreSesion}=${id}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Strict; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
         return responder(res, 200, { ok: true, usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol } });
       }
+      // Entrar con correo y contraseña: POST /api/acceso/clave {correo, clave} → sesión en cookie.
+      if (pathname === "/api/acceso/clave" && req.method === "POST") {
+        const cuerpo = await leerCuerpo(req);
+        const u = ctx.db.verificarClave(cuerpo.correo, cuerpo.clave);
+        if (!u) { intentos.fallo(ip); log(`Contraseña incorrecta desde ${ip}`); return responder(res, 401, { error: "Correo o contraseña incorrectos." }); }
+        intentos.limpiar(ip);
+        const id = randomBytes(24).toString("base64url");
+        ctx.db.crearSesion(hash(id), u.id);
+        ctx.db.auditar(u.nombre ? `${u.nombre} <${u.correo}>` : u.correo, "entrar", "usuario", u.id, { con: "contraseña" });
+        res.setHeader("Set-Cookie", `${nombreSesion}=${id}; Path=${r0.prefijo || "/"}; HttpOnly; SameSite=Strict; Max-Age=2592000${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+        return responder(res, 200, { ok: true, usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol, claveTemporal: Boolean(u.clave_temporal) } });
+      }
       if (pathname === "/api/acceso/salir" && req.method === "POST") {
         ctx.db.cerrarSesion(hash(cookie(req, nombreSesion)));
         res.setHeader("Set-Cookie", `${nombreSesion}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`);
@@ -571,8 +607,9 @@ export function crearApi(opciones) {
 
       // ¿Quién es? (1) token de servicio: contable sin nombre fijo; (2) sesión de un usuario registrado.
       const porToken = porBearer || (Boolean(token) && igual(cookie(req, nombreCookie), firmar(token)));
-      const usuario = ctx.db.usuarioDeSesion(hash(cookie(req, nombreSesion)));
-      ctx.usuario = usuario;
+      const sesionHash = hash(cookie(req, nombreSesion));
+      const usuario = ctx.db.usuarioDeSesion(sesionHash);
+      ctx.usuario = usuario; ctx.sesionHash = usuario ? sesionHash : null;
       // Sin SERVICIO_TOKEN configurado y sin sesión, todo es contable (modo local de siempre).
       const autorizado = !token || porToken || Boolean(usuario);
       if (!autorizado) {
@@ -583,7 +620,7 @@ export function crearApi(opciones) {
             const out = await r.fn(q, pathname.match(r.re).groups || {}, cuerpo, "anónimo", ctx);
             return out && out.__error ? responder(res, out.__error, { error: out.mensaje }) : responder(res, 200, out ?? {});
           }
-          return responder(res, 401, { error: "Hace falta entrar.", entrar: true, inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS) });
+          return responder(res, 401, { error: "Hace falta entrar.", entrar: true, inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER && ctx.cfg.SMTP_PASS), conClaves: ctx.db.hayContableConClave() });
         }
         if (pathname === "/oficina") return redirigir(res, (r0.prefijo || "") + "/");
         return estatico(res, raizProyecto, pathname);

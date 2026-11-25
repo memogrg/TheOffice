@@ -12,6 +12,7 @@
 //   correos     — lo que Victor redacta. Pasa por aprobación antes de enviarse.
 //   auditoria   — quién aprobó, rechazó, aplicó, envió, y cuándo.
 import { DatabaseSync } from "node:sqlite";
+import { scryptSync, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -174,6 +175,11 @@ export class BaseDeDatos {
   // se mira primero si la columna existe (bases ya creadas en producción no se recrean).
   #migrar() {
     const columnas = t => new Set(this.todos(`PRAGMA table_info(${t})`).map(c => c.name));
+    // Contraseñas (nov 2026): hash scrypt, nunca la clave; «temporal» obliga a cambiarla al entrar.
+    const usu = columnas("usuarios");
+    if (!usu.has("clave_hash")) this.db.exec("ALTER TABLE usuarios ADD COLUMN clave_hash TEXT");
+    if (!usu.has("clave_temporal")) this.db.exec("ALTER TABLE usuarios ADD COLUMN clave_temporal INTEGER NOT NULL DEFAULT 0");
+    if (!usu.has("clave_cambiada_en")) this.db.exec("ALTER TABLE usuarios ADD COLUMN clave_cambiada_en TEXT");
     const conv = columnas("conversaciones");
     if (!conv.has("abierta")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN abierta INTEGER NOT NULL DEFAULT 1");
     if (!conv.has("titulo")) this.db.exec("ALTER TABLE conversaciones ADD COLUMN titulo TEXT");
@@ -1173,7 +1179,8 @@ export class BaseDeDatos {
   }
 
   // --- usuarios, invitaciones y sesiones
-  usuarios() { return this.todos("SELECT id, correo, nombre, rol, activo, creado_en, creado_por, ultimo_acceso FROM usuarios ORDER BY rol, correo"); }
+  usuarios() { return this.todos("SELECT id, correo, nombre, rol, activo, creado_en, creado_por, ultimo_acceso, (clave_hash IS NOT NULL) AS con_clave, clave_temporal, clave_cambiada_en FROM usuarios ORDER BY rol, correo"); }
+  hayContableConClave() { return Boolean(this.uno("SELECT id FROM usuarios WHERE rol='contable' AND activo=1 AND clave_hash IS NOT NULL LIMIT 1")); }
   usuario(id) { return this.uno("SELECT * FROM usuarios WHERE id=?", id); }
   usuarioPorCorreo(correo) { return this.uno("SELECT * FROM usuarios WHERE correo=?", String(correo || "").trim().toLowerCase()); }
   crearUsuario({ correo, nombre = null, rol = "receptor", quien = "sistema" }) {
@@ -1193,6 +1200,38 @@ export class BaseDeDatos {
     this.correr("UPDATE usuarios SET activo=0 WHERE id=?", id);
     this.correr("DELETE FROM sesiones WHERE usuario_id=?", id);
     this.auditar(quien, "desactivar-usuario", "usuario", id);
+  }
+  // --- contraseñas. Se guarda scrypt(sal, clave); la clave nunca. Mínimo 10 caracteres.
+  ponerClave(id, clave, { temporal = false, quien = "sistema" } = {}) {
+    const c = String(clave || "");
+    if (c.length < 10) throw new Error("La contraseña debe tener al menos 10 caracteres.");
+    if (c.length > 200) throw new Error("Contraseña demasiado larga.");
+    this.correr("UPDATE usuarios SET clave_hash=?, clave_temporal=?, clave_cambiada_en=? WHERE id=?", hashClave(c), temporal ? 1 : 0, this.#ahora(), id);
+    if (!temporal) this.auditar(quien, "cambiar-clave", "usuario", id);
+    else { this.correr("DELETE FROM sesiones WHERE usuario_id=?", id); this.auditar(quien, "clave-temporal", "usuario", id); }
+  }
+  // Contraseña temporal generada aquí (legible, 12 caracteres); se devuelve UNA vez para dársela a la persona.
+  claveTemporal(id, quien) {
+    const clave = generarClave();
+    this.ponerClave(id, clave, { temporal: true, quien });
+    return clave;
+  }
+  // Devuelve el usuario si correo y contraseña calzan (activo, con clave); null si no. Siempre calcula el
+  // hash, exista o no el correo, para que el tiempo de respuesta no delate si el correo está registrado.
+  verificarClave(correo, clave) {
+    const u = this.usuarioPorCorreo(correo);
+    const guardado = u && u.activo && u.clave_hash ? u.clave_hash : HASH_SENUELO;
+    const ok = compararClave(String(clave || ""), guardado);
+    return ok && u && u.activo && u.clave_hash ? u : null;
+  }
+  cambiarClave(id, actual, nueva, quien) {
+    const u = this.usuario(id);
+    if (!u || !u.clave_hash || !compararClave(String(actual || ""), u.clave_hash)) throw new Error("La contraseña actual no es correcta.");
+    if (String(nueva) === String(actual)) throw new Error("La contraseña nueva tiene que ser distinta de la actual.");
+    this.ponerClave(id, nueva, { temporal: false, quien });
+  }
+  cerrarSesionesDe(usuarioId, { excepto = null } = {}) {
+    if (excepto) this.correr("DELETE FROM sesiones WHERE usuario_id=? AND id<>?", usuarioId, excepto); else this.correr("DELETE FROM sesiones WHERE usuario_id=?", usuarioId);
   }
   crearInvitacion(usuarioId, tokenHash, { minutos = 60 * 24 * 3, quien = "sistema" } = {}) {
     const vence = new Date(Date.now() + minutos * 60e3).toISOString();
@@ -1227,6 +1266,26 @@ export class BaseDeDatos {
   cerrarSesion(idHash) { this.correr("DELETE FROM sesiones WHERE id=?", idHash); }
 
   auditoria(limite = 100) { return this.todos("SELECT * FROM auditoria ORDER BY id DESC LIMIT ?", limite).map(desempacar); }
+}
+
+// scrypt con sal propia: "scrypt:<sal hex>:<hash hex>".
+function hashClave(clave) {
+  const sal = randomBytes(16);
+  return `scrypt:${sal.toString("hex")}:${scryptSync(clave, sal, 64).toString("hex")}`;
+}
+function compararClave(clave, guardado) {
+  const [tipo, salHex, hashHex] = String(guardado || "").split(":");
+  if (tipo !== "scrypt" || !salHex || !hashHex) return false;
+  const calculado = scryptSync(clave, Buffer.from(salHex, "hex"), 64), esperado = Buffer.from(hashHex, "hex");
+  return calculado.length === esperado.length && timingSafeEqual(calculado, esperado);
+}
+const HASH_SENUELO = hashClave(randomBytes(12).toString("base64url"));
+// Sin caracteres que se confundan (0/O, 1/l/I): se dicta por teléfono sin errores.
+const ALFABETO = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function generarClave(n = 12) {
+  const b = randomBytes(n); let out = "";
+  for (let i = 0; i < n; i++) out += ALFABETO[b[i] % ALFABETO.length];
+  return out;
 }
 
 // Columnas JSON vuelven a ser objetos.

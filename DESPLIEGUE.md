@@ -90,8 +90,11 @@ En ambos casos: `SERVICIO_TOKEN` en el `.env` **antes** de abrir el túnel, y la
 
 ## Primer arranque en el host
 
-1. Abra `/t/iasima/`, escriba su nombre en «Soy» y el token en la cajita del token.
-2. Tablero → «Recepción (Marta)». Si conecta, verá las 79 compañías.
+1. Abra `/t/iasima/` y entre con el token del servicio (desplegable «Entrar con el token del servicio»). En
+   **Usuarios**, cree su propio usuario contable: la Oficina le da una contraseña temporal. Salga, entre con su
+   correo y esa contraseña, y elija la suya. Desde ahí cree a los demás contables y deles su temporal por un
+   canal seguro. El token queda solo para la API y el plugin.
+2. Inicio → «Actualizar el buzón» (Recepción). Si conecta, verá las compañías; si Odoo rechaza la conexión, lo dice arriba en rojo.
 3. En una terminal del host (Railway: *Deployments → ⋯ → Shell*): `node scripts/construir-catalogo.js --inquilino=iasima`.
 4. Repita para `sima` cuando tenga su Odoo.
 

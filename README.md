@@ -44,6 +44,13 @@ API en `/api/*` (JSON). Si `SERVICIO_TOKEN` está en `.env`, **todo** (lectura i
 una vez en una pantalla de entrada y lo guarda en una cookie firmada; la API acepta `Authorization: Bearer <token>`.
 La cabecera `X-Quien` identifica a quien decide y queda en la auditoría.
 
+**Usuarios y contraseñas.** Cada persona entra con su **correo y contraseña**. Un contable la crea en la pestaña
+Usuarios: la Oficina genera una contraseña temporal (se muestra una sola vez), la persona la cambia al entrar, y
+«Nueva contraseña» la reinicia cerrando sus sesiones; el botón «Contraseña» de la cabecera cambia la propia. Las
+contraseñas se guardan con scrypt y sal; mínimo 10 caracteres. El enlace de un solo uso sigue existiendo como
+alternativa (correo si hay SMTP). El token del servicio queda para la API, el plugin y el primer alta: desde afuera,
+una vez que existe un contable con contraseña, crear contables o reiniciar contraseñas pide sesión personal.
+
 **Roles.** Un **receptor** (el correo que recibe las facturas en el buzón) entra con su enlace y ve solo lo suyo:
 sus compañías, sus casos (y puede marcarlos resueltos, firmados con su nombre) y los avisos aprobados o enviados
 dirigidos a él; nada de propuestas, corridas, Director ni oficina 2D. Un **contable** ve y hace todo. El token de

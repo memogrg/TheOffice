@@ -145,3 +145,53 @@ test("API: el contable invita, el receptor entra por enlace y solo ve lo suyo", 
     assert.equal((await llamar("/api/acceso/pedir", { metodo: "POST", cuerpo: { correo: "nadie@x.cr" } })).status, 503);
   } finally { srv.close(); }
 });
+
+test("Contraseñas: alta con temporal que se muestra una vez, entrar con correo y contraseña, cambio obligatorio, reinicio por el contable, candado del token desde afuera", async () => {
+  const { db, srv, llamar } = await servidor();
+  try {
+    const admin = { token: "admin-token" };
+    const remoto = { "X-Forwarded-For": "190.10.10.10" };
+    const llamarRemoto = (p, o = {}) => fetch(`${srv.address().address === "::" ? "http://127.0.0.1" : "http://127.0.0.1"}:${srv.address().port}${p}`, { method: o.metodo || "GET", headers: { "Content-Type": "application/json", ...remoto, ...(o.token ? { Authorization: `Bearer ${o.token}` } : {}), ...(o.cookie ? { Cookie: o.cookie } : {}) }, body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined });
+
+    // Primer alta desde afuera con el token: permitida (todavía no hay contables con contraseña)
+    const alta = await (await llamarRemoto("/api/usuarios", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", nombre: "Victor", rol: "contable" }, ...admin })).json();
+    assert.equal(alta.rol, "contable"); assert.equal(alta.con_clave, 1); assert.equal(alta.clave_temporal, 1);
+    assert.match(alta.claveTemporal, /^[a-zA-Z0-9]{12}$/, "contraseña temporal legible de 12");
+    assert.ok(!JSON.stringify(db.usuarios()).includes(alta.claveTemporal), "la lista de usuarios nunca trae la contraseña");
+    assert.ok(!JSON.stringify(db.auditoria()).includes(alta.claveTemporal), "la auditoría tampoco");
+
+    // Entrar: contraseña mala 401 (y cuenta para el límite), buena 200 con cookie y aviso de temporal
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", clave: "incorrecta123" } })).status, 401);
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "nadie@x.cr", clave: alta.claveTemporal } })).status, 401);
+    const entrar = await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "VICTOR@contadores.example", clave: alta.claveTemporal } });
+    assert.equal(entrar.status, 200);
+    const j = await entrar.json(); assert.equal(j.usuario.claveTemporal, true); assert.equal(j.usuario.rol, "contable");
+    const sesion = entrar.headers.get("set-cookie").split(";")[0];
+    assert.equal((await (await llamar("/api/estado", { cookie: sesion })).json()).usuario.claveTemporal, true);
+
+    // Cambio: la actual tiene que calzar, la nueva mínimo 10, y deja de ser temporal
+    assert.equal((await llamar("/api/acceso/cambiar-clave", { metodo: "POST", cuerpo: { actual: "otra", nueva: "MiClaveNueva2026" }, cookie: sesion })).status, 400);
+    assert.equal((await llamar("/api/acceso/cambiar-clave", { metodo: "POST", cuerpo: { actual: alta.claveTemporal, nueva: "corta" }, cookie: sesion })).status, 400);
+    assert.equal((await llamar("/api/acceso/cambiar-clave", { metodo: "POST", cuerpo: { actual: alta.claveTemporal, nueva: "MiClaveNueva2026" }, cookie: sesion })).status, 200);
+    assert.equal((await (await llamar("/api/estado", { cookie: sesion })).json()).usuario.claveTemporal, false, "la sesión propia sigue viva");
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", clave: alta.claveTemporal } })).status, 401, "la temporal ya no sirve");
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", clave: "MiClaveNueva2026" } })).status, 200);
+    assert.equal((await llamar("/api/acceso/cambiar-clave", { metodo: "POST", cuerpo: { actual: "x", nueva: "y" }, ...admin })).status, 400, "con el token no hay contraseña propia");
+
+    // Ya hay un contable con contraseña: desde afuera, con el token, no se crean contables ni se reinician contraseñas
+    assert.equal((await llamarRemoto("/api/usuarios", { metodo: "POST", cuerpo: { correo: "otro@contadores.example", rol: "contable" }, ...admin })).status, 403);
+    assert.equal((await llamarRemoto(`/api/usuarios/${alta.id}/clave`, { metodo: "POST", cuerpo: {}, ...admin })).status, 403);
+    // …pero sí con la sesión personal de Victor, y desde la PC del servicio con el token
+    const rossana = await (await llamarRemoto("/api/usuarios", { metodo: "POST", cuerpo: { correo: "rossana@contadores.example", nombre: "Rossana", rol: "contable" }, cookie: sesion })).json();
+    assert.equal(rossana.rol, "contable"); assert.ok(rossana.claveTemporal);
+    const reinicio = await (await llamar(`/api/usuarios/${rossana.id}/clave`, { metodo: "POST", cuerpo: {}, ...admin })).json();
+    assert.ok(reinicio.claveTemporal && reinicio.claveTemporal !== rossana.claveTemporal);
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "rossana@contadores.example", clave: rossana.claveTemporal } })).status, 401, "la anterior murió con el reinicio");
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "rossana@contadores.example", clave: reinicio.claveTemporal } })).status, 200);
+    assert.equal(db.auditoria().filter(a => a.accion === "clave-temporal").length, 3);
+    assert.deepEqual(db.auditoria().filter(a => a.accion === "entrar" && a.detalle?.con === "contraseña").map(a => a.objeto_id), [rossana.id, alta.id, alta.id], "cada entrada con contraseña queda auditada");
+    // Desactivar borra el acceso
+    db.desactivarUsuario(rossana.id, "victor");
+    assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "rossana@contadores.example", clave: reinicio.claveTemporal } })).status, 401);
+  } finally { srv.close(); }
+});
