@@ -4,6 +4,8 @@ node_modules
 data/*
 !data/roster.json
 !data/reglas.json
+!data/reglas-firma.md
+!data/referencia
 inquilinos
 reportes
 Oficina IASIMA.html

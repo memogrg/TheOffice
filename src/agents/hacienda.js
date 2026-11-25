@@ -174,7 +174,8 @@ export async function ejecutar({ odoo, cfg, log, db = null }) {
     rojo: paquetes.filter(p => p.juez.semaforo === "rojo").length, amarillo: paquetes.filter(p => p.juez.semaforo === "amarillo").length, verde: paquetes.filter(p => p.juez.semaforo === "verde").length,
     sinClasificar: sinClasificar.size };
   const alertas = [];
-  if (de("150").length) alertas.push({ nivel: "info", texto: `${de("150").length} declaraciones de IVA de ${mes} preparadas: ₡${colones(totales.ivaAPagar)} a pagar en total; ${totales.verde} en verde, ${totales.amarillo} en amarillo, ${totales.rojo} en rojo. Están en la pestaña Hacienda.`,
+  const sem150 = s => de("150").filter(p => p.juez.semaforo === s).length;
+  if (de("150").length) alertas.push({ nivel: "info", texto: `${de("150").length} declaraciones de IVA de ${mes} preparadas: ₡${colones(totales.ivaAPagar)} a pagar en total; ${sem150("verde")} en verde, ${sem150("amarillo")} en amarillo, ${sem150("rojo")} en rojo${de("270").length || de("102").length ? ` (más ${de("270").length} informativas 270 y ${de("102").length} acumulados de renta)` : ""}. Están en la pestaña Hacienda.`,
     detalle: de("150").filter(p => p.totales.pagar > 0).sort((a, b) => b.totales.pagar - a.totales.pagar).slice(0, 8).map(p => `${p.compania}: ₡${colones(p.totales.pagar)} (${p.juez.semaforo})`) });
   if (sinClasificar.size) alertas.push({ nivel: "alto", texto: `${sinClasificar.size} compañías usan impuestos que no se reconocen como tarifa de IVA: hay que revisarlos antes de declarar.`, detalle: [...sinClasificar.entries()].slice(0, 8).map(([cia, xs]) => `${companias.get(cia)?.name}: ${xs.slice(0, 3).join(", ")}`) });
   const rojos = paquetes.filter(p => p.juez.semaforo === "rojo");
