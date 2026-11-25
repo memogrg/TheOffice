@@ -11,9 +11,10 @@ import { createInterface } from "node:readline";
 const URL_BASE = String(process.env.OFICINA_URL || "http://127.0.0.1:4180").replace(/\/+$/, "");
 const TOKEN = process.env.OFICINA_TOKEN || "";
 const QUIEN = process.env.OFICINA_QUIEN || "plugin oficina-hacienda";
+const VERSION = "0.2.0";
 
 async function oficina(ruta, cuerpo) {
-  const op = { headers: { "X-Quien": QUIEN, ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}) } };
+  const op = { headers: { "X-Quien": QUIEN, "X-Plugin": `oficina-hacienda/${VERSION}`, ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}) } };
   if (cuerpo !== undefined) { op.method = "POST"; op.headers["Content-Type"] = "application/json"; op.body = JSON.stringify(cuerpo); }
   const r = await fetch(URL_BASE + ruta, op);
   const j = await r.json().catch(() => ({}));
@@ -55,7 +56,7 @@ rl.on("line", async linea => {
   const responder = result => escribir({ jsonrpc: "2.0", id, result });
   const fallar = (code, message) => escribir({ jsonrpc: "2.0", id, error: { code, message } });
   try {
-    if (method === "initialize") return responder({ protocolVersion: params.protocolVersion || "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "oficina-hacienda", version: "0.1.0" } });
+    if (method === "initialize") return responder({ protocolVersion: params.protocolVersion || "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "oficina-hacienda", version: VERSION } });
     if (method === "ping") return responder({});
     if (method === "tools/list") return responder({ tools: HERRAMIENTAS });
     if (method === "tools/call") {

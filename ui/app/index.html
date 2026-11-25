@@ -1088,8 +1088,23 @@ V.hacienda = function(){
   return '<section><h2>Declaraciones de Hacienda (TRIBU-CR)</h2><div class="aviso">El agente <b>Hacienda</b> prepara por compañía el <b>IVA mensual (formulario 150)</b> casilla por casilla desde Odoo, la <b>informativa 270</b> (compras sin comprobante) y el acumulado de <b>renta (102)</b>. Cada una pasa por el <b>juez de reglas</b> y, si se pide, por el <b>juez de IA</b>: marcan, no cambian cifras. El plugin «Oficina Hacienda» la deja como <b>borrador en el portal</b> y relee cada casilla; aquí se compara, se <b>aprueba</b> con nombre y, después del clic de presentar (siempre de una persona), se registra el número. Nada de esto escribe en Odoo ni presenta por sí solo.</div>'+
     '<div class="fila"><select id="hzPeriodo"></select><select id="hzImp"><option value="">todos los formularios</option><option value="150">150 · IVA</option><option value="270">270 · informativa</option><option value="102">102 · renta</option></select>'+
     '<button class="b gh" id="hzIr">Ver</button><span style="flex:1"></span><button class="b gh" data-correr="hacienda">Preparar ahora</button><button class="b gh" id="hzNotificar">Notificar el resumen</button></div>'+
-    '<div id="hzParam" class="sub"></div><div id="hzTabla">Cargando…</div></section><section id="hzDetalle" hidden></section>';
+    '<div id="hzParam" class="sub"></div><div id="hzTabla">Cargando…</div></section><section id="hzDetalle" hidden></section>'+panelPlugin();
 };
+// El plugin «Oficina Hacienda»: estado (verde si se conectó hace poco), descarga y cómo instalarlo.
+function panelPlugin(){
+  var pl=(S.estado&&S.estado.plugin)||{}, v=pl.visto, min=v?Math.round((Date.now()-new Date(v.cuando).getTime())/60000):null;
+  var chip = !v ? '<span class="est neutro">sin conexión todavía</span>' : min<=15 ? '<span class="est ok">conectado · hace '+(min<1?'un momento':min+' min')+'</span>' : '<span class="est alto">última conexión '+fecha(v.cuando)+'</span>';
+  return '<section><h2>Plugin «Oficina Hacienda» <span class="sub" style="font-weight:400">v'+esc(pl.version||"?")+'</span></h2>'+
+    '<div class="fila" style="margin-bottom:8px">'+chip+(v&&v.quien?'<span class="sub">como '+esc(v.quien)+(v.version?' · '+esc(v.version):'')+'</span>':'')+'<span style="flex:1"></span>'+
+    '<a class="b" href="'+esc(pl.descarga||"#")+'" download="oficina-hacienda.plugin">Descargar el plugin</a></div>'+
+    '<div class="aviso">El plugin corre en la computadora de quien declara (Cowork + Claude in Chrome) y habla con esta Oficina. Pasos, una sola vez:<br>'+
+    '1. <b>Claude in Chrome</b>: en Chrome instale la extensión desde <span class="mono">claude.ai/chrome</span> y entre con su cuenta de Claude. Al abrir TRIBU-CR por primera vez, la extensión pide permiso para ese sitio: <b>Permitir</b>.<br>'+
+    '2. <b>Node.js</b> 20 o más nuevo instalado en esa computadora (<span class="mono">nodejs.org</span>).<br>'+
+    '3. <b>Variables</b> en esa computadora (Windows: «Editar las variables de entorno de la cuenta»; Mac: en el perfil de la terminal): <span class="mono">OFICINA_URL</span> = <span class="mono">'+esc(location.origin+(PREFIJO||""))+'</span>, <span class="mono">OFICINA_TOKEN</span> = el token del servicio, <span class="mono">OFICINA_QUIEN</span> = su nombre (p. ej. «plugin (Victor)»).<br>'+
+    '4. <b>Cowork</b>: descargue el plugin con el botón de arriba y en la app de Claude vaya a Customize → Plugins → Add → <b>Upload plugin</b>, elija <span class="mono">oficina-hacienda.plugin</span> y actívelo. Reinicie la app de Claude.<br>'+
+    '5. <b>Comprobar</b>: en Cowork escriba «revisá el estado de la Oficina». Si responde con el inquilino y el periodo, el chip de arriba se pone <span class="est ok">verde</span> en menos de un minuto (recargue esta pestaña). En la lista de plugins de Cowork, el servidor <span class="mono">oficina</span> también aparece conectado.<br>'+
+    'Cada mes: «llevá al portal las declaraciones pendientes de IASIMA». El plugin carga el borrador, relee las casillas y lo reporta aquí; usted aprueba, usted presenta.</div></section>';
+}
 function cargarHacienda(){ var per=$("#hzPeriodo"), imp=$("#hzImp"); api("/api/hacienda?periodo="+encodeURIComponent(per&&per.value||"")+"&impuesto="+(imp?imp.value:"")).then(pintarHacienda).catch(function(e){ msg(e.message,true); }); }
 function pintarHacienda(j){
   var el=$("#hzTabla"); if(!el) return; S.hacienda=j;

@@ -16,6 +16,7 @@ const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; ch
 
 import { resolverInquilino, marcaDe, validarAmbiente, leerAmbientes, guardarAmbientes, inquilinoDeAmbiente } from "./inquilinos.js";
 import { Odoo } from "../odoo.js";
+import { empaquetarPlugin, versionPlugin, NOMBRE_ARCHIVO } from "./plugin.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
@@ -60,6 +61,7 @@ export function crearApi(opciones) {
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
     enCurso: ctx.corridas.enCurso,
     salud: saludOdoo(ctx.db),
+    plugin: { version: versionPlugin(raizProyecto), descarga: `${ctx.prefijo || ""}/api/plugin/${NOMBRE_ARCHIVO}`, visto: ctx.pluginVisto || null },
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick, ultimoFallo: ctx.programador.ultimoFallo } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
     ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].map(a => {
@@ -664,6 +666,8 @@ export function crearApi(opciones) {
 
       // ¿Quién es? (1) token de servicio: contable sin nombre fijo; (2) sesión de un usuario registrado.
       const porToken = porBearer || (Boolean(token) && igual(cookie(req, nombreCookie), firmar(token)));
+      // El plugin se identifica en cada llamada (X-Plugin: oficina-hacienda/0.2.0): la pestaña Hacienda lo muestra en verde.
+      if (req.headers["x-plugin"]) ctx0.pluginVisto = { cuando: new Date().toISOString(), version: String(req.headers["x-plugin"]).slice(0, 60), quien: String(req.headers["x-quien"] || "").slice(0, 120) };
       const sesionHash = hash(cookie(req, nombreSesion));
       const usuario = ctx.db.usuarioDeSesion(sesionHash);
       ctx.usuario = usuario; ctx.sesionHash = usuario ? sesionHash : null;
@@ -683,6 +687,13 @@ export function crearApi(opciones) {
         return estatico(res, raizProyecto, pathname);
       }
 
+      // Descarga del plugin empaquetado (solo contables): un zip con el nombre .plugin que Cowork acepta.
+      if (pathname === `/api/plugin/${NOMBRE_ARCHIVO}` && req.method === "GET") {
+        if (usuario && usuario.rol !== "contable") return responder(res, 403, { error: "Su acceso no permite esta descarga." });
+        let zip; try { zip = empaquetarPlugin(raizProyecto); } catch (e) { return responder(res, 404, { error: e.message }); }
+        res.writeHead(200, cabeceras({ "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${NOMBRE_ARCHIVO}"`, "Content-Length": zip.length, "Cache-Control": "no-store" }));
+        return res.end(zip);
+      }
       if (pathname.startsWith("/api/")) {
         const r = rutas.find(x => x.metodo === req.method && x.re.test(pathname));
         if (!r) return responder(res, 404, { error: "No existe esa ruta." });

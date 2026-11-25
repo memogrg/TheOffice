@@ -284,5 +284,14 @@ test("El servidor MCP del plugin habla con la Oficina: lista pendientes, registr
     assert.equal(ok.ok, true);
     assert.equal(db.declaracion(id).estado, "presentada");
     assert.equal(db.auditoria(5).find(a => a.accion === "cargar").quien, "plugin (prueba)");
+    // La Oficina sabe que el plugin se conectó (chip verde en la pestaña Hacienda) y ofrece su descarga empaquetada
+    const estado = await (await fetch(`${url}/api/estado`, { headers: { Authorization: "Bearer secreto" } })).json();
+    assert.equal(estado.plugin.visto.quien, "plugin (prueba)"); assert.match(estado.plugin.visto.version, /^oficina-hacienda\/0\.2\.0$/); assert.equal(estado.plugin.version, "0.2.0");
+    const descarga = await fetch(`${url}${estado.plugin.descarga}`, { headers: { Authorization: "Bearer secreto" } });
+    assert.equal(descarga.status, 200); assert.equal(descarga.headers.get("content-type"), "application/zip"); assert.match(descarga.headers.get("content-disposition"), /oficina-hacienda\.plugin/);
+    const { leerZip } = await import("../src/lib/archivos.js");
+    const nombres = leerZip(Buffer.from(await descarga.arrayBuffer())).map(a => a.nombre).sort();
+    assert.ok(nombres.includes(".claude-plugin/plugin.json") && nombres.includes(".mcp.json") && nombres.includes("servidor/index.js") && nombres.includes("skills/declarar-iva/SKILL.md"), nombres.join(", "));
+    assert.equal((await fetch(`${url}${estado.plugin.descarga}`)).status, 401, "sin entrar no se descarga");
   } finally { hijo.kill(); api.close(); }
 });

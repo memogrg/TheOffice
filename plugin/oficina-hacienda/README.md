@@ -31,7 +31,19 @@ sitio de Hacienda.
 4. Una persona aprueba en la Oficina, con su nombre.
 5. La persona toca Presentar en el portal; el plugin registra el número.
 
-## Empaquetar
+## Descargar e instalar (quien declara, una sola vez)
+
+1. **Claude in Chrome**: en Chrome, instale la extensión desde claude.ai/chrome y entre con su cuenta de Claude. Al
+   abrir TRIBU-CR por primera vez con el plugin, la extensión pide permiso para ese sitio: Permitir.
+2. **Node.js** 20 o más nuevo en esa computadora (nodejs.org).
+3. **Variables de entorno** de la cuenta: `OFICINA_URL` (la dirección de la Oficina, con `/t/<inquilino>` si hay
+   varios), `OFICINA_TOKEN` (el token del servicio), `OFICINA_QUIEN` (su nombre, p. ej. «plugin (Victor)»).
+4. **Descargar**: en la Oficina, pestaña Hacienda → «Descargar el plugin» (`oficina-hacienda.plugin`, siempre la
+   versión desplegada). En la app de Claude: Customize → Plugins → Add → Upload plugin → activar → reiniciar la app.
+5. **Comprobar**: en Cowork, «revisá el estado de la Oficina». La pestaña Hacienda muestra el chip del plugin en
+   verde («conectado · hace un momento») y en la lista de plugins de Cowork el servidor `oficina` aparece conectado.
+
+## Empaquetar a mano (solo si no se puede descargar de la Oficina)
 
 ```
 cd plugin/oficina-hacienda && zip -r ../oficina-hacienda.plugin . -x "*.DS_Store"
