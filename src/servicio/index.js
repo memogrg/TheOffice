@@ -22,9 +22,9 @@ const cfg = { ...cargarEnv(existsSync(rutaEnv) ? readFileSync(rutaEnv, "utf8") :
 const log = m => console.log(`  ${new Date().toLocaleTimeString("es-CR", { hour12: false })}  ${m}`);
 
 const inquilinos = cargarInquilinos(cfg, RAIZ);
-const contextos = inquilinos.map(inq => {
+function crearContexto(inq, varios) {
   const c = inq.cfg;
-  const logI = inquilinos.length > 1 ? (m => log(`[${inq.id}] ${m}`)) : log;
+  const logI = varios ? (m => log(`[${inq.id}] ${m}`)) : log;
   // resolve y no join: una ruta absoluta en BASE_DE_DATOS se respeta (join la colgaba dentro del repo)
   const db = new BaseDeDatos(resolve(inq.raiz, c.BASE_DE_DATOS || "data/oficina.db"));
   const purgadas = db.purgarConversaciones(Number(c.DIRECTOR_RETENCION_DIAS || 30));
@@ -34,8 +34,19 @@ const contextos = inquilinos.map(inq => {
   const programador = new Programador({ corridas, db, cfg: c, log: logI });
   const director = new DirectorLLM({ db, corridas, cfg: c, raiz: inq.raiz, raizProyecto: RAIZ, log: logI });
   return { inquilino: inq, db, corridas, programador, director, cfg: c, raiz: inq.raiz };
-});
-const api = crearApi({ contextos, raizProyecto: RAIZ, log });
+}
+const contextos = inquilinos.map(inq => crearContexto(inq, inquilinos.length > 1));
+// Un ambiente agregado desde la app entra en caliente: su contexto, su calendario, y la lista deja de ser «única».
+function agregarAmbiente(inq) {
+  for (const x of contextos) x.inquilino.unico = false;
+  inq.unico = false;
+  const ctx = crearContexto(inq, true);
+  contextos.push(ctx);
+  ctx.programador.iniciar();
+  log(`ambiente agregado: ${inq.nombre} (${inq.id}) → ${inq.cfg.ODOO_URL} · base ${inq.cfg.ODOO_DB}`);
+  return ctx;
+}
+const api = crearApi({ contextos, raizProyecto: RAIZ, log, agregarAmbiente });
 import("./seguridad.js").then(({ avisosDeArranque }) => {
   for (const x of contextos) for (const a of avisosDeArranque(x.cfg)) console.log(`  ⚠ ${x.inquilino.id}: ${a}`);
 });

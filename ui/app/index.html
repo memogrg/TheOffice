@@ -71,6 +71,8 @@ code{font-family:var(--mono);font-size:.92em;background:var(--neutro-f);padding:
 #barra h2{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
 #barra .sub{font-size:13.5px}
 .yo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--tinta3)}
+.yo select#ambiente{font:13px var(--m);padding:8px 10px;border:1px solid var(--borde2);border-radius:6px;background:var(--panel);color:var(--tinta);max-width:200px}
+.fuera .yo #ambiente{display:none}
 .yo input{font:13px var(--m);padding:8px 10px;border:1px solid var(--borde2);border-radius:6px;background:var(--panel);color:var(--tinta);width:170px}
 .yo input[readonly]{border-color:transparent;background:transparent;padding-left:2px;font-weight:600;field-sizing:content;min-width:60px;max-width:240px}
 #main{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
@@ -200,6 +202,7 @@ iframe.escena{display:block;width:100%;height:260px;border:0;border-radius:4px;b
     <button data-v="autonomia">Autonomía</button>
     <button data-v="auditoria">Auditoría</button>
     <button data-v="usuarios">Usuarios</button>
+    <button data-v="ambientes">Ambientes</button>
   </nav>
 </aside>
 <div id="cuerpo">
@@ -210,6 +213,7 @@ iframe.escena{display:block;width:100%;height:260px;border:0;border-radius:4px;b
         <button type="button" id="temaDia" aria-pressed="false"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg>Día</button>
         <button type="button" id="temaNoche" aria-pressed="false"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z"></path></svg>Noche</button>
       </div>
+      <select id="ambiente" title="Ambiente (a qué Odoo está conectada esta Oficina)" style="display:none"></select>
       <label for="quien">Soy</label><input id="quien" placeholder="su nombre">
       <input id="token" placeholder="token" type="password" style="display:none" aria-label="Token de acceso" title="Solo hace falta si no usó la pantalla de entrada">
       <button class="b gh" id="miClave" style="display:none" title="Cambiar mi contraseña">Contraseña</button>
@@ -578,6 +582,34 @@ function invitar(id){
     msg("Enlace listo.");
   }).catch(function(e){ msg(e.message,true); });
 }
+/* ---------- Ambientes: a qué Odoo está conectada cada Oficina ---------- */
+V.ambientes = function(){
+  return '<section><h2>Ambientes</h2><div class="aviso">Cada ambiente es una conexión a un Odoo distinto (la copia de IASIMA, SIMA, otro cliente), con su propia base de datos, sus reglas, su calendario y sus usuarios. Se cambia de ambiente con el selector de arriba; los contables de este ambiente entran igual en los nuevos con su misma contraseña. '+
+    'La conexión se prueba antes de guardarse. Los datos quedan en el servidor (<code>inquilinos/ambientes.json</code>), nunca en el repositorio.</div>'+
+    '<div id="ambTabla">Cargando…</div>'+
+    '<h3 style="margin:16px 0 8px;font-size:13px">Agregar un ambiente</h3>'+
+    '<form id="ambForm" class="fila" style="flex-wrap:wrap;gap:8px">'+
+    '<input class="f" id="amId" placeholder="identificador corto (p. ej. sima)" style="width:200px" required pattern="[a-z0-9][a-z0-9_-]{1,30}" title="minúsculas, sin espacios">'+
+    '<input class="f" id="amNombre" placeholder="nombre que se muestra (p. ej. SIMA)" style="width:220px">'+
+    '<input class="f" id="amUrl" type="url" placeholder="dirección de Odoo (https://sima.tecnodem.net)" style="flex:1;min-width:280px" required>'+
+    '<input class="f" id="amDb" placeholder="base de datos (p. ej. sima)" style="width:200px" required>'+
+    '<input class="f" id="amUser" placeholder="usuario de Odoo (p. ej. admin)" style="width:200px" required autocomplete="off">'+
+    '<input class="f" id="amPass" type="password" placeholder="contraseña o clave de API" style="width:260px" required autocomplete="new-password">'+
+    '<input class="f" id="amColor" type="color" value="#0b4a3f" title="color de la marca" style="width:60px;padding:2px">'+
+    '<button class="b gh" type="button" id="amProbar">Probar conexión</button><button class="b" type="submit">Guardar y conectar</button></form>'+
+    '<div class="sub" id="amMsg" style="margin-top:8px"></div></section>';
+};
+function pintarAmbientes(j){
+  var el=$("#ambTabla"); if(!el) return;
+  var lista=j.ambientes||[];
+  el.innerHTML = tabla(["Ambiente","Odoo","Base","Usuario","Origen",""], lista.map(function(a){
+    return [(a.actual?'<b>':'')+esc(a.nombre)+(a.actual?'</b> <span class="est ok">actual</span>':'')+'<div class="sub mono">'+esc(a.prefijo)+'/</div>', '<span class="mono">'+esc(a.odoo.url||"—")+'</span>', esc(a.odoo.db||"—"), esc(a.odoo.usuario||"—"),
+      '<span class="sub">'+(a.origen==="app"?'agregado en la app'+(a.creadoPor?' por '+esc(a.creadoPor):''):'variables del servicio')+'</span>',
+      a.actual ? '' : '<button class="b gh" data-ir-ambiente="'+esc(a.id)+'">Ir</button>'];
+  }));
+  if (!j.sePuedenAgregar){ var f=$("#ambForm"); if(f) f.innerHTML='<div class="sub">Este servicio no permite agregar ambientes desde la app.</div>'; }
+}
+function datosAmbiente(){ return { id:$("#amId").value.trim(), nombre:$("#amNombre").value.trim(), odooUrl:$("#amUrl").value.trim(), odooDb:$("#amDb").value.trim(), odooUser:$("#amUser").value.trim(), odooPassword:$("#amPass").value, color:$("#amColor").value }; }
 /* ---------- Hallazgos: fase 3A (solo lectura) ---------- */
 var HALLAZGOS = [
   { id:"diagnostico", titulo:"Diagnóstico — por qué fallan los correos", ayuda:"Reconoce la causa en el texto del error y dice qué hacer y quién. Lo que es configuración se arregla adentro; lo que es del emisor va en el reclamo de Victor." },
@@ -1214,7 +1246,7 @@ function cargar(){
     var u=S.estado.usuario; if (u && !u.porToken){ var nom=u.nombre||u.correo; if ($("#quien").value!==nom){ $("#quien").value=nom; try{ localStorage.setItem("iasima_quien", nom); }catch(e){} } $("#quien").readOnly=true; }
     marcar(S.estado.inquilino);
     if (u && u.claveTemporal) return pedirClaveNueva(S.estado.inquilino, true);
-    pintar();
+    pintar(); pintarSelectorAmbiente();
   }).catch(function(e){
     if (e.entrar) return pedirEntrada(e.inquilino, e.smtp, e.conClaves);
     // varios inquilinos y la URL no dice cuál: selector
@@ -1237,7 +1269,7 @@ function marcar(m){
 }
 var TITULOS = { tablero:"Inicio", director:"Director", casos:"Casos", hallazgos:"Hallazgos", cierremes:"Cierre de mes", aprobaciones:"Aprobaciones",
   autonomia:"Autonomía", diferidos:"Diferidos", activos:"Activos fijos", extractos:"Extractos", hacienda:"Hacienda", correos:"Correos",
-  corridas:"Corridas", auditoria:"Auditoría", usuarios:"Usuarios", oficina:"Oficina 2D" };
+  corridas:"Corridas", auditoria:"Auditoría", usuarios:"Usuarios", ambientes:"Ambientes", oficina:"Oficina 2D" };
 var SUBTITULOS = { oficina:"Los agentes en su oficina. Haga clic en uno para ver en qué está." };
 var VISTAS_RECEPTOR = ["tablero","casos","correos"];
 function pintar(){
@@ -1257,8 +1289,9 @@ function pintar(){
   var conVivo = Boolean(S.estado) && !receptor && S.vista==="tablero";
   $("#vivo").hidden = !conVivo;
   if (conVivo){ pintarVivo(); cargarUltimo(); }
-  $("#salir").style.display = (S.estado && S.estado.usuario && !S.estado.usuario.porToken) ? "" : "none";
-  $("#miClave").style.display = $("#salir").style.display;
+  $("#salir").style.display = S.estado ? "" : "none";
+  $("#miClave").style.display = (S.estado && S.estado.usuario && !S.estado.usuario.porToken) ? "" : "none";
+  if (S.vista==="ambientes") api("/api/ambientes").then(pintarAmbientes).catch(function(e){ var el=$("#ambTabla"); if(el) el.innerHTML='<div class="sub">'+esc(e.message)+'</div>'; });
   $("#token").style.display = (receptor || !$("#token").value) ? "none" : "";
   if (receptor) $("#quien").readOnly = true;
   $("#vista").innerHTML = receptor && S.vista==="tablero" ? V.tableroReceptor() : V[S.vista]();
@@ -1292,6 +1325,11 @@ function recordarChat(){ var ch=$("#chat"); if(S.vista==="director" && ch){ S.ch
 $("#nav").addEventListener("click", function(ev){ var b=ev.target.closest("button"); if(!b || !S.estado) return; recordarChat(); S.vista=b.dataset.v;
   $("#lado").classList.remove("abierto"); $("#menuBtn").setAttribute("aria-expanded","false"); pintar(); });
 $("#main").addEventListener("submit", function(ev){
+  if (ev.target.id==="ambForm"){ ev.preventDefault();
+    var m=$("#amMsg"); m.textContent="Probando la conexión y guardando…"; m.style.color="";
+    api("/api/ambientes", datosAmbiente()).then(function(a){ m.textContent="Listo: "+a.nombre+" conectado ("+n(a.companias)+" compañías; "+n(a.usuariosCopiados)+" contables copiados). Ya aparece en el selector de arriba."; m.style.color="var(--ok)"; $("#amPass").value=""; api("/api/ambientes").then(pintarAmbientes); pintarSelectorAmbiente(); })
+      .catch(function(e){ m.textContent=e.message; m.style.color="var(--critico)"; });
+    return; }
   if (ev.target.id==="uNuevo"){ ev.preventDefault();
     api("/api/usuarios",{correo:$("#uCorreo").value.trim(), nombre:$("#uNombre").value.trim()||null, rol:$("#uRol").value}).then(function(u){ mostrarClaveTemporal(u); msg("Usuario creado."); api("/api/usuarios").then(pintarUsuarios); $("#uCorreo").value=""; $("#uNombre").value=""; }).catch(function(e){ msg(e.message,true); });
     return; }
@@ -1424,6 +1462,8 @@ $("#main").addEventListener("click", function(ev){
     api("/api/autonomia/otorgar",{tipo:d.darAutonomia, compania:Number(d.cia), nota:nt}).then(function(j){ msg(j.mensaje); cargarAutonomia(); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.revocarAutonomia){ var mr=prompt("¿Por qué se revoca? (vuelve a pasar todo por Aprobaciones)", ""); if(!mr) return;
     api("/api/autonomia/"+d.revocarAutonomia+"/revocar",{motivo:mr}).then(function(){ msg("Revocada."); cargarAutonomia(); }).catch(function(e){ msg(e.message,true); }); }
+  else if (d.irAmbiente){ api("/api/ambientes/"+encodeURIComponent(d.irAmbiente)+"/cambiar",{}).then(function(j){ location.href=(j.prefijo||"")+"/"; }).catch(function(e){ msg(e.message,true); }); }
+  else if (t.id==="amProbar"){ var m=$("#amMsg"); m.textContent="Probando…"; m.style.color=""; api("/api/ambientes/probar", datosAmbiente()).then(function(r){ m.textContent="Conecta: "+n(r.companias)+" compañías, usuario "+r.usuario+"."; m.style.color="var(--ok)"; }).catch(function(e){ m.textContent=e.message; m.style.color="var(--critico)"; }); }
   else if (d.invitar){ invitar(d.invitar); }
   else if (d.clave){ if(!confirm("¿Generar una contraseña temporal nueva? Sus sesiones abiertas se cierran.")) return; api("/api/usuarios/"+d.clave+"/clave",{}).then(function(j){ mostrarClaveTemporal(j); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
   else if (d.desactivar){ if(!confirm("¿Desactivar este usuario? Sus sesiones se cierran.")) return; api("/api/usuarios/"+d.desactivar+"/desactivar",{}).then(function(){ msg("Desactivado."); api("/api/usuarios").then(pintarUsuarios); }).catch(function(e){ msg(e.message,true); }); }
@@ -1445,8 +1485,25 @@ $("#main").addEventListener("click", function(ev){
 })();
 $("#miClave").addEventListener("click", function(){ pedirClaveNueva(S.estado && S.estado.inquilino, false); });
 $("#salir").addEventListener("click", function(){
-  fetch(PREFIJO+"/api/acceso/salir",{method:"POST",credentials:"same-origin"}).then(function(){ location.reload(); });
+  // /api/salir cierra la sesión personal y borra la cookie del token en una sola llamada
+  fetch(PREFIJO+"/api/salir",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}",credentials:"same-origin"}).then(function(){ $("#token").value=""; try{ localStorage.removeItem("iasima_token"); }catch(e){} location.reload(); });
 });
+// Selector de ambiente: traslada la sesión al otro ambiente y va allá.
+$("#ambiente").addEventListener("change", function(){
+  var id=this.value; if(!id) return;
+  if (id==="__nuevo"){ this.value = (S.estado&&S.estado.inquilino&&S.estado.inquilino.id)||""; S.vista="ambientes"; pintar(); return; }
+  api("/api/ambientes/"+encodeURIComponent(id)+"/cambiar",{}).then(function(j){ location.href = (j.prefijo||"") + "/"; }).catch(function(e){ msg(e.message,true); });
+});
+function pintarSelectorAmbiente(){
+  var sel=$("#ambiente"); if(!S.estado) return;
+  var receptor = S.estado.usuario && S.estado.usuario.rol==="receptor";
+  if (receptor){ sel.style.display="none"; return; }
+  api("/api/ambientes").then(function(j){
+    var lista=j.ambientes||[]; if (lista.length<2 && !j.sePuedenAgregar){ sel.style.display="none"; return; }
+    sel.innerHTML = lista.map(function(a){ return '<option value="'+esc(a.id)+'"'+(a.actual?' selected':'')+'>'+esc(a.nombre)+'</option>'; }).join("")+(j.sePuedenAgregar?'<option value="__nuevo">+ Agregar ambiente…</option>':'');
+    sel.style.display="";
+  }).catch(function(){ sel.style.display="none"; });
+}
 $("#menuBtn").addEventListener("click", function(){
   var abierto=$("#lado").classList.toggle("abierto"); this.setAttribute("aria-expanded", abierto?"true":"false");
 });

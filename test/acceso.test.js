@@ -1,7 +1,7 @@
 // Usuarios, invitaciones de un solo uso, sesiones por cookie y lo que cada rol puede ver.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,4 +194,74 @@ test("Contraseñas: alta con temporal que se muestra una vez, entrar con correo 
     db.desactivarUsuario(rossana.id, "victor");
     assert.equal((await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "rossana@contadores.example", clave: reinicio.claveTemporal } })).status, 401);
   } finally { srv.close(); }
+});
+
+test("Ambientes: se agrega un Odoo desde la app (probado antes de guardar), el selector cambia de ambiente llevando la sesión, y Salir cierra todo", async () => {
+  const { createServer } = await import("node:http");
+  const { cargarInquilinos } = await import("../src/servicio/inquilinos.js");
+  // Un Odoo de mentira: acepta admin/clave-buena, 3 compañías
+  const odooFalso = createServer((req, res) => {
+    let b = ""; req.on("data", c => b += c); req.on("end", () => {
+      const { params } = JSON.parse(b); let result = false;
+      if (params.service === "common" && params.method === "login") result = params.args[1] === "admin" && params.args[2] === "clave-buena" ? 2 : false;
+      else if (params.args[4] === "search_count") result = 3;
+      else if (params.args[4] === "search_read") result = [{ id: 2, name: "Administrator", login: "admin" }];
+      res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
+    });
+  });
+  await new Promise(ok => odooFalso.listen(0, ok));
+  const urlOdoo = `http://127.0.0.1:${odooFalso.address().port}`;
+
+  const raiz = proyectoTemporal();
+  const db = new BaseDeDatos(":memory:");
+  const cfg = { ODOO_SIMULADO: "test/simulado/instancia.json", ALERTA_REFERENCIA: "ultimo-correo", SERVICIO_TOKEN: "admin-token" };
+  const corridas = new Corridas({ db, cfg, raiz, raizProyecto: raiz });
+  const contextos = [{ inquilino: { id: "iasima", nombre: "IASIMA", color: null, logo: null, dominio: null, unico: true, cfg, origen: "entorno" }, db, corridas, programador: null, director: null, cfg, raiz }];
+  const agregados = [];
+  const agregarAmbiente = inq => { for (const x of contextos) x.inquilino.unico = false; const c = { inquilino: inq, db: new BaseDeDatos(":memory:"), corridas: new Corridas({ db: new BaseDeDatos(":memory:"), cfg: inq.cfg, raiz: inq.raiz, raizProyecto: raiz }), programador: null, director: null, cfg: inq.cfg, raiz: inq.raiz }; contextos.push(c); agregados.push(inq); return c; };
+  const srv = crearApi({ contextos, raizProyecto: raiz, agregarAmbiente });
+  await new Promise(ok => srv.listen(0, ok));
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const llamar = (p, { metodo = "GET", cuerpo, token, cookie, remoto } = {}) => fetch(base + p, { method: metodo, headers: { "Content-Type": "application/json", ...(remoto ? { "X-Forwarded-For": "190.1.1.1" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { Cookie: cookie } : {}) }, body: cuerpo ? JSON.stringify(cuerpo) : undefined, redirect: "manual" });
+  try {
+    const admin = { token: "admin-token" };
+    // un contable con contraseña y su sesión
+    const alta = await (await llamar("/api/usuarios", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", nombre: "Victor", rol: "contable" }, ...admin })).json();
+    const entrar = await llamar("/api/acceso/clave", { metodo: "POST", cuerpo: { correo: "victor@contadores.example", clave: alta.claveTemporal } });
+    const sesion = entrar.headers.get("set-cookie").split(";")[0];
+
+    const lista0 = await (await llamar("/api/ambientes", admin)).json();
+    assert.equal(lista0.ambientes.length, 1); assert.equal(lista0.ambientes[0].actual, true); assert.equal(lista0.sePuedenAgregar, true);
+    // probar: credenciales malas → 502 con explicación; buenas → compañías
+    const mala = await llamar("/api/ambientes/probar", { metodo: "POST", cuerpo: { id: "sima", odooUrl: urlOdoo, odooDb: "sima", odooUser: "admin", odooPassword: "mala" }, ...admin });
+    assert.equal(mala.status, 502); assert.match((await mala.json()).error, /Usuario o contraseña incorrectos/);
+    assert.equal((await llamar("/api/ambientes/probar", { metodo: "POST", cuerpo: { id: "SIMA con espacios", odooUrl: urlOdoo, odooDb: "sima", odooUser: "admin", odooPassword: "x" }, ...admin })).status, 400);
+    const prueba = await (await llamar("/api/ambientes/probar", { metodo: "POST", cuerpo: { id: "sima", odooUrl: urlOdoo, odooDb: "sima", odooUser: "admin", odooPassword: "clave-buena" }, ...admin })).json();
+    assert.equal(prueba.companias, 3);
+    // agregar desde afuera con el token: no (pide sesión personal); con la sesión de Victor: sí
+    assert.equal((await llamar("/api/ambientes", { metodo: "POST", cuerpo: { id: "sima", odooUrl: urlOdoo, odooDb: "sima", odooUser: "admin", odooPassword: "clave-buena" }, remoto: true, ...admin })).status, 403);
+    const nuevo = await (await llamar("/api/ambientes", { metodo: "POST", cuerpo: { id: "sima", nombre: "SIMA", odooUrl: urlOdoo + "/", odooDb: "sima", odooUser: "admin", odooPassword: "clave-buena", color: "#123456" }, cookie: sesion, remoto: true })).json();
+    assert.equal(nuevo.id, "sima"); assert.equal(nuevo.prefijo, "/t/sima"); assert.equal(nuevo.companias, 3); assert.equal(nuevo.usuariosCopiados, 1, "Victor va al ambiente nuevo");
+    assert.equal(agregados[0].cfg.ODOO_URL, urlOdoo, "sin la barra final"); assert.equal(agregados[0].cfg.ODOO_SIMULADO, undefined);
+    // quedó en el archivo y lo carga el arranque siguiente; sin la contraseña en la lista pública
+    assert.equal(JSON.parse(readFileSync(join(raiz, "inquilinos", "ambientes.json"), "utf8"))[0].odooDb, "sima");
+    const recargados = cargarInquilinos({ ...cfg, INQUILINOS: "iasima" }, raiz);
+    assert.deepEqual(recargados.map(i => [i.id, i.unico, i.origen]), [["iasima", false, "entorno"], ["sima", false, "app"]]);
+    const lista1 = await (await llamar("/t/iasima/api/ambientes", { cookie: sesion })).json();
+    assert.equal(lista1.ambientes.length, 2); assert.ok(!JSON.stringify(lista1).includes("clave-buena"));
+    // cambiar de ambiente: la sesión de Victor viaja al otro en una cookie con su propio Path
+    const cambio = await llamar("/t/iasima/api/ambientes/sima/cambiar", { metodo: "POST", cuerpo: {}, cookie: sesion });
+    assert.equal(cambio.status, 200); assert.equal((await cambio.json()).prefijo, "/t/sima");
+    const galleta = cambio.headers.get("set-cookie");
+    assert.match(galleta, /^sesion_sima=[A-Za-z0-9_-]+; Path=\/t\/sima; HttpOnly/);
+    const enSima = await (await llamar("/t/sima/api/estado", { cookie: galleta.split(";")[0] })).json();
+    assert.equal(enSima.usuario.correo, "victor@contadores.example"); assert.equal(enSima.inquilino.id, "sima"); assert.equal(enSima.inquilinos, 2);
+    // con el token también se traslada (mismo token)
+    const cambioTok = await llamar("/t/iasima/api/ambientes/sima/cambiar", { metodo: "POST", cuerpo: {}, ...admin });
+    assert.match(cambioTok.headers.get("set-cookie"), /^oficina_sima=[0-9a-f]{64}; Path=\/t\/sima/);
+    // Salir: una sola llamada cierra la sesión y borra la cookie del token
+    const salir = await llamar("/t/iasima/api/salir", { metodo: "POST", cuerpo: {}, cookie: sesion });
+    assert.equal(salir.status, 200);
+    assert.equal((await llamar("/t/iasima/api/estado", { cookie: sesion })).status, 401, "la sesión ya no existe");
+  } finally { srv.close(); odooFalso.close(); }
 });

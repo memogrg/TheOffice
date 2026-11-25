@@ -51,6 +51,15 @@ contraseñas se guardan con scrypt y sal; mínimo 10 caracteres. El enlace de un
 alternativa (correo si hay SMTP). El token del servicio queda para la API, el plugin y el primer alta: desde afuera,
 una vez que existe un contable con contraseña, crear contables o reiniciar contraseñas pide sesión personal.
 
+**Ambientes.** La misma Oficina puede estar conectada a varios Odoo (la copia de IASIMA, SIMA, otro cliente).
+Además de `INQUILINOS` y las variables `<ID>_ODOO_*`, un contable puede **agregar un ambiente desde la app**
+(pestaña Ambientes): identificador, nombre, dirección de Odoo, base de datos, usuario y contraseña o clave de
+API, con «Probar conexión» antes de guardar. Queda en `inquilinos/ambientes.json` (en el volumen del host,
+nunca en el repositorio) y entra en caliente, con su carpeta, su base, su calendario y sus usuarios: los
+contables del ambiente actual se copian al nuevo con su misma contraseña. El selector de la cabecera cambia
+de ambiente llevando la sesión; «Salir» cierra la sesión personal y la del token de una vez. Agregar
+ambientes desde afuera pide sesión personal (no el token).
+
 **Roles.** Un **receptor** (el correo que recibe las facturas en el buzón) entra con su enlace y ve solo lo suyo:
 sus compañías, sus casos (y puede marcarlos resueltos, firmados con su nombre) y los avisos aprobados o enviados
 dirigidos a él; nada de propuestas, corridas, Director ni oficina 2D. Un **contable** ve y hace todo. El token de

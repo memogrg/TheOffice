@@ -1230,6 +1230,19 @@ export class BaseDeDatos {
     if (String(nueva) === String(actual)) throw new Error("La contraseña nueva tiene que ser distinta de la actual.");
     this.ponerClave(id, nueva, { temporal: false, quien });
   }
+  // Para llevar los contables a otro ambiente: con su hash, nunca la contraseña.
+  exportarUsuarios() { return this.todos("SELECT id, correo, nombre, rol, activo, clave_hash, clave_temporal FROM usuarios"); }
+  importarUsuarios(filas) {
+    let n = 0;
+    for (const u of filas || []) {
+      if (!u || !u.correo) continue;
+      const existe = this.usuarioPorCorreo(u.correo);
+      if (existe) { if (!existe.clave_hash && u.clave_hash) this.correr("UPDATE usuarios SET clave_hash=?, clave_temporal=? WHERE id=?", u.clave_hash, u.clave_temporal ? 1 : 0, existe.id); continue; }
+      this.correr("INSERT INTO usuarios (correo, nombre, rol, activo, creado_en, creado_por, clave_hash, clave_temporal) VALUES (?,?,?,?,?,?,?,?)", u.correo, u.nombre || null, u.rol || "contable", u.activo ? 1 : 0, this.#ahora(), "otro ambiente", u.clave_hash || null, u.clave_temporal ? 1 : 0);
+      n++;
+    }
+    return n;
+  }
   cerrarSesionesDe(usuarioId, { excepto = null } = {}) {
     if (excepto) this.correr("DELETE FROM sesiones WHERE usuario_id=? AND id<>?", usuarioId, excepto); else this.correr("DELETE FROM sesiones WHERE usuario_id=?", usuarioId);
   }

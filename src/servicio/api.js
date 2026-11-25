@@ -14,7 +14,8 @@ import { join, extname, normalize, sep } from "node:path";
 
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
-import { resolverInquilino, marcaDe } from "./inquilinos.js";
+import { resolverInquilino, marcaDe, validarAmbiente, leerAmbientes, guardarAmbientes, inquilinoDeAmbiente } from "./inquilinos.js";
+import { Odoo } from "../odoo.js";
 import { generarOficina } from "../oficina.js";
 import { proponerRegla } from "./reglas.js";
 import * as asientos from "./asientos.js";
@@ -34,8 +35,9 @@ import { canonizarCorreo, dominiosEquivalentes } from "../lib/correo.js";
 // Un contexto por inquilino: { inquilino, db, corridas, programador, director, cfg, raiz }.
 // Por compatibilidad también se acepta un solo contexto suelto (un inquilino "iasima").
 export function crearApi(opciones) {
-  const { contextos, raizProyecto, log = () => {} } = normalizar(opciones);
-  const inquilinos = contextos.map(c => c.inquilino);
+  const { contextos, raizProyecto, log = () => {}, agregarAmbiente = null } = normalizar(opciones);
+  // La lista viva: un ambiente agregado desde la app entra sin reiniciar.
+  const inquilinos = () => contextos.map(c => c.inquilino);
   const rutas = [];
   // Cada manejador recibe (q, params, cuerpo, quien, ctx) donde ctx es el contexto del inquilino.
   const ruta = (metodo, patron, fn, roles = ["contable"]) => rutas.push({ metodo, re: new RegExp("^" + patron.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"), fn, roles });
@@ -50,7 +52,7 @@ export function crearApi(opciones) {
   ruta("GET", "/api/estado", (q, p, c, quien, ctx) => esReceptor(ctx) ? estadoReceptor(ctx) : ({
     ahora: new Date().toISOString(),
     usuario: ctx.usuario ? { correo: ctx.usuario.correo, nombre: ctx.usuario.nombre, rol: ctx.usuario.rol, claveTemporal: Boolean(ctx.usuario.clave_temporal) } : { rol: "contable", porToken: true },
-    inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
+    inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos().length,
     odoo: ctx.cfg.ODOO_SIMULADO ? { simulado: ctx.cfg.ODOO_SIMULADO } : { url: ctx.cfg.ODOO_URL, db: ctx.cfg.ODOO_DB },
     escrituraPermitida: String(ctx.cfg.PERMITIR_ESCRITURA || "").toLowerCase() === "si",
     acceso: { remota: ctx.remota === true, token: Boolean(ctx.cfg.SERVICIO_TOKEN), sesion: Boolean(ctx.usuario) },
@@ -85,7 +87,7 @@ export function crearApi(opciones) {
     const rec = ctx.db.ultimaCorrida("recepcion");
     return {
       ahora: new Date().toISOString(), usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol },
-      inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos.length,
+      inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos().length,
       ultimaRecepcion: rec ? rec.fin : null,
       casos: { afuera: abiertos.filter(c => c.frente === "afuera").length, adentro: abiertos.filter(c => c.frente === "adentro").length,
         resueltos: ctx.db.casos({ receptor: buzon(ctx), seguimiento: "resuelto", limite: 5000 }).length, porCompania: Object.values(porCia).sort((a, b) => b.total - a.total) },
@@ -512,6 +514,58 @@ export function crearApi(opciones) {
     }
     return { enlace, vence, enviado, errorCorreo };
   });
+  // --- ambientes: la misma Oficina conectada a varios Odoo (iasima, sima, otros clientes). Pestaña Ambientes.
+  const describirAmbiente = (i, ctx) => ({ id: i.id, nombre: i.nombre, color: i.color, prefijo: `/t/${i.id}`, actual: i.id === ctx.inquilino.id, origen: i.origen || "entorno",
+    odoo: { url: i.cfg.ODOO_SIMULADO ? `simulado: ${i.cfg.ODOO_SIMULADO}` : (i.cfg.ODOO_URL || null), db: i.cfg.ODOO_DB || null, usuario: i.cfg.ODOO_USER || null }, creadoPor: i.creadoPor || null, creadoEn: i.creadoEn || null });
+  ruta("GET", "/api/ambientes", (q, p, c, quien, ctx) => ({ ambientes: inquilinos().map(i => describirAmbiente(i, ctx)), sePuedenAgregar: Boolean(agregarAmbiente) }));
+  // Probar una conexión antes de guardarla: entra a Odoo y cuenta compañías. Nunca guarda nada.
+  const probarOdoo = async a => {
+    const odoo = new Odoo({ url: a.odooUrl, db: a.odooDb, user: a.odooUser, password: a.odooPassword, timeoutMs: 30_000, reintentos: 0 });
+    await odoo.conectar();
+    const companias = await odoo.leer("res.company", "search_count", [[]], {});
+    const [info] = await odoo.leer("res.users", "search_read", [[["login", "=", a.odooUser]], ["name", "login"]], { limit: 1 }).catch(() => [null]);
+    return { ok: true, companias, usuario: info?.name || a.odooUser };
+  };
+  ruta("POST", "/api/ambientes/probar", async (q, p, cuerpo, quien, ctx) => {
+    let a; try { a = validarAmbiente(cuerpo); } catch (e) { return error(400, e.message); }
+    try { return await probarOdoo(a); } catch (e) { return error(502, `No se pudo entrar a ${a.odooUrl} (base ${a.odooDb}, usuario ${a.odooUser}): ${e.message}`); }
+  });
+  ruta("POST", "/api/ambientes", async (q, p, cuerpo, quien, ctx) => {
+    if (!agregarAmbiente) return error(501, "Este servicio no permite agregar ambientes en caliente.");
+    let a; try { a = validarAmbiente(cuerpo); } catch (e) { return error(400, e.message); }
+    if (inquilinos().some(i => i.id === a.id)) return error(409, `Ya existe un ambiente con el identificador «${a.id}».`);
+    let prueba; try { prueba = await probarOdoo(a); } catch (e) { return error(502, `No se guardó: no se pudo entrar a ${a.odooUrl} (base ${a.odooDb}, usuario ${a.odooUser}): ${e.message}`); }
+    const guardado = { ...a, creadoPor: quien, creadoEn: new Date().toISOString() };
+    guardarAmbientes(raizProyecto, [...leerAmbientes(raizProyecto).filter(x => x.id !== a.id), guardado]);
+    const globales = Object.fromEntries(Object.entries(ctx.cfg).filter(([k]) => !/^(ODOO_|BASE_DE_DATOS)/.test(k)));
+    const nuevo = agregarAmbiente(inquilinoDeAmbiente(guardado, globales, raizProyecto));
+    // Los contables de este ambiente entran igual en el nuevo (misma contraseña); los receptores no (son de un buzón).
+    const copiados = nuevo.db.importarUsuarios(ctx.db.exportarUsuarios().filter(u => u.rol === "contable"));
+    ctx.db.auditar(quien, "agregar-ambiente", "ambiente", null, { id: a.id, nombre: a.nombre, odooUrl: a.odooUrl, odooDb: a.odooDb, companias: prueba.companias, usuariosCopiados: copiados });
+    return { ...describirAmbiente(nuevo.inquilino, ctx), companias: prueba.companias, usuariosCopiados: copiados };
+  });
+  // Cambiar de ambiente sin volver a entrar: la sesión (o el token) de este ambiente se traslada al otro.
+  // Devuelve a dónde ir; la cookie del otro ambiente va en la respuesta (ver más abajo, en el servidor).
+  ruta("POST", "/api/ambientes/:id/cambiar", (q, p, cuerpo, quien, ctx) => {
+    const destino = contextos.find(c => c.inquilino.id === String(p.id).toLowerCase());
+    if (!destino) return error(404, "No existe ese ambiente.");
+    if (destino.inquilino.id === ctx.inquilino.id) return { prefijo: ctx.prefijo || "" };
+    let traslado = null;
+    if (ctx.usuario) {
+      // el mismo correo en el otro ambiente; si no existe, se crea con la misma contraseña y rol
+      let u = destino.db.usuarioPorCorreo(ctx.usuario.correo);
+      if (!u || !u.activo) { destino.db.importarUsuarios([ctx.db.exportarUsuarios().find(x => x.id === ctx.usuario.id)]); u = destino.db.usuarioPorCorreo(ctx.usuario.correo); }
+      if (!u) return error(403, "No se pudo trasladar su usuario al otro ambiente.");
+      traslado = { tipo: "sesion", usuarioId: u.id };
+      destino.db.auditar(quien, "entrar", "usuario", u.id, { con: "cambio de ambiente", desde: ctx.inquilino.id });
+    } else if (destino.cfg.SERVICIO_TOKEN && destino.cfg.SERVICIO_TOKEN === ctx.cfg.SERVICIO_TOKEN) {
+      traslado = { tipo: "token" };
+    } else if (!destino.cfg.SERVICIO_TOKEN) {
+      traslado = { tipo: "abierto" };
+    } else return error(403, "El otro ambiente tiene otro token: entre allá con su usuario y contraseña.");
+    return { prefijo: `/t/${destino.inquilino.id}`, nombre: destino.inquilino.nombre, __traslado: { destino, traslado } };
+  });
+
   // Un usuario ya registrado pide su enlace por correo (solo funciona con SMTP; nunca revela si el correo existe).
   ruta("POST", "/api/acceso/pedir", async (q, p, cuerpo, quien, ctx) => {
     const u = ctx.db.usuarioPorCorreo(cuerpo.correo);
@@ -527,7 +581,7 @@ export function crearApi(opciones) {
   }, ["publico"]);
 
   // lista de inquilinos (para el selector cuando hay varios y ninguno se puede deducir)
-  const listaInquilinos = () => inquilinos.map(i => ({ ...marcaDe(i), prefijo: `/t/${i.id}` }));
+  const listaInquilinos = () => inquilinos().map(i => ({ ...marcaDe(i), prefijo: `/t/${i.id}` }));
 
   // --- el servidor
   const intentos = new Limitador({ maximo: 10, ventanaMs: 15 * 60 * 1000 });
@@ -537,7 +591,7 @@ export function crearApi(opciones) {
     const remota = esRemota(req), ip = ipDe(req);
     try {
       if (url.pathname === "/api/inquilinos") return responder(res, 200, listaInquilinos());
-      const r0 = resolverInquilino(inquilinos, { host: req.headers.host || "", pathname: url.pathname });
+      const r0 = resolverInquilino(inquilinos(), { host: req.headers.host || "", pathname: url.pathname });
       if (!r0) {
         // varios inquilinos y la URL no dice cuál: la app muestra el selector
         if (url.pathname.startsWith("/api/")) return responder(res, 404, { error: "Indique el inquilino: /t/<id>/api/…", inquilinos: listaInquilinos() });
@@ -572,7 +626,10 @@ export function crearApi(opciones) {
         return responder(res, 200, { ok: true, token: true });
       }
       if (pathname === "/api/salir" && req.method === "POST") {
-        res.setHeader("Set-Cookie", `${nombreCookie}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`);
+        // Sale de todo: la sesión personal (si la hay) y la cookie del token.
+        const sh = cookie(req, `sesion_${ctx.inquilino.id}`);
+        if (sh) ctx.db.cerrarSesion(hash(sh));
+        res.setHeader("Set-Cookie", [`${nombreCookie}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`, `sesion_${ctx.inquilino.id}=; Path=${r0.prefijo || "/"}; HttpOnly; Max-Age=0`]);
         return responder(res, 200, { ok: true });
       }
       // Canje de una invitación: POST /api/acceso/entrar {token} → sesión en cookie.
@@ -642,6 +699,17 @@ export function crearApi(opciones) {
         const params = pathname.match(r.re).groups || {};
         const out = await r.fn(q, params, cuerpo, quien, ctx);
         if (out && out.__error) return responder(res, out.__error, { error: out.mensaje });
+        if (out && out.__traslado) {
+          const { destino, traslado } = out.__traslado; delete out.__traslado;
+          const ruta = `/t/${destino.inquilino.id}`, seguro = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+          if (traslado.tipo === "sesion") {
+            const id = randomBytes(24).toString("base64url");
+            destino.db.crearSesion(hash(id), traslado.usuarioId);
+            res.setHeader("Set-Cookie", `sesion_${destino.inquilino.id}=${id}; Path=${ruta}; HttpOnly; SameSite=Strict; Max-Age=2592000${seguro}`);
+          } else if (traslado.tipo === "token") {
+            res.setHeader("Set-Cookie", `oficina_${destino.inquilino.id}=${firmar(destino.cfg.SERVICIO_TOKEN)}; Path=${ruta}; HttpOnly; SameSite=Strict; Max-Age=2592000${seguro}`);
+          }
+        }
         return responder(res, 200, out ?? {});
       }
       // la oficina 2D del inquilino, armada en cada visita con la plantilla ACTUAL y las cifras de la
@@ -673,7 +741,7 @@ function estatico(res, raizProyecto, pathname) {
 }
 
 function normalizar(o) {
-  if (o.contextos) return { contextos: o.contextos, raizProyecto: o.raizProyecto, log: o.log };
+  if (o.contextos) return { contextos: o.contextos, raizProyecto: o.raizProyecto, log: o.log, agregarAmbiente: o.agregarAmbiente || null };
   const inquilino = o.inquilino || { id: "iasima", nombre: "IASIMA", color: null, logo: null, dominio: null, unico: true };
   return { contextos: [{ inquilino, db: o.db, corridas: o.corridas, programador: o.programador || null, director: o.director || null, cfg: o.cfg, raiz: o.raiz }],
     raizProyecto: o.raizProyecto || o.raiz, log: o.log };
