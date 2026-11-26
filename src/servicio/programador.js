@@ -46,7 +46,7 @@ export class Programador {
 
   // "Hoy" en hora local, que es como se configura CORRIDA_DIARIA. La base guarda UTC.
   #yaCorrioHoy(agente, ahora) {
-    const u = this.db.ultimaCorrida(agente);
+    const u = this.db.ultimaCorridaResumen(agente);
     return Boolean(u) && diaLocal(new Date(u.inicio)) === diaLocal(ahora);
   }
   // ¿Toca intentar hoy? No, si ya salió bien hoy; no, si ya se agotaron los intentos del día; no, si

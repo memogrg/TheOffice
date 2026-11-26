@@ -66,7 +66,7 @@ export function crearApi(opciones) {
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick, ultimoFallo: ctx.programador.ultimoFallo } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
     ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda", "controles"].map(a => {
-      const u = ctx.db.ultimaCorrida(a);
+      const u = ctx.db.ultimaCorridaResumen(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
     casos: ctx.db.resumenCasos(),
@@ -87,7 +87,7 @@ export function crearApi(opciones) {
     const abiertos = ctx.db.casos({ receptor: buzon(ctx), seguimiento: "abierto", limite: 5000 });
     const porCia = {};
     for (const c of abiertos) { const k = c.compania_id; porCia[k] = porCia[k] || { compania_id: k, compania: c.compania, afuera: 0, adentro: 0, total: 0 }; porCia[k][c.frente]++; porCia[k].total++; }
-    const rec = ctx.db.ultimaCorrida("recepcion");
+    const rec = ctx.db.ultimaCorridaResumen("recepcion");
     return {
       ahora: new Date().toISOString(), usuario: { correo: u.correo, nombre: u.nombre, rol: u.rol },
       inquilino: marcaDe(ctx.inquilino), prefijo: ctx.prefijo || "", inquilinos: inquilinos().length,

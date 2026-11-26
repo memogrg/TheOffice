@@ -37,23 +37,37 @@ export function mesPorOmision(db) {
   return sumarMeses(mesDe(hoyLocal()), -1);
 }
 
-// Lo que se necesita de las corridas, leído una vez para todas las compañías.
+// Lo que se necesita de las corridas, leído una vez para todas las compañías. Se guarda en memoria
+// mientras nada cambie (ninguna corrida, acción auditada ni asiento nuevo): con 90 compañías y
+// decenas de miles de casos y movimientos, releer y reindexar en cada visita a la pestaña tardaba segundos.
+const CACHE = new WeakMap();   // por base de datos (cada inquilino tiene la suya)
+function contextoCacheado(db, mes) {
+  const llave = `${mes}|${db.uno("SELECT MAX(id) AS m FROM corridas")?.m}|${db.uno("SELECT MAX(id) AS m FROM auditoria")?.m}|${db.uno("SELECT COUNT(*) AS c FROM asientos")?.c}|${db.uno("SELECT COUNT(*) AS c FROM cierres_mes")?.c}`;
+  if (!CACHE.has(db)) CACHE.set(db, new Map());
+  const porMes = CACHE.get(db), previo = porMes.get(mes);
+  if (previo && previo.llave === llave && Date.now() - previo.cuando < 10 * 60e3) return previo.ctx;
+  const ctx = contexto(db, mes);
+  porMes.set(mes, { llave, cuando: Date.now(), ctx });
+  return ctx;
+}
+const porCompania = (filas, campo = "compania_id") => { const m = new Map(); for (const f of filas) { const k = f[campo]; if (!m.has(k)) m.set(k, []); m.get(k).push(f); } return m; };
 function contexto(db, mes) {
   const r = a => db.ultimaCorrida(a)?.resultado || null;
   const ctx = { mes, recepcion: r("recepcion"), diagnostico: r("diagnostico"), recurrentes: r("recurrentes"), documentos: r("documentos"), bancos: r("bancos"),
     cierre: r("cierre"), estados: r("estados"), cambiario: r("cambiario"), diferidos: r("diferidos"), depreciacion: r("depreciacion"), controles: r("controles") };
   ctx.asientos = db.asientos({ estado: "todos", limite: 5000 });
-  ctx.casos = db.casos({ seguimiento: "abierto", limite: 100000 });
-  ctx.consultas = db.consultas({ limite: 100000 });
-  ctx.propuestas = db.propuestas({ estado: "propuesta", limite: 100000 });
+  ctx.asientosPorCia = porCompania(ctx.asientos);
+  ctx.casosPorCia = porCompania(db.casos({ seguimiento: "abierto", limite: 100000 }));
+  ctx.consultasPorCia = porCompania(db.consultas({ limite: 100000 }));
+  ctx.propuestasPorCia = porCompania(db.propuestas({ estado: "propuesta", limite: 100000 }));
   ctx.diferidosReg = db.diferidos({ estado: "activo" });
   ctx.activosReg = db.activos({ estado: "activo" });
-  ctx.lineasExtracto = db.lineasExtracto({ limite: 200000 });
+  ctx.extractoPorCia = porCompania(db.lineasExtracto({ limite: 200000 }).filter(l => l.fecha && l.fecha.startsWith(mes)));
   ctx.declaraciones = db.declaraciones({ periodo: mes, impuesto: "150" }).filter(d => d.periodo === mes);
   return ctx;
 }
 const delMes = (res, mes) => res && res.mes === mes;
-const asiento = (ctx, clave) => ctx.asientos.filter(a => a.clave === clave).sort((a, b) => b.id - a.id)[0] || null;
+const asiento = (ctx, clave, ciaId) => (ctx.asientosPorCia.get(ciaId) || []).filter(a => a.clave === clave).sort((a, b) => b.id - a.id)[0] || null;
 
 function evaluar(it, cia, ctx) {
   const { mes } = ctx, nombre = cia.name;
@@ -61,7 +75,7 @@ function evaluar(it, cia, ctx) {
   const sinDatos = agente => ({ estado: "sin-datos", detalle: `Sin corrida de ${agente} para ${mes}: córralo.` });
   switch (it.id) {
     case "buzon": {
-      const c = ctx.casos.filter(x => x.compania_id === cia.id);
+      const c = ctx.casosPorCia.get(cia.id) || [];
       if (!ctx.recepcion) return sinDatos("Recepción");
       const af = c.filter(x => x.frente === "afuera").length, ad = c.length - af;
       return c.length ? pend(`${plural(af, "documento", "documentos")} por reclamar afuera, ${ad} por revisar adentro.`) : ok();
@@ -83,7 +97,7 @@ function evaluar(it, cia, ctx) {
       return nc.length ? pend(`${plural(nc.length, "nota de crédito sin ligar", "notas de crédito sin ligar")}.`) : ok();
     }
     case "cuentas": {
-      const k = ctx.consultas.filter(x => x.compania_id === cia.id).length, p = ctx.propuestas.filter(x => x.compania_id === cia.id).length;
+      const k = (ctx.consultasPorCia.get(cia.id) || []).length, p = (ctx.propuestasPorCia.get(cia.id) || []).length;
       return k || p ? pend(`${plural(k, "consulta abierta", "consultas abiertas")}, ${plural(p, "propuesta por decidir", "propuestas por decidir")}.`) : ok();
     }
     case "borradores": {
@@ -100,7 +114,7 @@ function evaluar(it, cia, ctx) {
       return mal.length ? pend(mal.map(x => `${x.diario}: ${x.estado === "atrasada" ? `hasta ${x.ultimaConciliada}` : x.estado.replace("-", " ")}`).join("; ") + ".") : ok();
     }
     case "extractos": {
-      const ls = ctx.lineasExtracto.filter(l => l.compania_id === cia.id && l.fecha.startsWith(mes));
+      const ls = ctx.extractoPorCia.get(cia.id) || [];
       if (!ls.length) return na("Sin extracto del mes subido.");
       const p = ls.filter(l => l.estado === "pendiente").length, a = ls.filter(l => l.estado === "propuesta").length;
       return p || a ? pend([p ? `${plural(p, "movimiento del banco sin registrar", "movimientos del banco sin registrar")}` : null, a ? `${plural(a, "con asiento por decidir", "con asiento por decidir")}` : null].filter(Boolean).join(", ") + ".") : ok(`${plural(ls.length, "movimiento", "movimientos")} en libros.`);
@@ -130,7 +144,7 @@ function evaluar(it, cia, ctx) {
       if (!delMes(ctx.cambiario, mes)) return sinDatos("Diferencial cambiario");
       const c = (ctx.cambiario.companias || []).find(x => x.companiaId === cia.id);
       if (!c || !c.ajustes) return na("Sin saldos en moneda extranjera que ajustar.");
-      const a = asiento(ctx, `cambiario|${cia.id}|${mes}`);
+      const a = asiento(ctx, `cambiario|${cia.id}|${mes}`, cia.id);
       return a?.estado === "aplicada" ? ok(`Asiento ${a.move_name || a.id}.`) : pend(`Neto ₡${colones(c.neto)}: asiento ${a ? a.estado : "sin proponer"}.`);
     }
     case "diferidos": {
@@ -138,7 +152,7 @@ function evaluar(it, cia, ctx) {
       if (!reg.length) return na("Sin diferidos registrados.");
       if (!delMes(ctx.diferidos, mes)) return sinDatos("Diferidos");
       const sug = (ctx.diferidos.asientosSugeridos || []).some(x => x.companiaId === cia.id);
-      const a = asiento(ctx, `diferidos|${cia.id}|${mes}`);
+      const a = asiento(ctx, `diferidos|${cia.id}|${mes}`, cia.id);
       if (a?.estado === "aplicada") return ok(`Asiento ${a.move_name || a.id}.`);
       return sug ? pend(`Asiento de cuotas ${a ? a.estado : "sin proponer"}.`) : ok("Sin cuotas pendientes.");
     }
@@ -148,12 +162,12 @@ function evaluar(it, cia, ctx) {
       if (!delMes(ctx.depreciacion, mes)) return sinDatos("Depreciación");
       if ((ctx.depreciacion.duplicados || []).some(x => x.companiaId === cia.id)) return ok("Registrada a mano en Odoo.");
       const sug = (ctx.depreciacion.asientosSugeridos || []).some(x => x.companiaId === cia.id);
-      const a = asiento(ctx, `depreciacion|${cia.id}|${mes}`);
+      const a = asiento(ctx, `depreciacion|${cia.id}|${mes}`, cia.id);
       if (a?.estado === "aplicada") return ok(`Asiento ${a.move_name || a.id}.`);
       return sug ? pend(`Asiento de depreciación ${a ? a.estado : "sin proponer"}.`) : ok("Sin meses pendientes.");
     }
     case "asientos": {
-      const ab = ctx.asientos.filter(a => a.compania_id === cia.id && ["propuesta", "aprobada", "fallo"].includes(a.estado));
+      const ab = (ctx.asientosPorCia.get(cia.id) || []).filter(a => ["propuesta", "aprobada", "fallo"].includes(a.estado));
       if (!ab.length) return ok();
       const c = s => ab.filter(a => a.estado === s).length;
       return pend([c("propuesta") && `${c("propuesta")} por decidir`, c("aprobada") && `${c("aprobada")} aprobados sin crear`, c("fallo") && `${c("fallo")} con fallo`].filter(Boolean).join(", ") + ".");
@@ -201,7 +215,7 @@ function evaluar(it, cia, ctx) {
 
 // La lista de un mes: una fila por compañía con sus ítems, lo dado por bueno y si está cerrada.
 export function lista(db, { mes, companias, companiaId = null }) {
-  const ctx = contexto(db, mes);
+  const ctx = contextoCacheado(db, mes);
   const registros = new Map(db.cierresMes(mes).map(c => [c.compania_id, c]));
   const filas = [];
   for (const cia of companias.filter(c => !companiaId || c.id === Number(companiaId))) {

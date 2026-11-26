@@ -983,6 +983,10 @@ export class BaseDeDatos {
   ultimaCorrida(agente) {
     return desempacar(this.uno("SELECT * FROM corridas WHERE agente=? AND estado='ok' ORDER BY id DESC LIMIT 1", agente));
   }
+  // La última buena sin el resultado completo (que en Recepción pesa megas): para el estado general.
+  ultimaCorridaResumen(agente) {
+    return desempacar(this.uno("SELECT id, agente, inicio, fin, estado, modo, compania, totales, alertas, llamadas_odoo, segundos FROM corridas WHERE agente=? AND estado='ok' ORDER BY id DESC LIMIT 1", agente));
+  }
   // La última terminada, salga bien o mal (para contar intentos y mostrar el fallo).
   ultimaCorridaCualquiera(agente) {
     return desempacar(this.uno("SELECT id, agente, inicio, fin, estado, error FROM corridas WHERE agente=? AND estado<>'corriendo' ORDER BY id DESC LIMIT 1", agente));
