@@ -51,6 +51,12 @@ contraseñas se guardan con scrypt y sal; mínimo 10 caracteres. El enlace de un
 alternativa (correo si hay SMTP). El token del servicio queda para la API, el plugin y el primer alta: desde afuera,
 una vez que existe un contable con contraseña, crear contables o reiniciar contraseñas pide sesión personal.
 
+**Modo ensayo de correo.** Con `CORREO_PRUEBA=alguien@firma.cr`, todo lo que la Oficina enviaría (reclamos de
+Comunicación, recordatorios de Cartera, resumen de Hacienda, enlaces de acceso, reporte diario) va a ese buzón
+con el destinatario original en el asunto (`[ENSAYO · iba a …]`), aunque se pulse «Enviar de verdad». Así se
+prueba de punta a punta sin tocar a un cliente. El Estado del servicio y la pestaña Correos lo dicen. Vacío =
+envío real.
+
 **Ambientes.** La misma Oficina puede estar conectada a varios Odoo (la copia de IASIMA, SIMA, otro cliente).
 Además de `INQUILINOS` y las variables `<ID>_ODOO_*`, un contable puede **agregar un ambiente desde la app**
 (pestaña Ambientes): identificador, nombre, dirección de Odoo, base de datos, usuario y contraseña o clave de

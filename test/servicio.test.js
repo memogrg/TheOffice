@@ -116,6 +116,29 @@ test("correos: enviar aprobados sin SMTP marca fallo y no revienta", async () =>
   assert.equal(db.correo(c.id).estado, "fallo");
 });
 
+test("correos: en modo ensayo (CORREO_PRUEBA) «enviar de verdad» va al buzón de ensayo con el destinatario original en el asunto", async () => {
+  const { db, corridas } = armar({ CORREO_PRUEBA: "pruebas@contadores.example", REPORTE_PARA: "david@contadores.example" });
+  await corridas.correr("recepcion", []);
+  await corridas.correr("comunicacion", []);
+  const enviados = [];
+  corridas.transporteCorreo = { sendMail: async m => { enviados.push(m); return { messageId: `<m${enviados.length}>` }; } };   // SMTP de mentira
+  const aprobados = db.correos({ estado: "borrador" }).slice(0, 2);
+  for (const c of aprobados) db.decidirCorreo(c.id, "aprobado", "memo");
+  const r = await corridas.enviarAprobados({ prueba: false, quienPide: "memo" });
+  assert.equal(r.enviados.length, 2); assert.equal(r.fallos.length, 0);
+  for (const m of enviados) { assert.equal(m.to, "pruebas@contadores.example"); assert.match(m.subject, /^\[ENSAYO · iba a .+@.+\] /); }
+  const c0 = db.correo(aprobados[0].id);
+  assert.equal(c0.estado, "enviado"); assert.equal(c0.enviado_a, `pruebas@contadores.example (ensayo; iba a ${aprobados[0].para})`);
+  assert.equal(db.auditoria().find(a => a.accion === "enviar" && a.objeto_id === aprobados[0].id).detalle.ibaA, aprobados[0].para);
+  // sin CORREO_PRUEBA, «de verdad» va al receptor
+  const { db: db2, corridas: c2 } = armar({ REPORTE_PARA: "david@contadores.example" });
+  await c2.correr("recepcion", []); await c2.correr("comunicacion", []);
+  const reales = []; c2.transporteCorreo = { sendMail: async m => { reales.push(m); return { messageId: "<r>" }; } };
+  const [b] = db2.correos({ estado: "borrador" }); db2.decidirCorreo(b.id, "aprobado", "memo");
+  await c2.enviarAprobados({ prueba: false });
+  assert.equal(reales[0].to, b.para); assert.ok(!/ENSAYO/.test(reales[0].subject));
+});
+
 test("programador: dispara una vez al día a la hora dicha y no repite tras reiniciar", async () => {
   // El reloj falso usa la fecha de HOY (la base guarda la hora real de cada corrida) y mueve solo la hora.
   const hoy = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };

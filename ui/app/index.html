@@ -483,7 +483,7 @@ function pintarVivo(){
     kv("Odoo", e.odoo.simulado ? "Simulado" : String(e.odoo.url||"").replace(/^https?:\/\//,"")+" · "+(e.odoo.db||""))+
     kv("Facturas en Odoo", e.escrituraPermitida?"Escritura permitida":"Escritura bloqueada")+
     kv("Asientos", e.escrituraAsientos?(e.publicarAsientos?"Crea y publica":"Crea en borrador"):"Bloqueados")+
-    kv("Correo", e.smtp?"Configurado":"Sin SMTP: nada sale")+
+    kv("Correo", !e.smtp?"Sin SMTP: nada sale":e.correoEnsayo?"Modo ensayo → "+esc(e.correoEnsayo):"Configurado, envío real")+
     kv("Acceso", !e.acceso||!e.acceso.remota?"En esta PC":(e.acceso.sesion?"Remoto con sesión personal":"Remoto con token"))+
     kv("Calendario", e.programador ? (/^sin corridas/.test(e.programador.plan) ? "Sin corridas automáticas" : e.programador.plan) : "—");
 }
@@ -914,7 +914,7 @@ function pintarPropuestas(lista){
 }
 V.correos = function(){
   return '<section><h2>Correos de Victor</h2>'+
-    '<div class="aviso">Victor redacta; nadie manda nada hasta que se apruebe. «Enviar aprobados (prueba)» los manda todos a su propio correo con el asunto marcado. «Enviar de verdad» los manda a cada receptor.</div>'+
+    '<div class="aviso">Victor redacta; nadie manda nada hasta que se apruebe. «Enviar aprobados (prueba)» los manda todos a su propio correo con el asunto marcado. «Enviar de verdad» los manda a cada receptor.'+(S.estado.correoEnsayo?' <b>Modo ensayo activo:</b> aunque pulse «Enviar de verdad», todo va a <span class="mono">'+esc(S.estado.correoEnsayo)+'</span> con el destinatario original en el asunto (CORREO_PRUEBA).':'')+'</div>'+
     '<div class="fila"><select id="cEstado"><option value="borrador">borradores</option><option value="aprobado">aprobados</option><option value="enviado">enviados</option><option value="rechazado">rechazados</option><option value="fallo">con fallo</option><option value="todos">todos</option></select>'+
     '<button class="b gh" id="cIr">Ver</button><span style="flex:1"></span>'+
     '<button class="b gh" id="cPrueba">Enviar aprobados (prueba)</button><button class="b" id="cReal">Enviar de verdad</button></div>'+

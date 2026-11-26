@@ -59,6 +59,7 @@ export function crearApi(opciones) {
     acceso: { remota: ctx.remota === true, token: Boolean(ctx.cfg.SERVICIO_TOKEN), sesion: Boolean(ctx.usuario) },
     escrituraAsientos: asientos.escrituraAsientos(ctx.cfg), escrituraCuentas: cambios.escrituraCuentas(ctx.cfg), publicarAsientos: String(ctx.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si",
     smtp: Boolean(ctx.cfg.SMTP_HOST && ctx.cfg.SMTP_USER),
+    correoEnsayo: String(ctx.cfg.CORREO_PRUEBA || "").trim() || null,
     enCurso: ctx.corridas.enCurso,
     salud: saludOdoo(ctx.db),
     plugin: { version: versionPlugin(raizProyecto), descarga: `${ctx.prefijo || ""}/api/plugin/${NOMBRE_ARCHIVO}`, visto: ctx.pluginVisto || null },

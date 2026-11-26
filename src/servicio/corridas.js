@@ -204,9 +204,9 @@ export class Corridas {
       const para = prueba ? destinoPrueba : c.para;
       if (!para) { fallos.push({ id: c.id, motivo: "sin destinatario" }); this.db.marcarCorreo(c.id, "fallo", { error: "sin destinatario" }); continue; }
       try {
-        await enviarCorreo({ cfg: this.cfg, para, asunto: (prueba ? `[PRUEBA · iba a ${c.para}] ` : "") + c.asunto, html: completo.html, responderA: completo.responder_a || null });
-        this.db.marcarCorreo(c.id, "enviado", { enviadoA: para });
-        this.db.auditar(quienPide, "enviar", "correo", c.id, { para, prueba });
+        const r = await enviarCorreo({ cfg: this.cfg, para, asunto: (prueba ? `[PRUEBA · iba a ${c.para}] ` : "") + c.asunto, html: completo.html, responderA: completo.responder_a || null, transporte: this.transporteCorreo || null });
+        this.db.marcarCorreo(c.id, "enviado", { enviadoA: r.desviado ? `${r.para} (ensayo; iba a ${r.desviado})` : r.para });
+        this.db.auditar(quienPide, "enviar", "correo", c.id, { para: r.para, prueba, ...(r.desviado ? { ensayo: true, ibaA: r.desviado } : {}) });
         enviados.push(c.id);
       } catch (e) {
         this.db.marcarCorreo(c.id, "fallo", { error: e.message });
