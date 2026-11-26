@@ -64,7 +64,7 @@ export function crearApi(opciones) {
     plugin: { version: versionPlugin(raizProyecto), descarga: `${ctx.prefijo || ""}/api/plugin/${NOMBRE_ARCHIVO}`, visto: ctx.pluginVisto || null },
     programador: ctx.programador ? { plan: ctx.programador.describir(), ultimoTick: ctx.programador.ultimoTick, ultimoFallo: ctx.programador.ultimoFallo } : null,
     director: ctx.director ? { modo: ctx.director.disponible ? "llm" : "palabras", modelo: ctx.director.disponible ? ctx.director.modelo : null } : null,
-    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].map(a => {
+    ultimas: Object.fromEntries(["recepcion", "comunicacion", "conciliacion", "cuentas", "diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda", "controles"].map(a => {
       const u = ctx.db.ultimaCorrida(a);
       return [a, u ? { id: u.id, inicio: u.inicio, fin: u.fin, totales: u.totales, alertas: u.alertas, compania: u.compania, modo: u.modo } : null];
     })),
@@ -127,7 +127,7 @@ export function crearApi(opciones) {
 
   // --- hallazgos de la fase 3A: el resultado completo de la última corrida de cada agente de lectura
   ruta("GET", "/api/hallazgos/:agente", (q, p, c, quien, ctx) => {
-    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda"].includes(p.agente)) return error(404, "No existe ese agente.");
+    if (!["diagnostico", "recurrentes", "bancos", "documentos", "cierre", "estados", "cambiario", "diferidos", "depreciacion", "cartera", "datos", "extractos", "hacienda", "controles"].includes(p.agente)) return error(404, "No existe ese agente.");
     const u = ctx.db.ultimaCorrida(p.agente), fallo = ctx.db.ultimoFallo(p.agente);   // el fallo solo si es más nuevo que la última buena
     return { ...(u ? { corrida: u.id, inicio: u.inicio, fin: u.fin, ...u.resultado } : { corrida: null }), ultimoFallo: fallo };
   });
@@ -228,7 +228,7 @@ export function crearApi(opciones) {
     const forma = asientos.revisarForma(a);
     if (forma.errores.length) return error(400, forma.errores.join(" "));
     let v = { ok: true, errores: [], avisos: [] };
-    try { v = await asientos.validar(ctx.corridas.crearCliente({ meta: { escribe: false } }), a); }
+    try { v = await asientos.validar(ctx.corridas.crearCliente({ meta: { escribe: false } }), a, { db: ctx.db }); }
     catch (e) { v.avisos.push(`No se pudo validar contra Odoo ahora: ${e.message}`); }
     if (!v.ok) return error(400, "No se puede aprobar: " + v.errores.join(" "));
     ctx.db.decidirAsiento(a.id, "aprobada", quien, cuerpo.nota || null);

@@ -35,11 +35,21 @@ export function revisarForma(a) {
   return { errores, debitos: deb, creditos: cre };
 }
 
-export async function validar(odoo, a) {
+export async function validar(odoo, a, { db = null } = {}) {
   const { errores } = revisarForma(a);
   const CID = a.compania_id ?? a.companiaId, diarioId = a.diario_id ?? a.diarioId;
   const ctx = { context: { allowed_company_ids: [CID] } };
   const avisos = [];
+  // Candados: ningún asiento con fecha de un mes bloqueado en Odoo ni de un mes ya cerrado (entregado) en la Oficina.
+  try {
+    const [cia] = await odoo.leer("res.company", "search_read", [[["id", "=", CID]], ["name", "fiscalyear_lock_date", "hard_lock_date"]], ctx);
+    const candado = [cia?.hard_lock_date, cia?.fiscalyear_lock_date].filter(Boolean).map(String).sort().pop() || null;
+    for (const f of [a.fecha, a.reversa].filter(Boolean)) if (candado && String(f).slice(0, 10) <= candado) errores.push(`La fecha ${f} cae en un periodo bloqueado en Odoo (candado al ${candado}): un mes entregado no se toca; se reporta y se escala.`);
+  } catch { avisos.push("No se pudo leer la fecha de bloqueo de la compañía."); }
+  if (db && db.cierresMes) for (const f of [a.fecha, a.reversa].filter(Boolean)) {
+    const m = String(f).slice(0, 7);
+    if (db.cierresMes(m).some(c => c.compania_id === CID && c.estado === "cerrado")) errores.push(`El mes ${m} ya está cerrado en la Oficina para esta compañía: un asiento con esa fecha obliga a rehacer los estados entregados. Reábralo primero o escale.`);
+  }
   const ids = [...new Set((a.lineas || []).map(l => l.cuentaId).filter(Boolean))];
   if (ids.length) {
     const cuentas = await odoo.leer("account.account", "search_read", [[["id", "in", ids]], ["name", "company_ids", "deprecated", "account_type"]], ctx);
@@ -104,7 +114,7 @@ export async function aplicar({ corridas, db, id, quien }) {
   if (a.estado !== "aprobada") return { error: `El asiento está ${a.estado}; solo se aplica uno aprobado.`, codigo: 409 };
   if (!escrituraAsientos(corridas.cfg)) return { error: "PERMITIR_ESCRITURA_ASIENTOS no es 'si': el servicio no puede crear asientos en Odoo.", codigo: 403 };
   const odoo = corridas.crearCliente({ meta: { escribe: true } });
-  const v = await validar(odoo, a);
+  const v = await validar(odoo, a, { db });
   if (!v.ok) { db.marcarAsiento(a.id, "aprobada", { resultado: { validacion: v } }); return { error: "No pasa la validación: " + v.errores.join(" "), validacion: v, codigo: 400 }; }
   const CID = a.compania_id, ctx = { context: { allowed_company_ids: [CID] } };
   const publicar = String(corridas.cfg.ASIENTOS_PUBLICAR || "").toLowerCase() === "si";

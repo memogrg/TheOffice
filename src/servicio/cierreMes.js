@@ -25,7 +25,11 @@ export const ITEMS = [
   { id: "depreciacion", titulo: "Depreciación registrada", vista: "activos", agente: "depreciacion" },
   { id: "asientos", titulo: "Asientos propuestos decididos", vista: "aprobaciones", agente: null },
   { id: "estados", titulo: "Estados financieros sin observaciones", vista: "hallazgos", agente: "estados" },
-  { id: "hacienda", titulo: "Declaración de IVA preparada y presentada", vista: "hacienda", agente: "hacienda" }
+  { id: "hacienda", titulo: "Declaración de IVA preparada y presentada", vista: "hacienda", agente: "hacienda" },
+  { id: "salarios", titulo: "Salarios por pagar en cero", vista: "hallazgos", agente: "controles" },
+  { id: "variacion", titulo: "Variación de resultados revisada (±15 % contra 18 meses)", vista: "hallazgos", agente: "controles" },
+  { id: "retroactivo", titulo: "Sin asientos tardíos en los meses ya entregados", vista: "hallazgos", agente: "controles" },
+  { id: "candado", titulo: "Fecha de bloqueo puesta al entregar el mes", vista: "hallazgos", agente: "controles" }
 ];
 
 export function mesPorOmision(db) {
@@ -37,7 +41,7 @@ export function mesPorOmision(db) {
 function contexto(db, mes) {
   const r = a => db.ultimaCorrida(a)?.resultado || null;
   const ctx = { mes, recepcion: r("recepcion"), diagnostico: r("diagnostico"), recurrentes: r("recurrentes"), documentos: r("documentos"), bancos: r("bancos"),
-    cierre: r("cierre"), estados: r("estados"), cambiario: r("cambiario"), diferidos: r("diferidos"), depreciacion: r("depreciacion") };
+    cierre: r("cierre"), estados: r("estados"), cambiario: r("cambiario"), diferidos: r("diferidos"), depreciacion: r("depreciacion"), controles: r("controles") };
   ctx.asientos = db.asientos({ estado: "todos", limite: 5000 });
   ctx.casos = db.casos({ seguimiento: "abierto", limite: 100000 });
   ctx.consultas = db.consultas({ limite: 100000 });
@@ -163,7 +167,33 @@ function evaluar(it, cia, ctx) {
       const cajas = (ctx.estados.cajasNegativas || []).filter(x => x.companiaId === cia.id);
       if (cajas.length) obs.push(`${plural(cajas.length, "caja o banco", "cajas o bancos")} en negativo`);
       if ((ctx.estados.ladoContrario || []).some(x => x.companiaId === cia.id)) obs.push("proveedores o clientes del lado contrario");
+      const sc = delMes(ctx.controles, mes) ? (ctx.controles.sinContacto || []).find(x => x.companiaId === cia.id) : null;
+      if (sc) obs.push(`${plural(sc.lineas, "cobro o pago sin contacto", "cobros o pagos sin contacto")}`);
       return obs.length ? pend(obs.join("; ") + ".") : ok(`Utilidad del año ₡${colones(e.resultadosAnio?.utilidad)}.`);
+    }
+    case "salarios": {
+      if (!delMes(ctx.controles, mes)) return sinDatos("Controles");
+      const s = (ctx.controles.salarios || []).filter(x => x.companiaId === cia.id);
+      return s.length ? pend(s.map(x => `${x.cuenta}: ₡${colones(x.saldo)}`).join("; ") + ".") : ok();
+    }
+    case "variacion": {
+      if (!delMes(ctx.controles, mes)) return sinDatos("Controles");
+      const v = (ctx.controles.variaciones || []).filter(x => x.companiaId === cia.id);
+      return v.length ? pend(`${plural(v.length, "cuenta fuera de lo normal", "cuentas fuera de lo normal")}: ${v.slice(0, 3).map(x => `${x.cuenta} (${x.variacionPct > 0 ? "+" : ""}${x.variacionPct} %)`).join(", ")}${v.length > 3 ? " y más" : ""}.`) : ok();
+    }
+    case "retroactivo": {
+      if (!delMes(ctx.controles, mes)) return sinDatos("Controles");
+      const g = (ctx.controles.retroactivos || []).filter(x => x.companiaId === cia.id);
+      if (!g.length) return ok();
+      const total = g.reduce((t, x) => t + x.asientos, 0);
+      return pend(`${plural(total, "asiento tardío", "asientos tardíos")} en ${g.map(x => x.mes).join(", ")}: rehacer esos estados o escalar.`);
+    }
+    case "candado": {
+      if (!delMes(ctx.controles, mes)) return sinDatos("Controles");
+      const c = (ctx.controles.candados || []).find(x => x.companiaId === cia.id);
+      if (!c) return na("Compañía sin candados leídos.");
+      if (c.candado && c.candado >= c.alCerrar) return ok(`Bloqueado hasta ${c.candado}.`);
+      return pend(`${c.candado ? `Candado al ${c.candado}` : "Sin fecha de bloqueo"}: al entregar el mes, en Odoo → Contabilidad → Configuración → Fechas de bloqueo, póngala al ${c.alCerrar}.`);
     }
   }
   return na();

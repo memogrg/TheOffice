@@ -477,6 +477,39 @@
       },
       "parametros": [],
       "escribe": false
+    },
+    {
+      "id": "controles",
+      "nombre": "CONTROLES",
+      "rol": "CONTROLES",
+      "modo": "lectura",
+      "hace": "Aplica los controles de cierre de la firma (B3): revisa que cada compañía tenga la fecha de bloqueo puesta al entregar el mes, encuentra asientos de meses ya entregados creados o modificados después de la entrega (arrastre retroactivo), salarios por pagar con saldo al cierre, cobros y pagos sin contacto, y cuentas de resultados que se mueven más de 15 % contra su promedio de 18 meses.",
+      "noHace": "No pone candados ni corrige asientos: los candados se ponen en Odoo y lo demás se corrige en su pestaña.",
+      "responde": [
+        "qué compañías no tienen candado",
+        "qué asientos tardíos hay en meses entregados",
+        "qué cuentas variaron más de 15 %",
+        "qué salarios por pagar quedaron con saldo"
+      ],
+      "palabras": {
+        "candado": 8,
+        "candados": 8,
+        "fecha de bloqueo": 8,
+        "bloqueo": 5,
+        "retroactivo": 8,
+        "tardío": 6,
+        "tardios": 6,
+        "arrastre": 7,
+        "variación": 5,
+        "variacion": 5,
+        "15 %": 5,
+        "controles": 8,
+        "control de cierre": 8,
+        "salarios por pagar": 6,
+        "sin contacto": 5
+      },
+      "parametros": [],
+      "escribe": false
     }
   ],
   "noConstruidos": [

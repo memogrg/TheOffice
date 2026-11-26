@@ -122,7 +122,7 @@ export async function aprobarAutonomos({ db, corridas, odoo, cfg, log = () => {}
     if (!aut) continue;
     const forma = revisarForma(a);
     let v = { ok: !forma.errores.length, errores: forma.errores };
-    if (v.ok) { try { v = await validar(odoo, a); } catch (e) { v = { ok: false, errores: [`no se pudo validar: ${e.message}`] }; } }
+    if (v.ok) { try { v = await validar(odoo, a, { db }); } catch (e) { v = { ok: false, errores: [`no se pudo validar: ${e.message}`] }; } }
     if (!v.ok) { out.retenidos.push({ id: a.id, compania: a.compania, referencia: a.referencia, motivo: v.errores.join(" ") }); continue; }
     db.decidirAsiento(a.id, "aprobada", QUIEN, `Autonomía #${aut.id}`);
     out.aprobados++;

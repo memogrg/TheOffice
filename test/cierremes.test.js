@@ -21,6 +21,9 @@ function base() {
   corrida(db, "estados", { mes: MES, companias: [{ companiaId: 1, borradores: 2, balance: { diferencia: 0 }, resultadosAnio: { utilidad: 10 } }, { companiaId: 2, borradores: 0, balance: { diferencia: 0 }, resultadosAnio: { utilidad: 5 } }],
     cajasNegativas: [], ladoContrario: [] });
   corrida(db, "cambiario", { mes: MES, companias: [{ companiaId: 2, ajustes: 1, neto: 65000 }] });
+  // Controles B3: Ceiba sin candado, con un asiento tardío de enero y salarios con saldo; Lirio bloqueada al cierre y limpia
+  corrida(db, "controles", { mes: MES, candados: [{ companiaId: 1, candado: null, alCerrar: "2026-02-28", estado: "sin-candado" }, { companiaId: 2, candado: "2026-02-28", alCerrar: "2026-02-28", estado: "al-dia" }],
+    retroactivos: [{ companiaId: 1, mes: "2026-01", asientos: 3 }], salarios: [{ companiaId: 1, cuenta: "Salarios por pagar", saldo: 450000 }], variaciones: [{ companiaId: 1, cuenta: "Electricidad", variacionPct: 62 }], sinContacto: [{ companiaId: 1, lineas: 2, monto: 1000 }] });
   // Hacienda: Ceiba con el IVA preparado; Lirio ya presentado
   const paq = (cia, nombre, pagar) => ({ impuesto: "150", compania: nombre, companiaId: cia, periodo: MES, casillas: [], totales: { pagar, favor: 0 }, extra: {}, juez: { semaforo: "verde", observaciones: [] } });
   db.sincronizarDeclaraciones(null, [paq(1, "Ceiba", 120000), paq(2, "Lirio", 0)]);
@@ -56,6 +59,13 @@ test("Cierre de mes: qué falta por compañía, con lo que dicen los agentes y l
   assert.equal(it(lirio, "cambiario").estado, "ok");
   assert.match(it(lirio, "cambiario").detalle, /MISC\/55/);
   assert.equal(it(lirio, "iva").estado, "ok");
+  // controles de la firma (B3)
+  assert.equal(it(ceiba, "candado").estado, "pendiente"); assert.match(it(ceiba, "candado").detalle, /Sin fecha de bloqueo.*2026-02-28/);
+  assert.equal(it(ceiba, "retroactivo").estado, "pendiente"); assert.match(it(ceiba, "retroactivo").detalle, /3 asientos tardíos en 2026-01/);
+  assert.equal(it(ceiba, "salarios").estado, "pendiente"); assert.match(it(ceiba, "salarios").detalle, /450.000/);
+  assert.equal(it(ceiba, "variacion").estado, "pendiente"); assert.match(it(ceiba, "variacion").detalle, /Electricidad \(\+62 %\)/);
+  assert.match(it(ceiba, "estados").detalle, /2 cobros o pagos sin contacto/);
+  assert.equal(it(lirio, "candado").estado, "ok"); assert.equal(it(lirio, "retroactivo").estado, "ok"); assert.equal(it(lirio, "salarios").estado, "ok"); assert.equal(it(lirio, "variacion").estado, "ok");
   assert.equal(lirio.pendientes, 0);
   assert.equal(lirio.estado, "listo");
   assert.equal(l.companias[0].compania, "Ceiba", "las abiertas primero");

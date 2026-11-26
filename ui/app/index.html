@@ -619,6 +619,7 @@ var HALLAZGOS = [
   { id:"estados", titulo:"Estados financieros — balance y resultados", ayuda:"Balance de situación y estado de resultados de cada compañía al cierre del mes, con los últimos meses. Pulse «ver» para el detalle e «Imprimir» para entregarlo." },
   { id:"cambiario", titulo:"Diferencial cambiario — saldos en dólares", ayuda:"Revalúa a fin de mes los bancos en dólares y los documentos abiertos de clientes y proveedores con el tipo de cambio de Odoo, y propone el asiento (se revierte solo el día 1). Los asientos quedan en Aprobaciones." },
   { id:"cartera", titulo:"Cartera — antigüedad de cobros y pagos", ayuda:"Cuánto se debe a cada compañía y cuánto debe, por tramos de vencimiento; clientes con facturas vencidas y pagos que vencen pronto. Redacta un recordatorio de cobro por cliente (en nombre de la compañía) que queda en Correos para aprobar." },
+  { id:"controles", titulo:"Controles de cierre de la firma (B3)", ayuda:"Candados del periodo por compañía (la fecha de bloqueo que se pone al entregar), asientos de meses ya entregados creados o modificados después (arrastre retroactivo), salarios por pagar con saldo al cierre, cobros y pagos sin contacto, y cuentas de resultados que se mueven más de 15 % contra su promedio de 18 meses. Los candados se ponen en Odoo; lo demás se corrige en su pestaña." },
   { id:"datos", titulo:"Calidad de datos — contactos", ayuda:"Cédulas repetidas en la misma compañía (frenan el buzón), posibles duplicados por nombre, cédulas inválidas, terceros con documentos y sin cédula, clientes facturados sin correo. Se corrige en Odoo; el agente dice qué contacto conservar al fusionar." },
   { id:"extractos", titulo:"Extractos — banco contra libros", ayuda:"Por cada cuenta con extractos subidos (pestaña Extractos): cuántos movimientos están en libros, cuáles tienen asiento propuesto y cuáles faltan; el saldo del banco contra el de libros y lo que queda sin explicar. Cobros y pagos sin registrar, con la factura que calza." },
   { id:"documentos", titulo:"Documentos — notas de crédito y consecutivos", ayuda:"Notas de crédito que no están ligadas a la factura que corrigen (con el vínculo propuesto) y huecos en los consecutivos de venta." }
@@ -661,6 +662,20 @@ function pintarHallazgo(id, r){
   if (id==="cierre") h += pintarCierre(r);
   if (id==="estados"){ S.estados=r; h += pintarEstados(r); }
   if (id==="extractos") h += pintarExtractosHz(r);
+  if (id==="controles"){
+    var t=r.totales||{};
+    h += '<div class="sub" style="margin:6px 0">Mes '+esc(r.mes)+' · corte de entrega: día '+n(t.diaEntrega)+' del mes siguiente (o la fecha real del cierre en la Oficina) · '+n(t.mesesRevisados)+' meses hacia atrás.</div>';
+    if ((r.retroactivos||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Asientos de meses entregados tocados después de la entrega</h3>'+tabla(["Compañía","Mes",{t:"Asientos",n:1},{t:"Creados tarde",n:1},{t:"Modificados",n:1},"Corte","Última modificación","Ejemplos"], r.retroactivos.slice(0,120).map(function(g){
+      return [esc(g.compania), esc(g.mes), n(g.asientos), n(g.creadosTarde), n(g.modificadosTarde), '<span class="sub">'+esc(g.corte)+(g.corteReal?' <span class="est ok">cierre real</span>':'')+'</span>', '<span class="sub">'+esc(g.ultimaModificacion||"")+'</span>',
+        '<details><summary class="sub" style="cursor:pointer">ver</summary><div class="sub">'+(g.ejemplos||[]).map(function(e){ return esc(e.asiento)+' ('+esc(e.fecha)+') creado '+esc(e.creado)+', modificado '+esc(e.modificado)+(e.por?' por '+esc(e.por):'')+' · '+mon(e.monto); }).join("<br>")+'</div></details>']; }));
+    var cand=(r.candados||[]).filter(function(c){ return c.estado!=="al-dia"; });
+    if (cand.length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Candados por poner</h3>'+tabla(["Compañía","Candado hoy","Debería estar al","Al cerrar "+esc(r.mes)],
+      cand.map(function(c){ return [esc(c.compania), c.candado?'<span class="mono">'+esc(c.candado)+'</span> <span class="est alto">atrasado</span>':'<span class="est critico">sin candado</span>', esc(c.esperado), esc(c.alCerrar)]; }));
+    if ((r.salarios||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Salarios por pagar con saldo al cierre</h3>'+tabla(["Compañía","Cuenta",{t:"Saldo",n:1}], r.salarios.map(function(x){ return [esc(x.compania), esc(x.cuenta), mon(x.saldo)]; }));
+    if ((r.variaciones||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Cuentas de resultados fuera de lo normal (±15 % contra 18 meses)</h3>'+tabla(["Compañía","Cuenta",{t:"Este mes",n:1},{t:"Promedio",n:1},{t:"Variación",n:1}], r.variaciones.slice(0,150).map(function(v){
+      return [esc(v.compania), esc(v.cuenta), mon(v.actual), mon(v.promedio), '<b>'+(v.variacionPct>0?"+":"")+v.variacionPct+' %</b>']; }));
+    if ((r.sinContacto||[]).length) h += '<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">'+n(t.sinContacto)+' apuntes de clientes o proveedores sin contacto</summary>'+tabla(["Compañía",{t:"Apuntes",n:1},{t:"Monto",n:1}], r.sinContacto.map(function(x){ return [esc(x.compania), n(x.lineas), mon(x.monto)]; }))+'</details>';
+  }
   if (id==="datos"){
     var ctc=function(c){ return esc(c.nombre)+' <span class="sub mono">#'+c.id+'</span><div class="sub">'+esc(c.cedula||"sin cédula")+' · '+n(c.ventas)+' ventas · '+n(c.compras)+' compras</div>'; };
     if ((r.duplicados||[]).length) h += '<h3 style="margin:12px 0 6px;font-size:13px">Cédulas repetidas en la misma compañía</h3>'+tabla(["Compañía","Cédula","Contactos","Conservar"], r.duplicados.slice(0,80).map(function(d){
@@ -1191,10 +1206,10 @@ function importarActivos(probar){
   }; rd.readAsText(f);
 }
 /* ---------- Cierre de mes por cliente ---------- */
-var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", extractos:"Extract.", hacienda:"IVA", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados" };
+var CORTO = { buzon:"Buzón", periodos:"Periodos", recurrentes:"Recurr.", documentos:"NC", cuentas:"Cuentas", borradores:"Borrad.", bancos:"Bancos", extractos:"Extract.", hacienda:"IVA", puente:"Puente", iva:"IVA", cambiario:"Dif. camb.", diferidos:"Diferid.", depreciacion:"Deprec.", asientos:"Asientos", estados:"Estados", salarios:"Salarios", variacion:"±15 %", retroactivo:"Tardíos", candado:"Candado" };
 var EST_ITEM_CM = { ok:["✓","ok","al día"], pendiente:["!","alto","pendiente"], "sin-datos":["?","critico","sin corrida del mes"], na:["–","neutro","no aplica"], revisado:["✓","neutro","dado por bueno"] };
 var EST_CM = { abierto:["con pendientes","alto"], listo:["listo para cerrar","ok"], cerrado:["cerrado","neutro"] };
-var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","extractos","hacienda","cierre","estados","cambiario","diferidos","depreciacion"];
+var AGENTES_MES = ["diagnostico","recurrentes","documentos","bancos","extractos","hacienda","cierre","estados","cambiario","diferidos","depreciacion","controles"];
 V.cierremes = function(){
   return '<section><h2>Cierre de mes por cliente</h2><div class="aviso">Junta lo que encontraron los agentes en su última corrida y lo que espera en Aprobaciones. Cada ítem pendiente se resuelve en su pestaña o se <b>da por bueno</b> con una nota (queda en la auditoría). Sin pendientes, el mes del cliente se <b>cierra</b> y queda una foto de la lista. «?» quiere decir que el agente no ha corrido para ese mes.</div>'+
     '<div class="fila"><input class="f" type="month" id="cmMes" value="'+esc(S.cmMes||"")+'"><button class="b gh" id="cmVer">Ver</button>'+
